@@ -1,0 +1,143 @@
+PS F:\PythonProject\turtle-soup> uv run python test/ws_client.py
+已连接: ws://localhost:5600/v1/events
+发送鉴权: {"op": 3}
+[事件] {
+  "op": 4,
+  "body": {
+    "logins": [
+      {
+        "sn": 1,
+        "user": {
+          "id": "1806933648",
+          "name": "Rosmontis",
+          "avatar": "http://q.qlogo.cn/headimg_dl?dst_uin=1806933648&spec=640",
+          "is_bot": false
+        },
+        "adapter": "llonebot",
+        "platform": "llonebot",
+        "status": 1,
+        "features": [
+          "channel.get",
+          "channel.list",
+          "channel.update",
+          "channel.delete",
+          "channel.mute",
+          "message.create",
+          "message.delete",
+          "message.get",
+          "message.list",
+          "reaction.create",
+          "reaction.delete",
+          "reaction.list",
+          "guild.get",
+          "guild.list",
+          "guild.member.get",
+          "guild.member.list",
+          "guild.member.kick",
+          "guild.member.mute",
+          "guild.member.role.set",
+          "guild.role.list",
+          "login.get",
+          "user.get",
+          "user.channel.create",
+          "friend.list",
+          "friend.delete",
+          "friend.approve",
+          "guild.approve",
+          "guild.member.approve",
+          "guild.plain"
+        ],
+        "proxy_urls": []
+      }
+    ],
+    "proxy_urls": []
+  }
+}
+[事件] {
+  "op": 0,
+  "body": {
+    "id": 3,
+    "sn": 3,
+    "type": "message-created",
+    "self_id": "1806933648",
+    "platform": "llonebot",
+    "timestamp": 1784455637607,
+    "login": {
+      "sn": 1,
+      "user": {
+        "id": "1806933648",
+        "name": "Rosmontis",
+        "avatar": "http://q.qlogo.cn/headimg_dl?dst_uin=1806933648&spec=640",
+        "is_bot": false
+      },
+      "platform": "llonebot"
+    },
+    "message": {
+      "id": "2|796219047|4160",
+      "content": "10",
+      "created_at": 1784455666000
+    },
+    "member": {
+      "user": {
+        "id": "1825485792",
+        "name": "nouxiaxia",
+        "avatar": "http://q.qlogo.cn/headimg_dl?dst_uin=1825485792&spec=640",
+        "is_bot": false
+      },
+      "nick": ""
+    },
+    "user": {
+      "id": "1825485792",
+      "name": "nouxiaxia",
+      "avatar": "http://q.qlogo.cn/headimg_dl?dst_uin=1825485792&spec=640",
+      "is_bot": false
+    },
+    "channel": {
+      "id": "796219047",
+      "name": "RosmontisHome",
+      "type": 0
+    },
+    "guild": {
+      "id": "796219047",
+      "name": "RosmontisHome",
+      "avatar": "https://p.qlogo.cn/gh/796219047/796219047/640"
+    }
+  }
+}
+[事件] {
+  "op": 0,
+  "body": {
+    "id": 4,
+    "sn": 4,
+    "type": "message-created",
+    "self_id": "1806933648",
+    "platform": "llonebot",
+    "timestamp": 1784455655371,
+    "login": {
+      "sn": 1,
+      "user": {
+        "id": "1806933648",
+        "name": "Rosmontis",
+        "avatar": "http://q.qlogo.cn/headimg_dl?dst_uin=1806933648&spec=640",
+        "is_bot": false
+      },
+      "platform": "llonebot"
+    },
+    "message": {
+      "id": "1|u_jSgxqWsXgCW2qkgRPBgV-g|6",
+      "content": "test",
+      "created_at": 1784455683000
+    },
+    "user": {
+      "id": "1825485792",
+      "name": "nouxiaxia",
+      "avatar": "http://q.qlogo.cn/headimg_dl?dst_uin=1825485792&spec=640",
+      "is_bot": false
+    },
+    "channel": {
+      "id": "private:1825485792",
+      "name": "nouxiaxia",
+      "type": 1
+    }
+  }
+}
