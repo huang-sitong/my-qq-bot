@@ -1,10 +1,10 @@
 import logging
-import sqlite3
+
 from typing import Annotated
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.sqlite import SqliteSaver
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
@@ -35,7 +35,7 @@ class BotState(TypedDict):
     channel_id: str
 
 
-def create_graph(llm: ChatOpenAI, client: SatoriClient) -> CompiledStateGraph:
+async def create_graph(llm: ChatOpenAI, client: SatoriClient) -> CompiledStateGraph:
     """Build and compile the conversation graph.
 
     Graph structure::
@@ -98,8 +98,10 @@ def create_graph(llm: ChatOpenAI, client: SatoriClient) -> CompiledStateGraph:
     builder.add_edge("call_llm", "send_reply")
     builder.add_edge("send_reply", END)
 
-    conn = sqlite3.connect("bot_memory.sqlite", check_same_thread=False)
-    checkpointer = SqliteSaver(conn)
+    import aiosqlite
+
+    conn = await aiosqlite.connect("bot_memory.sqlite")
+    checkpointer = AsyncSqliteSaver(conn)
     graph = builder.compile(checkpointer=checkpointer)
-    logger.info("LangGraph compiled with SqliteSaver checkpointing")
+    logger.info("LangGraph compiled with AsyncSqliteSaver checkpointing")
     return graph

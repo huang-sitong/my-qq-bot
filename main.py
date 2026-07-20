@@ -28,7 +28,7 @@ async def main():
     logger.info("Persona: %.80s", persona)
 
     llm = setup_llm()
-    graph = create_graph(llm, client)
+    graph = await create_graph(llm, client)
 
     handler = MessageHandler(client, graph, persona)
 
