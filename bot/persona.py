@@ -1,5 +1,6 @@
 import logging
 import tomllib
+from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -7,6 +8,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_PERSONA = "你是一个通用的AI助手，请用中文友好地回答问题。"
 
 
+@lru_cache
 def load_persona() -> str:
     """Load persona system prompt from ``pyproject.toml`` ``[tool.bot].persona_prompt``.
 
