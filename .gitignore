@@ -11,3 +11,5 @@ wheels/
 .env
 # Virtual environments
 .venv
+# Runtime data
+bot_memory.sqlite
