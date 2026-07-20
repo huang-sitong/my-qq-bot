@@ -30,7 +30,7 @@ async def main():
     llm = setup_llm()
     graph = create_graph(llm, client)
 
-    handler = MessageHandler(client, graph)
+    handler = MessageHandler(client, graph, persona)
 
     # --- Register event handlers ---
     client.on("message-created")(handler.handle)

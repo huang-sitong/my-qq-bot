@@ -15,14 +15,15 @@ class MessageHandler:
 
     Usage::
 
-        handler = MessageHandler(client, graph)
+        handler = MessageHandler(client, graph, persona)
         client.on("message-created")(handler.handle)
         client.on("login")(handler.handle_login)
     """
 
-    def __init__(self, client: SatoriClient, graph: CompiledGraph) -> None:
+    def __init__(self, client: SatoriClient, graph: CompiledGraph, persona: str) -> None:
         self.client = client
         self.graph = graph
+        self._persona = persona
         self._bot_name: str | None = None
         self._cooldowns: dict[str, float] = {}
 
@@ -79,6 +80,8 @@ class MessageHandler:
                     "session_id": session_id,
                     "guild_id": guild_id,
                     "channel_id": channel_id,
+                    "persona": self._persona,
+                    "reply_text": "",
                 },
                 {"configurable": {"thread_id": session_id}},
             )
