@@ -24,6 +24,7 @@ class MessageHandler:
         self.client = client
         self.graph = graph
         self._persona = persona
+        self._bot_id: str | None = None
         self._bot_name: str | None = None
         self._cooldowns: dict[str, float] = {}
 
@@ -32,14 +33,15 @@ class MessageHandler:
     # ------------------------------------------------------------------
 
     async def handle_login(self, login_list: LoginList) -> None:
-        """Extract bot user name from the login event."""
+        """Extract bot user id and name from the login event."""
         logins = login_list.logins
         if not logins:
             return
         user = logins[0].user
         if user is not None:
+            self._bot_id = user.id
             self._bot_name = user.name or user.nick or user.id
-            logger.info("Bot name set from login: %s", self._bot_name)
+            logger.info("Bot info set: id=%s name=%s", self._bot_id, self._bot_name)
 
     async def handle(self, event: EventBody) -> None:
         """Process an incoming message event."""
@@ -93,18 +95,21 @@ class MessageHandler:
     # ------------------------------------------------------------------
 
     def _is_mentioned(self, content: str) -> bool:
-        """Check if the message starts with an @-mention of the bot."""
-        if self._bot_name is None:
+        """Check if the message contains an @-mention of the bot.
+
+        LLOneBot/Satori uses ``<at id="123" name="nick"/>`` XML tags for mentions.
+        """
+        if self._bot_id is None:
             return False
-        return content.startswith(f"@{self._bot_name}")
+        return f'<at id="{self._bot_id}"' in content
 
     def _strip_mention(self, content: str) -> str:
-        """Remove the leading ``@bot_name`` prefix from message content."""
-        if self._bot_name is None:
-            return content
-        prefix = f"@{self._bot_name}"
-        if content.startswith(prefix):
-            return content[len(prefix):].lstrip()
+        """Remove a leading ``<at …/>`` mention tag from message content."""
+        idx = content.find(">")
+        if idx != -1:
+            after_tag = content[idx + 1:]
+            # Also strip any trailing whitespace after the tag
+            return after_tag.lstrip()
         return content
 
     def _on_cooldown(self, session_id: str) -> bool:
