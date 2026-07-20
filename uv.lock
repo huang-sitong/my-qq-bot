@@ -474,7 +474,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "pandas", specifier = ">=3.0.3" },
     { name = "pillow", specifier = ">=12.3.0" },
-    { name = "pydantic" },
+    { name = "pydantic", specifier = ">=2.0.0" },
     { name = "uvicorn", specifier = ">=0.51.0" },
     { name = "websockets", specifier = ">=16.1" },
 ]
