@@ -41,6 +41,8 @@ class MessageHandler:
         if user is not None:
             self._bot_id = user.id
             self._bot_name = user.name or user.nick or user.id
+            # Set user ID on client config so HTTP API calls include Satori-User-ID
+            self.client.config.api_user_id = self._bot_id
             logger.info("Bot info set: id=%s name=%s", self._bot_id, self._bot_name)
 
     async def handle(self, event: EventBody) -> None:

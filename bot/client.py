@@ -54,7 +54,10 @@ class SatoriClient:
         self._ws = await websockets.connect(url)
         logger.info("Connected")
 
-        await self._ws.send(json.dumps({"op": 3}))
+        identify = {"op": 3}
+        if self.config.token:
+            identify["token"] = self.config.token
+        await self._ws.send(json.dumps(identify))
         logger.info("IDENTIFY sent")
 
     async def disconnect(self):
@@ -165,6 +168,8 @@ class SatoriClient:
             headers["Satori-Platform"] = self.config.api_platform
         if self.config.api_user_id:
             headers["Satori-User-ID"] = self.config.api_user_id
+        if self.config.token:
+            headers["Authorization"] = f"Bearer {self.config.token}"
 
         payload = {}
         if params is not None:
