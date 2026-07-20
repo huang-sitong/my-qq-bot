@@ -1,8 +1,14 @@
 import asyncio
 import logging
 
-from bot import BotConfig, SatoriClient
-from data_object.satori import EventBody
+from bot import (
+    BotConfig,
+    MessageHandler,
+    SatoriClient,
+    create_graph,
+    load_persona,
+    setup_llm,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -12,25 +18,32 @@ logger = logging.getLogger("bot")
 
 
 async def main():
+    logger.info("Starting QQ bot ...")
+
+    # --- Initialise components ---
     config = BotConfig()
     client = SatoriClient(config)
 
-    @client.on("message-created")
-    async def on_message(event: EventBody):
-        content = event.message.content if event.message else "(no content)"
-        name = event.user.name if event.user else "unknown"
-        logger.info("Message from %s: %s", name, content)
+    persona = load_persona()
+    logger.info("Persona: %.80s", persona)
 
-    @client.on("login")
-    async def on_login(login_list):
-        for login in login_list.logins:
-            logger.info("Login: %s on %s (status=%s)", login.user.name if login.user else "?", login.platform, login.status)
+    llm = setup_llm()
+    graph = create_graph(llm, client)
 
+    handler = MessageHandler(client, graph)
+
+    # --- Register event handlers ---
+    client.on("message-created")(handler.handle)
+    client.on("login")(handler.handle_login)
+
+    # --- Run ---
     try:
         await client.run()
     except KeyboardInterrupt:
-        logger.info("Shutting down …")
+        logger.info("Shutting down ...")
+    finally:
         await client.disconnect()
+        logger.info("Bye.")
 
 
 if __name__ == "__main__":
