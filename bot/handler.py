@@ -8,7 +8,7 @@ from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
 from bot.agent.memory import MemoryStore
 from bot.ws.client import SatoriClient
-from data_object.satori import EventBody, LoginList
+from data_object.satori import ChannelType, EventBody, LoginList
 
 logger = logging.getLogger(__name__)
 
@@ -66,12 +66,23 @@ class MessageHandler:
         if not self._is_mentioned(event.message.content):
             return
 
-        # 2) Build session_id
+        # 2) Build session_id and thread_id
         platform = event.platform or "unknown"
         guild_id = event.guild.id if event.guild else ""
         channel_id = event.channel.id if event.channel else ""
         user_id = event.user.id if event.user else ""
+
+        # session_id is used for cooldown + logging (always user-level)
         session_id = f"{platform}:{guild_id}:{channel_id}:{user_id}"
+
+        # thread_id determines checkpoint isolation
+        is_group = event.channel and event.channel.type != ChannelType.DIRECT
+        if is_group:
+            # Group chat: shared checkpoint so all members see the same history
+            thread_id = f"{platform}:{guild_id}:{channel_id}"
+        else:
+            # Private chat: isolated per-user checkpoint
+            thread_id = session_id
 
         # 3) Cooldown
         if self._on_cooldown(session_id):
@@ -87,15 +98,22 @@ class MessageHandler:
         # 5) Load user memories
         memories_text = self._memory_store.format_memories(user_id)
 
-        # 6) Invoke graph
+        # 6) Build message with user identity for group chat
+        if is_group:
+            user_name = event.user.nick or event.user.name or event.user.id
+            new_message = HumanMessage(content=content, name=user_name)
+        else:
+            new_message = HumanMessage(content=content)
+
+        # 7) Invoke graph
         logger.info(
-            "Processing message from %s (session=%s): %.60s",
-            user_id, session_id, content,
+            "Processing message from %s (session=%s, thread=%s): %.60s",
+            user_id, session_id, thread_id, content,
         )
         try:
             result = await self.graph.ainvoke(
                 {
-                    "new_message": HumanMessage(content=content),
+                    "new_message": new_message,
                     "session_id": session_id,
                     "guild_id": guild_id,
                     "channel_id": channel_id,
@@ -103,13 +121,13 @@ class MessageHandler:
                     "user_memories": memories_text,
                     "reply_text": "",
                 },
-                {"configurable": {"thread_id": session_id}},
+                {"configurable": {"thread_id": thread_id}},
             )
         except Exception:
             logger.exception("Graph invoke failed for session %s", session_id)
             return
 
-        # 7) Extract long-term memories from this exchange
+        # 8) Extract long-term memories from this exchange
         reply_text = result.get("reply_text", "")
         if reply_text:
             await self._extract_memories(user_id, content, reply_text)
