@@ -4,7 +4,7 @@ import time
 from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
-from bot.client import SatoriClient
+from bot.ws.client import SatoriClient
 from data_object.satori import EventBody, LoginList
 
 logger = logging.getLogger(__name__)

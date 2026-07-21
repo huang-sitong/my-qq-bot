@@ -10,7 +10,7 @@ from langgraph.graph.message import add_messages
 from langgraph.graph.state import CompiledStateGraph
 from typing_extensions import TypedDict
 
-from bot.client import SatoriClient
+from bot.ws.client import SatoriClient
 from data_object.satori.api import MESSAGE_CREATE, MessageCreateParams
 
 logger = logging.getLogger(__name__)
