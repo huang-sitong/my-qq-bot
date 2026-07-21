@@ -3,6 +3,7 @@ import logging
 
 from bot import (
     BotConfig,
+    MemoryStore,
     MessageHandler,
     SatoriClient,
     create_graph,
@@ -30,7 +31,8 @@ async def main():
     llm = setup_llm()
     graph = await create_graph(llm, client)
 
-    handler = MessageHandler(client, graph, persona)
+    memory_store = MemoryStore()
+    handler = MessageHandler(client, graph, persona, memory_store, llm)
 
     # --- Register event handlers ---
     client.on("message-created")(handler.handle)

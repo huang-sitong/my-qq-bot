@@ -28,6 +28,7 @@ class BotState(TypedDict):
     """
     messages: Annotated[list[BaseMessage], add_messages]
     persona: str
+    user_memories: str
     session_id: str
     new_message: HumanMessage
     reply_text: str
@@ -48,11 +49,15 @@ async def create_graph(llm: ChatOpenAI, client: SatoriClient) -> CompiledStateGr
     # ---- Node definitions (closures over llm / client) ----
 
     def load_context(state: BotState) -> dict:
-        """Inject persona as SystemMessage and append the new user message."""
+        """Inject persona (+ user memories) as SystemMessage and append the new user message."""
         updates: list[BaseMessage] = []
         has_persona = any(isinstance(m, SystemMessage) for m in state["messages"])
         if not has_persona:
-            updates.append(SystemMessage(content=state["persona"]))
+            system_content = state["persona"]
+            memories = state.get("user_memories", "").strip()
+            if memories:
+                system_content += f"\n\n关于当前用户已知的信息：\n{memories}"
+            updates.append(SystemMessage(content=system_content))
         updates.append(state["new_message"])
         return {"messages": updates}
 

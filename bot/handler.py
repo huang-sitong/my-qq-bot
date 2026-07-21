@@ -1,9 +1,12 @@
+import json
 import logging
 import time
 
 from langchain_core.messages import HumanMessage
+from langchain_openai import ChatOpenAI
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
+from bot.agent.memory import MemoryStore
 from bot.ws.client import SatoriClient
 from data_object.satori import EventBody, LoginList
 
@@ -15,15 +18,24 @@ class MessageHandler:
 
     Usage::
 
-        handler = MessageHandler(client, graph, persona)
+        handler = MessageHandler(client, graph, persona, memory_store, extract_llm)
         client.on("message-created")(handler.handle)
         client.on("login")(handler.handle_login)
     """
 
-    def __init__(self, client: SatoriClient, graph: CompiledGraph, persona: str) -> None:
+    def __init__(
+        self,
+        client: SatoriClient,
+        graph: CompiledGraph,
+        persona: str,
+        memory_store: MemoryStore,
+        extract_llm: ChatOpenAI,
+    ) -> None:
         self.client = client
         self.graph = graph
         self._persona = persona
+        self._memory_store = memory_store
+        self._extract_llm = extract_llm
         self._bot_id: str | None = None
         self._bot_name: str | None = None
         self._cooldowns: dict[str, float] = {}
@@ -72,25 +84,35 @@ class MessageHandler:
         if not content.strip():
             return
 
-        # 5) Invoke graph
+        # 5) Load user memories
+        memories_text = self._memory_store.format_memories(user_id)
+
+        # 6) Invoke graph
         logger.info(
             "Processing message from %s (session=%s): %.60s",
             user_id, session_id, content,
         )
         try:
-            await self.graph.ainvoke(
+            result = await self.graph.ainvoke(
                 {
                     "new_message": HumanMessage(content=content),
                     "session_id": session_id,
                     "guild_id": guild_id,
                     "channel_id": channel_id,
                     "persona": self._persona,
+                    "user_memories": memories_text,
                     "reply_text": "",
                 },
                 {"configurable": {"thread_id": session_id}},
             )
         except Exception:
             logger.exception("Graph invoke failed for session %s", session_id)
+            return
+
+        # 7) Extract long-term memories from this exchange
+        reply_text = result.get("reply_text", "")
+        if reply_text:
+            await self._extract_memories(user_id, content, reply_text)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -122,3 +144,21 @@ class MessageHandler:
             return True
         self._cooldowns[session_id] = now
         return False
+
+    # ------------------------------------------------------------------
+    # Memory extraction
+    # ------------------------------------------------------------------
+
+    async def _extract_memories(self, user_id: str, user_message: str, bot_reply: str) -> None:
+        """Extract user facts from conversation and persist them."""
+        prompt = MemoryStore.EXTRACT_PROMPT.format(
+            user_message=user_message, bot_reply=bot_reply,
+        )
+        try:
+            response = await self._extract_llm.ainvoke(prompt)
+            memories = MemoryStore.parse_extraction(response.content)
+            if memories:
+                self._memory_store.store_memories(user_id, memories)
+                logger.info("Stored %d memories for user %s", len(memories), user_id)
+        except Exception:
+            logger.debug("Memory extraction skipped (non-critical)", exc_info=True)
