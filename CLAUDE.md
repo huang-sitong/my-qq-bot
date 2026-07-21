@@ -13,12 +13,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 QQ bot based on Satori protocol WebSocket + LangGraph + ChatOpenAI (OpenCode AI / DeepSeek V4 Flash).
 Connects to QQ via LLOneBot's Satori protocol gateway.
 
-## Architecture (3 layers)
+## Architecture (4 layers)
 
 ```
 bot/ws/      — WebSocket layer: SatoriClient connects to LLOneBot, receives events, sends HTTP API calls
-bot/handler.py — Orchestration: @-mention detection → session isolation → cooldown → load memories → invoke graph
-bot/agent/   — LangGraph layer: conversational state machine + LLM calls + MemoryStore
+bot/handler.py — Orchestration: routing → cooldown → session isolation → load memories → invoke graph
+bot/agent/graph.py — LangGraph state machine: router → context → LLM → reply
+bot/agent/memory.py — Long-term memory: MemoryStore (SQLite, cross-session)
 ```
 
 ### `bot/ws/` — WebSocket + Satori Protocol
@@ -27,13 +28,26 @@ bot/agent/   — LangGraph layer: conversational state machine + LLM calls + Mem
 - Auto-reconnect with exponential backoff + jitter
 
 ### `bot/handler.py` — Message Routing
-- `handle_login()` stores bot_id for @-detection, sets Satori-User-ID on client config
-- `handle()` checks @-mention (Satori XML `<at id="..."`), builds session_id (`platform:guild:channel:user`), enforces 3s cooldown, strips mention tag, loads user memories, invokes graph, then extracts memories
+- `handle_login()` stores bot_id for @-detection and name, sets Satori-User-ID on client config
+- `handle()` routing logic:
+  - **Private chat** (`ChannelType.DIRECT`) → always respond
+  - **Group chat + @-mention** → respond
+  - **Group chat, no @-mention** → set `should_respond=False`, let graph's router node decide via LLM name-mention detection
+- Enforces 3s per-user cooldown, strips @-mention XML tag, loads user memories, builds HumanMessage with `name` field for group chats, invokes graph, then extracts memories
 - `_extract_memories()` — separate LLM call to extract user facts from conversation, stored via MemoryStore
 
-### `bot/agent/` — LangGraph + Memory
-- `BotState` (TypedDict): messages, persona, user_memories, session_id, new_message, reply_text, guild_id, channel_id
-- `create_graph()` → 3-node `StateGraph`: `load_context` (inject persona + memories) → `call_llm` (ChatOpenAI) → `send_reply` (Satori HTTP API)
+### `bot/agent/graph.py` — LangGraph State Machine
+- `BotState` (TypedDict): messages, persona, user_memories, session_id, new_message, reply_text, guild_id, channel_id, should_respond, bot_name
+- `create_graph()` → 4-node `StateGraph`:
+  ```
+  START → router → (conditional)
+                    ├─ True  → load_context → call_llm → send_reply → END
+                    └─ False → END
+  ```
+  - **router**: if `should_respond=False`, calls LLM with `ROUTER_PROMPT` to detect name mention in group chat; sets `should_respond`
+  - **load_context**: inject persona + user memories as SystemMessage, append new_message
+  - **call_llm**: ChatOpenAI call, handles timeout with fallback reply
+  - **send_reply**: Satori HTTP API `MESSAGE_CREATE`
 - Checkpointer: `AsyncSqliteSaver` with `aiosqlite` → persists full message history to `bot_memory.sqlite`
 - Session isolation via `thread_id`
 
@@ -44,8 +58,11 @@ bot/agent/   — LangGraph layer: conversational state machine + LLM calls + Mem
 
 ## Key Technical Details
 
-- **@mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, NOT `@昵称` — detection checks `f'<at id="{bot_id}"'` in content (handler.py:128)
-- **Session ID**: `f"{platform}:{guild_id}:{channel_id}:{user_id}"` — used as LangGraph `thread_id` for checkpoint isolation
+- **@mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, NOT `@昵称` — detection checks `f'<at id="{bot_id}"'` in content (handler.py)
+- **Session ID**: `f"{platform}:{guild_id}:{channel_id}:{user_id}"` — used for cooldown + logging
+- **Thread ID** (checkpoint isolation): group chat → `platform:guild:channel` (shared history), private chat → full session ID (per-user)
+- **Router agent**: first node in LangGraph; for group chat without @-mention, calls LLM to detect bot name mention in message text; LLM failure defaults to no response
+- **Group chat user identity**: `HumanMessage(content=..., name=user_nick)` distinguishes senders in shared checkpoint history
 - **LLM**: ChatOpenAI → OpenCode AI (deepseek-v4-flash), configured via `.env` (`GO_BASE_URL`, `GO_API_KEY`)
 - **Persona**: loaded from `pyproject.toml` `[tool.bot].persona_prompt`, cached with `@lru_cache`
 

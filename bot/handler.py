@@ -62,9 +62,13 @@ class MessageHandler:
         if event.message is None or event.message.content is None:
             return
 
-        # 1) @-mention check
-        if not self._is_mentioned(event.message.content):
-            return
+        # 1) Routing: determine if the bot should respond
+        if event.channel and event.channel.type == ChannelType.DIRECT:
+            should_respond = True       # Private chat: always respond
+        elif self._is_mentioned(event.message.content):
+            should_respond = True       # Group chat: @-mentioned
+        else:
+            should_respond = False      # Group chat: let graph's router decide
 
         # 2) Build session_id and thread_id
         platform = event.platform or "unknown"
@@ -72,26 +76,19 @@ class MessageHandler:
         channel_id = event.channel.id if event.channel else ""
         user_id = event.user.id if event.user else ""
 
-        # session_id is used for cooldown + logging (always user-level)
         session_id = f"{platform}:{guild_id}:{channel_id}:{user_id}"
 
-        # thread_id determines checkpoint isolation
+        # Group chat: shared checkpoint; private chat: per-user checkpoint
         is_group = event.channel and event.channel.type != ChannelType.DIRECT
-        if is_group:
-            # Group chat: shared checkpoint so all members see the same history
-            thread_id = f"{platform}:{guild_id}:{channel_id}"
-        else:
-            # Private chat: isolated per-user checkpoint
-            thread_id = session_id
+        thread_id = f"{platform}:{guild_id}:{channel_id}" if is_group else session_id
 
-        # 3) Cooldown
+        # 3) Cooldown (per-user, to avoid individual spam)
         if self._on_cooldown(session_id):
             logger.debug("Cooldown active for %s", session_id)
             return
 
-        # 4) Strip @-mention prefix
+        # 4) Strip @-mention prefix and check empty
         content = self._strip_mention(event.message.content)
-
         if not content.strip():
             return
 
@@ -105,7 +102,7 @@ class MessageHandler:
         else:
             new_message = HumanMessage(content=content)
 
-        # 7) Invoke graph
+        # 7) Invoke graph (router node handles the should_respond decision)
         logger.info(
             "Processing message from %s (session=%s, thread=%s): %.60s",
             user_id, session_id, thread_id, content,
@@ -120,6 +117,8 @@ class MessageHandler:
                     "persona": self._persona,
                     "user_memories": memories_text,
                     "reply_text": "",
+                    "should_respond": should_respond,
+                    "bot_name": self._bot_name or "",
                 },
                 {"configurable": {"thread_id": thread_id}},
             )

@@ -23,8 +23,8 @@ class BotState(TypedDict):
     only returns the *new* messages to append. Old messages are
     automatically checkpointed by SqliteSaver.
 
-    The ``session_id`` doubles as the LangGraph ``thread_id`` for
-    checkpoint isolation.
+    ``should_respond`` is set by the handler (fast path) or by the
+    router node (LLM-based name-mention detection for group chats).
     """
     messages: Annotated[list[BaseMessage], add_messages]
     persona: str
@@ -34,6 +34,23 @@ class BotState(TypedDict):
     reply_text: str
     guild_id: str
     channel_id: str
+    should_respond: bool
+    bot_name: str
+
+
+ROUTER_PROMPT = """你是一个消息路由判断器，判断群聊消息是否明确提到了机器人。
+
+机器人的名字叫 "{bot_name}"。
+
+如果消息满足以下任一条件，返回 true：
+1. 消息中明确提到了机器人的名字（如 "{bot_name}今天吃什么？"）
+2. 消息中以 "/" 开头（命令调用）
+3. 消息明显是在向机器人提问或对话（如问候机器人）
+4. 消息中提到了"机器人"、"bot"、"助手"等指向AI助手的称呼
+
+如果消息是群聊中成员之间的一般对话，没有指向机器人，返回 false。
+
+只返回 true 或 false，不要返回其他内容。"""
 
 
 async def create_graph(llm: ChatOpenAI, client: SatoriClient) -> CompiledStateGraph:
@@ -91,14 +108,41 @@ async def create_graph(llm: ChatOpenAI, client: SatoriClient) -> CompiledStateGr
             )
         return {}
 
+    async def router_node(state: BotState) -> dict:
+        """Decide whether the bot should respond.
+
+        Fast path (should_respond already True from handler): no-op.
+        Slow path: call LLM to check if the message mentions the bot by name.
+        """
+        if state.get("should_respond", True):
+            return {}
+        prompt = ROUTER_PROMPT.format(bot_name=state.get("bot_name", ""))
+        try:
+            response = await llm.ainvoke([
+                SystemMessage(content=prompt),
+                HumanMessage(content=f"消息内容：{state['new_message'].content}"),
+            ])
+            should_respond = "true" in response.content.strip().lower()
+        except Exception:
+            logger.warning("Router LLM call failed for session %s", state["session_id"])
+            should_respond = False
+        logger.debug("Router decision: should_respond=%s", should_respond)
+        return {"should_respond": should_respond}
+
     # ---- Build graph ----
 
     builder = StateGraph(BotState)
+    builder.add_node("router", router_node)
     builder.add_node("load_context", load_context)
     builder.add_node("call_llm", call_llm)
     builder.add_node("send_reply", send_reply)
 
-    builder.add_edge(START, "load_context")
+    # START → router → conditional → load_context or END
+    builder.add_edge(START, "router")
+    builder.add_conditional_edges(
+        "router",
+        lambda s: "load_context" if s.get("should_respond", True) else END,
+    )
     builder.add_edge("load_context", "call_llm")
     builder.add_edge("call_llm", "send_reply")
     builder.add_edge("send_reply", END)
