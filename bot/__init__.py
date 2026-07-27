@@ -1,16 +1,17 @@
-from .ws.client import SatoriClient
-from .ws.config import BotConfig
-from .agent.graph import BotState, create_graph
-from .agent.memory import MemoryStore
+from .transport.websocket.client import SatoriClient
+from .transport.http.client import SatoriApiClient
+from object.bot.config import BotConfig
+from .core.graph import create_graph
+from .core.memory import MemoryStore
 from .handler import MessageHandler
-from .agent.llm import setup_llm
-from .agent.persona import load_persona
+from .core.llm import setup_llm
+from .core.persona import load_persona
 
 __all__ = [
     "BotConfig",
-    "BotState",
     "MemoryStore",
     "MessageHandler",
+    "SatoriApiClient",
     "SatoriClient",
     "create_graph",
     "load_persona",

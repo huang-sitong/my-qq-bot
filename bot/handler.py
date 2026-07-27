@@ -6,9 +6,10 @@ from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
-from bot.agent.memory import MemoryStore
-from bot.ws.client import SatoriClient
-from data_object.satori import ChannelType, EventBody, LoginList
+from bot.core.memory import MemoryStore
+from bot.transport.http.client import SatoriApiClient
+from bot.transport.websocket.client import SatoriClient
+from object.satori import ChannelType, EventBody, LoginList
 
 logger = logging.getLogger(__name__)
 
@@ -30,12 +31,14 @@ class MessageHandler:
         persona: str,
         memory_store: MemoryStore,
         extract_llm: ChatOpenAI,
+        api_client: SatoriApiClient,
     ) -> None:
         self.client = client
         self.graph = graph
         self._persona = persona
         self._memory_store = memory_store
         self._extract_llm = extract_llm
+        self._api_client = api_client
         self._bot_id: str | None = None
         self._bot_name: str | None = None
         self._cooldowns: dict[str, float] = {}
@@ -126,8 +129,12 @@ class MessageHandler:
             logger.exception("Graph invoke failed for session %s", session_id)
             return
 
-        # 8) Extract long-term memories from this exchange
+        # 8) Send reply via HTTP API
         reply_text = result.get("reply_text", "")
+        if reply_text:
+            await self._send_reply(channel_id, reply_text)
+
+        # 9) Extract long-term memories from this exchange
         if reply_text:
             await self._extract_memories(user_id, content, reply_text)
 
@@ -161,6 +168,20 @@ class MessageHandler:
             return True
         self._cooldowns[session_id] = now
         return False
+
+    # ------------------------------------------------------------------
+    # Reply sending
+    # ------------------------------------------------------------------
+
+    async def _send_reply(self, channel_id: str, content: str) -> None:
+        """Send reply text to the source channel via Satori HTTP API."""
+        try:
+            await self._api_client.send_message(channel_id, content)
+        except Exception:
+            logger.exception(
+                "Failed to send reply to channel %s",
+                channel_id,
+            )
 
     # ------------------------------------------------------------------
     # Memory extraction
