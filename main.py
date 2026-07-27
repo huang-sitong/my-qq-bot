@@ -52,7 +52,12 @@ async def main():
     persona = load_persona()
     logger.info("Persona: %.80s", persona)
 
-    llm = setup_llm()
+    llm = setup_llm(
+        model=config.llm_model,
+        temperature=config.llm_temperature,
+        max_retries=config.llm_max_retries,
+        request_timeout=config.llm_request_timeout,
+    )
     graph, checkpointer = await create_graph(llm, db_dir=config.db_dir)
 
     memory_store = MemoryStore(db_dir=config.db_dir)
