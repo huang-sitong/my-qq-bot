@@ -1,0 +1,22 @@
+__all__ = [
+    "BotConfig",
+    "BotState",
+]
+
+_module_map = {
+    "BotConfig": "config",
+    "BotState": "state",
+}
+
+
+def __getattr__(name):
+    module_name = _module_map.get(name)
+    if module_name is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+    module = importlib.import_module(f".{module_name}", __package__)
+    return getattr(module, name)
+
+
+def __dir__():
+    return sorted(__all__)
