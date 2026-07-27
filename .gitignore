@@ -1,6 +1,6 @@
 .claude
 .others
-.superpowers
+./docs/superpowers/*
 # Python-generated files
 __pycache__/
 *.py[oc]
@@ -13,4 +13,5 @@ wheels/
 # Virtual environments
 .venv
 # Runtime data
-bot_memory.sqlite*
+db/*.sqlite*
+!db/.gitkeep
