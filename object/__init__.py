@@ -1,0 +1,67 @@
+"""Top-level re-exports for the ``object`` package.
+
+Uses the same lazy-loading ``__getattr__`` pattern as the sub-packages so
+that imports only load the modules they actually use.
+"""
+
+__all__ = [
+    # bot
+    "BotConfig",
+    "BotState",
+    # satori — enums
+    "ChannelType",
+    "Direction",
+    "LoginStatus",
+    "Order",
+    # satori — models
+    "Argv",
+    "BidiList",
+    "Button",
+    "Channel",
+    "Emoji",
+    "Friend",
+    "Guild",
+    "GuildMember",
+    "GuildRole",
+    "Login",
+    "Message",
+    "PageList",
+    "User",
+    # satori — events
+    "EventBody",
+    "LoginList",
+    "Signal",
+    # satori — api (commonly used endpoints + params)
+    "Endpoint",
+    "MESSAGE_CREATE",
+    "MESSAGE_GET",
+    "MESSAGE_LIST",
+    "MessageCreateParams",
+    "MessageGetParams",
+    "MessageListParams",
+]
+
+# fmt: off
+# ---------------------------------------------------------------------------
+# Auto-generated: map every public name to the sub-package that owns it.
+# ``__getattr__`` delegates to the sub-package, which in turn lazy-loads
+# from the correct sub-module.
+# ---------------------------------------------------------------------------
+_module_map: dict[str, str] = {}
+for _name in __all__:
+    _module_map[_name] = "bot" if _name.startswith("Bot") else "satori"
+
+
+def __getattr__(name: str):
+    """Lazy-load *name* from the appropriate sub-package."""
+    sub_pkg = _module_map.get(name)
+    if sub_pkg is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    module = importlib.import_module(f".{sub_pkg}", __package__)
+    return getattr(module, name)
+
+
+def __dir__() -> list[str]:
+    return sorted(__all__)

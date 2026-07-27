@@ -37,11 +37,8 @@ class MemoryStore:
 
     EXTRACT_PROMPT = EXTRACT_PROMPT
 
-    def __init__(self, db_path: str | None = None) -> None:
-        if db_path is None:
-            db_dir = os.getenv("BOT_DB_DIR", "db")
-            db_path = os.path.join(db_dir, "memory.sqlite")
-        self.db_path = db_path
+    def __init__(self, db_dir: str = "db") -> None:
+        self.db_path = os.path.join(db_dir, "memory.sqlite")
         self._conn: sqlite3.Connection | None = None
         self._init_db()
 

@@ -40,7 +40,7 @@ async def main():
     llm = setup_llm()
     graph, checkpointer = await create_graph(llm, db_dir=config.db_dir)
 
-    memory_store = MemoryStore(db_path=os.path.join(config.db_dir, "memory.sqlite"))
+    memory_store = MemoryStore(db_dir=config.db_dir)
     handler = MessageHandler(client, graph, persona, memory_store, llm, api_client)
 
     # --- Register event handlers ---
