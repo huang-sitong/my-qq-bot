@@ -1,6 +1,8 @@
-DEFAULT_PERSONA_PROMPT = "你是一个通用的AI助手，请用中文友好地回答问题。"
+DEFAULT_PERSONA_PROMPT = """\
+你是一个通用的AI助手，请用中文友好地回答问题。"""
 
-ROUTER_PROMPT = """你是一个消息路由判断器，判断群聊消息是否明确提到了机器人。
+ROUTER_PROMPT = """\
+你是一个消息路由判断器，判断群聊消息是否明确提到了机器人。
 
 机器人的名字叫 "{bot_name}"。
 
@@ -14,7 +16,8 @@ ROUTER_PROMPT = """你是一个消息路由判断器，判断群聊消息是否�
 
 只返回 true 或 false，不要返回其他内容。"""
 
-EXTRACT_PROMPT = """你是一个信息提取助手。从对话中提取用户提到的持久性个人信息。
+EXTRACT_PROMPT = """\
+你是一个信息提取助手。从对话中提取用户提到的持久性个人信息。
 
 对话：
 用户: {user_message}
