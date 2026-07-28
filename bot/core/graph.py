@@ -8,9 +8,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from bot.core.nodes.call_llm import call_llm_node
-from bot.core.nodes.load_context import load_context
-from bot.core.nodes.router import router_node
+from bot.core.nodes import call_llm_node, load_context, router_node
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
