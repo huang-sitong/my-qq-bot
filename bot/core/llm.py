@@ -18,7 +18,7 @@ def setup_llm(
 ) -> ChatOpenAI:
     """Create and cache a ChatOpenAI instance configured for OpenCode AI.
 
-    Reads ``GO_BASE_URL`` and ``GO_API_KEY`` from ``.env``.
+    Reads ``BASE_URL`` and ``API_KEY`` from ``.env``.
 
     Parameters
     ----------
@@ -30,13 +30,13 @@ def setup_llm(
         return _llm
 
     load_dotenv()
-    base_url = os.getenv("GO_BASE_URL")
-    api_key = os.getenv("GO_API_KEY")
+    base_url = os.getenv("BASE_URL")
+    api_key = os.getenv("API_KEY")
 
     if not base_url:
-        raise RuntimeError("GO_BASE_URL not set in .env")
+        raise RuntimeError("BASE_URL not set in .env")
     if not api_key:
-        raise RuntimeError("GO_API_KEY not set in .env")
+        raise RuntimeError("API_KEY not set in .env")
 
     _llm = ChatOpenAI(
         model=model,

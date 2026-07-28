@@ -19,7 +19,7 @@ bot/
     graph.py              #   assembles graph, returns (graph, checkpointer)
     nodes/                #   router → load_context → call_llm
     memory.py             #   MemoryStore (SQLite kv per user)
-    llm.py                #   ChatOpenAI factory (GO_BASE_URL / GO_API_KEY from .env)
+    llm.py                #   ChatOpenAI factory (BASE_URL / API_KEY from .env)
     persona.py            #   loads [tool.bot].persona_prompt from pyproject.toml
   handler.py              #   orchestrator: route → graph → send reply → extract memories
 object/                   #   data objects (setuptools legacy backend renames data_object→object)
