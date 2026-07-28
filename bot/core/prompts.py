@@ -1,3 +1,5 @@
+DEFAULT_PERSONA_PROMPT = "你是一个通用的AI助手，请用中文友好地回答问题。"
+
 ROUTER_PROMPT = """你是一个消息路由判断器，判断群聊消息是否明确提到了机器人。
 
 机器人的名字叫 "{bot_name}"。

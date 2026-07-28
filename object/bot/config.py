@@ -20,6 +20,11 @@ class BotConfig:
         default_factory=lambda: os.getenv("BOT_DB_DIR", "db"),
     )
 
+    # --- Persona ---
+    persona_prompt: str = field(
+        default_factory=lambda: os.getenv("BOT_PERSONA_PROMPT", ""),
+    )
+
     # --- LLM ---
     llm_model: str = field(
         default_factory=lambda: os.getenv("BOT_LLM_MODEL", "deepseek-v4-flash"),

@@ -49,7 +49,7 @@ async def main():
     client = SatoriClient(config)
     api_client = SatoriApiClient(config)
 
-    persona = load_persona()
+    persona = load_persona(config.persona_prompt)
     logger.info("Persona: %.80s", persona)
 
     llm = setup_llm(
