@@ -27,7 +27,7 @@ class BotConfig:
 
     # --- LLM ---
     llm_model: str = field(
-        default_factory=lambda: os.getenv("BOT_LLM_MODEL", "deepseek-v4-flash"),
+        default_factory=lambda: os.getenv("BOT_LLM_MODEL", "sensenova-6.7-flash-lite"),
     )
     llm_temperature: float = field(
         default_factory=lambda: float(os.getenv("BOT_LLM_TEMPERATURE", "0.7")),

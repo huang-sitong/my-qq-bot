@@ -1,8 +1,6 @@
 import asyncio
 import logging
 import os
-import shutil
-from pathlib import Path
 
 from bot import (
     MemoryStore,
@@ -24,29 +22,14 @@ logging.basicConfig(
 logger = logging.getLogger("bot")
 
 
-def _init_db_dir(db_dir: str) -> None:
-    """Create db directory and migrate old root-level database files."""
-    os.makedirs(db_dir, exist_ok=True)
-
-    old_checkpoint = Path("bot_memory.sqlite")
-    new_checkpoint = Path(db_dir) / "checkpoint.sqlite"
-    if old_checkpoint.exists() and not new_checkpoint.exists():
-        shutil.copy2(old_checkpoint, new_checkpoint)
-        logger.info("Migrated %s → %s", old_checkpoint, new_checkpoint)
-        for suffix in ("-shm", "-wal"):
-            old_file = Path(f"bot_memory.sqlite{suffix}")
-            if old_file.exists():
-                shutil.copy2(old_file, Path(db_dir) / f"checkpoint.sqlite{suffix}")
-
-
 async def main():
     logger.info("Starting QQ bot ...")
 
     # --- Initialise components ---
     config = BotConfig()
 
-    # Ensure db directory exists and migrate old database files
-    _init_db_dir(config.db_dir)
+    # Ensure db directory exists
+    os.makedirs(config.db_dir, exist_ok=True)
 
     client = SatoriClient(config)
     api_client = SatoriApiClient(config)
