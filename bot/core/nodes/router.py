@@ -3,7 +3,7 @@ import logging
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
-from bot.core.prompts import ROUTER_PROMPT
+from common import ROUTER_PROMPT
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)

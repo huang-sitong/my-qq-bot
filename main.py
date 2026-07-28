@@ -5,14 +5,16 @@ import shutil
 from pathlib import Path
 
 from bot import (
-    BotConfig,
     MemoryStore,
     MessageHandler,
     SatoriApiClient,
     SatoriClient,
     create_graph,
-    load_persona,
     setup_llm,
+)
+from common import (
+    BotConfig,
+    DEFAULT_PERSONA_PROMPT,
 )
 
 logging.basicConfig(
@@ -49,7 +51,7 @@ async def main():
     client = SatoriClient(config)
     api_client = SatoriApiClient(config)
 
-    persona = load_persona(config.persona_prompt)
+    persona = config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT
     logger.info("Persona: %.80s", persona)
 
     llm = setup_llm(

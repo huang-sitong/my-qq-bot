@@ -3,7 +3,7 @@ import logging
 import os
 import sqlite3
 
-from bot.core.prompts import EXTRACT_PROMPT
+from common import EXTRACT_PROMPT
 
 logger = logging.getLogger(__name__)
 

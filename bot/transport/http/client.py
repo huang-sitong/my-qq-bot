@@ -2,7 +2,7 @@ import logging
 
 import httpx
 
-from object.bot.config import BotConfig
+from common import BotConfig
 from object.satori.api import Endpoint, MESSAGE_CREATE, MessageCreateParams
 from pydantic import BaseModel
 

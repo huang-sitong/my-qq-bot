@@ -1,10 +1,8 @@
 __all__ = [
-    "BotConfig",
     "BotState",
 ]
 
 _module_map = {
-    "BotConfig": "config",
     "BotState": "state",
 }
 

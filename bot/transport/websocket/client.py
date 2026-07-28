@@ -5,7 +5,7 @@ import random
 
 import websockets
 
-from object.bot.config import BotConfig
+from common import BotConfig
 from object.satori import EventBody, LoginList, Signal
 
 logger = logging.getLogger(__name__)

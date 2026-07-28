@@ -6,7 +6,6 @@ that imports only load the modules they actually use.
 
 __all__ = [
     # bot
-    "BotConfig",
     "BotState",
     # satori — enums
     "ChannelType",
@@ -49,7 +48,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 _module_map: dict[str, str] = {}
 for _name in __all__:
-    _module_map[_name] = "bot" if _name.startswith("Bot") else "satori"
+    _module_map[_name] = "bot" if _name == "BotState" else "satori"
 
 
 def __getattr__(name: str):

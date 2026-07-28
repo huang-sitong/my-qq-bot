@@ -1,0 +1,15 @@
+"""Shared application configuration, prompts, and utilities.
+
+``common`` is the single source of truth for bot settings and prompt
+templates — keep environment-specific secrets in ``.env`` instead.
+"""
+
+from .config import BotConfig
+from .prompts import DEFAULT_PERSONA_PROMPT, EXTRACT_PROMPT, ROUTER_PROMPT
+
+__all__ = [
+    "BotConfig",
+    "DEFAULT_PERSONA_PROMPT",
+    "EXTRACT_PROMPT",
+    "ROUTER_PROMPT",
+]
