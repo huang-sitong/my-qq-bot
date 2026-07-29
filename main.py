@@ -52,12 +52,16 @@ async def main():
     client.on("message-created")(handler.handle)
     client.on("login")(handler.handle_login)
 
+    # --- Start message worker ---
+    await handler.start()
+
     # --- Run ---
     try:
         await client.run()
     except KeyboardInterrupt:
         logger.info("Shutting down ...")
     finally:
+        await handler.stop()
         await client.disconnect()
         await api_client.close()
         logger.info("Bye.")

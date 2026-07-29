@@ -30,7 +30,7 @@ bot/
       tool_node/             #   tools invoked by LLM via function calling (future)
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
-  handler.py                 # MessageHandler — ingress: routing, cooldown → graph → reply
+  handler.py                 # MessageHandler — ingress: routing → queue → graph → reply
 object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
   satori/                    #   Satori protocol: enums, models, events, API endpoints
@@ -41,7 +41,8 @@ db/                          # runtime databases (checkpoint.sqlite, memory.sqli
 
 ```
 WebSocket event → SatoriClient → MessageHandler.handle()
-  → fast-path routing (@mention / DM detection)
+  → validation + enqueue → worker dequeues
+  → routing (@mention / DM detection)
   → graph.ainvoke(state, thread_id)
     → router (llm_node)    ← LLM name-mention fallback for group chat
     → load_context (action_node)  ← inject persona + user memories
@@ -59,10 +60,9 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 
 ### Session vs Thread
 
-- **session_id** = `platform:guild:channel:user` — used for cooldowns and logging
+- **session_id** = `platform:channel:user` — used for logging
 - **thread_id** (checkpoint isolation):
-  - Group chat → `platform:guild:channel` (shared conversation history)
-  - Private chat → same as `session_id` (per-user history)
+  - All chats → `platform:channel` (per-channel conversation history)
 
 ## Key patterns
 
