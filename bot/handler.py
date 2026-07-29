@@ -149,8 +149,6 @@ class MessageHandler:
                 {
                     "new_message": HumanMessage(content=""),  # placeholder
                     "session_id": session_id,
-                    "guild_id": event.guild.id if event.guild else "",
-                    "channel_id": channel_id,
                     "persona": self._persona,
                     "user_memories": memories_text,
                     "reply_text": "",

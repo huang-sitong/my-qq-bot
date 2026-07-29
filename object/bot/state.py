@@ -22,8 +22,6 @@ class BotState(TypedDict):
     session_id: str
     new_message: HumanMessage
     reply_text: str
-    guild_id: str
-    channel_id: str
     should_respond: bool
     bot_name: str
     # --- Fields for detect_intent node ---
