@@ -8,7 +8,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from bot.core.nodes import call_llm_node, load_context, router_node
+from bot.core.nodes import call_llm_node, detect_intent, load_context, router_node
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -21,11 +21,13 @@ async def create_graph(llm: ChatOpenAI, db_dir: str = "db") -> tuple[CompiledSta
     checkpointer's lifecycle.
     """
     builder = StateGraph(BotState)
+    builder.add_node("detect_intent", detect_intent)
     builder.add_node("router", partial(router_node, llm=llm))
     builder.add_node("load_context", load_context)
     builder.add_node("call_llm", partial(call_llm_node, llm=llm))
 
-    builder.add_edge(START, "router")
+    builder.add_edge(START, "detect_intent")
+    builder.add_edge("detect_intent", "router")
     builder.add_conditional_edges(
         "router",
         lambda s: "load_context" if s.get("should_respond", True) else END,
