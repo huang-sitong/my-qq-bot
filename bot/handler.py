@@ -85,14 +85,16 @@ class MessageHandler:
 
         # 2) Build identifiers
         platform = event.platform or "unknown"
+        guild_id = event.guild.id if event.guild else ""
         channel_id = event.channel.id if event.channel else ""
         user_id = event.user.id if event.user else ""
-        thread_id = f"{platform}:{channel_id}"
+        thread_id = f"{platform}:{guild_id}:{channel_id}"
 
         # 3) Enqueue for background processing
         await self._queue.put({
             "event": event,
             "platform": platform,
+            "guild_id": guild_id,
             "channel_id": channel_id,
             "user_id": user_id,
             "thread_id": thread_id,
@@ -126,6 +128,7 @@ class MessageHandler:
         """Process a single message: extract data → graph → reply → memory."""
         event: EventBody = item["event"]
         platform: str = item["platform"]
+        guild_id: str = item["guild_id"]
         channel_id: str = item["channel_id"]
         user_id: str = item["user_id"]
         thread_id: str = item["thread_id"]
@@ -136,7 +139,7 @@ class MessageHandler:
         user_name = ""
         if event.user:
             user_name = event.user.nick or event.user.name or event.user.id or ""
-        session_id = f"{platform}:{channel_id}:{user_id}"
+        session_id = f"{platform}:{guild_id}:{channel_id}:{user_id}"
         memories_text = self._memory_store.format_memories(user_id)
 
         # --- Invoke graph ---

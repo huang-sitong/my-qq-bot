@@ -60,9 +60,9 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 
 ### Session vs Thread
 
-- **session_id** = `platform:channel:user` — used for logging
+- **session_id** = `platform:guild:channel:user` — used for logging
 - **thread_id** (checkpoint isolation):
-  - All chats → `platform:channel` (per-channel conversation history)
+  - All chats → `platform:guild:channel` (per-channel conversation history, guild-reserved for multi-platform)
 
 ## Key patterns
 
