@@ -45,8 +45,8 @@ WebSocket event → SatoriClient → MessageHandler.handle()
   → graph.ainvoke(state, thread_id)
     → detect_intent (action_node)  ← DIRECT / @-mention → should_respond
     → router (llm_node)            ← LLM name-mention fallback
-    → load_context (action_node)   ← inject persona + user memories
-    → call_llm (llm_node)          ← generate reply
+    → load_context (action_node)   ← append new_message to messages
+    → call_llm (llm_node)          ← dynamic SystemMessage injection + generate reply
   → send reply via SatoriApiClient
   → extract memories via MemoryStore
 ```
