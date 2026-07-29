@@ -26,11 +26,11 @@ bot/
     memory.py                # MemoryStore — SQLite kv per user (memory.sqlite)
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   router, call_llm — invoke an LLM
-      action_node/           #   load_context — deterministic logic, no LLM
+      action_node/           #   detect_intent (routing), load_context (persona)
       tool_node/             #   tools invoked by LLM via function calling (future)
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
-  handler.py                 # MessageHandler — ingress: routing → queue → graph → reply
+  handler.py                 # MessageHandler — ingress: validation → queue → graph → reply
 object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
   satori/                    #   Satori protocol: enums, models, events, API endpoints
@@ -42,11 +42,11 @@ db/                          # runtime databases (checkpoint.sqlite, memory.sqli
 ```
 WebSocket event → SatoriClient → MessageHandler.handle()
   → validation + enqueue → worker dequeues
-  → routing (@mention / DM detection)
   → graph.ainvoke(state, thread_id)
-    → router (llm_node)    ← LLM name-mention fallback for group chat
-    → load_context (action_node)  ← inject persona + user memories
-    → call_llm (llm_node)  ← generate reply
+    → detect_intent (action_node)  ← DIRECT / @-mention → should_respond
+    → router (llm_node)            ← LLM name-mention fallback
+    → load_context (action_node)   ← inject persona + user memories
+    → call_llm (llm_node)          ← generate reply
   → send reply via SatoriApiClient
   → extract memories via MemoryStore
 ```
