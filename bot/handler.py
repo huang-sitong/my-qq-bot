@@ -81,9 +81,9 @@ class MessageHandler:
 
         session_id = f"{platform}:{guild_id}:{channel_id}:{user_id}"
 
-        # Group chat: shared checkpoint; private chat: per-user checkpoint
+        # Determine if this is a group chat
         is_group = event.channel and event.channel.type != ChannelType.DIRECT
-        thread_id = f"{platform}:{guild_id}:{channel_id}" if is_group else session_id
+        thread_id = f"{platform}:{channel_id}"
 
         # 3) Cooldown (per-user, to avoid individual spam)
         if self._on_cooldown(session_id):
