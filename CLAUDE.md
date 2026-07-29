@@ -77,6 +77,21 @@ Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not clos
 
 `create_graph()` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`.
 
+### SystemMessage injection
+
+`call_llm_node` builds the persona SystemMessage **dynamically each invocation**, prepends it to `state["messages"]`, and returns only the `AIMessage` to state:
+
+```python
+system = SystemMessage(state["persona"] + state["user_memories"])
+response = await llm.ainvoke([system] + state["messages"])
+return {"messages": [AIMessage(...)], "reply_text": reply}
+```
+
+- SystemMessage **never enters state** — it is a local variable discarded after the LLM call
+- Persona is always at `messages[0]` regardless of conversation length — immune to context-window truncation
+- Persona changes take effect immediately (no `has_persona` gate)
+- Checkpoint stores only conversation history (HumanMessage + AIMessage), not system instructions
+
 ### Reply is sent outside the graph
 
 `MessageHandler.handle()` calls `SatoriApiClient.send_message()` after `graph.ainvoke()` returns. There is no `send_reply` node in the graph — the `reply_text` field flows through state and is consumed by the handler.
