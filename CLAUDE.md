@@ -26,7 +26,7 @@ bot/
     memory.py                # MemoryStore — SQLite kv per user (memory.sqlite)
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   router, call_llm — invoke an LLM
-      action_node/           #   detect_intent (routing), load_context (persona)
+      action_node/           #   detect_intent (routing)
       tool_node/             #   tools invoked by LLM via function calling (future)
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
@@ -45,7 +45,6 @@ WebSocket event → SatoriClient → MessageHandler.handle()
   → graph.ainvoke(state, thread_id)
     → detect_intent (action_node)  ← DIRECT / @-mention → should_respond
     → router (llm_node)            ← LLM name-mention fallback
-    → load_context (action_node)   ← append new_message to messages
     → call_llm (llm_node)          ← dynamic SystemMessage injection + generate reply
   → send reply via SatoriApiClient
   → extract memories via MemoryStore
@@ -72,7 +71,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 
 ### Node dependency injection
 
-Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not closures). In `graph.py`, `router_node` and `call_llm_node` are bound with `partial(node_fn, llm=llm)`, while `load_context` takes no injected dependencies. Each node file is a standalone `async def(state, ...) -> dict`.
+Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not closures). In `graph.py`, `router_node` and `call_llm_node` are bound with `partial(node_fn, llm=llm)`. Each node file is a standalone `async def(state, ...) -> dict`.
 
 ### `create_graph()` returns a tuple
 

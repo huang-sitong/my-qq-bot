@@ -54,4 +54,8 @@ async def detect_intent(state: BotState) -> dict:
         "detect_intent: should_respond=%s channel_type=%s is_group=%s",
         should_respond, channel_type, is_group,
     )
-    return {"should_respond": should_respond, "new_message": new_message}
+    return {
+        "should_respond": should_respond,
+        "new_message": new_message,
+        "messages": [new_message],
+    }
