@@ -16,7 +16,7 @@ uv run python -c "..."   # quick import / logic check
 main.py                      # entrypoint — wires BotConfig, LLM, Graph, Handler
 common/                      # shared config + prompts (single source of truth)
   config.py                  #   BotConfig dataclass (env-var overrides)
-  prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, EXTRACT_PROMPT
+  prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, EXTRACT_PROMPT, SUMMARY_PROMPT
 bot/
   transport/websocket/       # Satori WS events: connect, identify, reconnect
   transport/http/            # Satori HTTP API: send_message, generic call_api
@@ -24,9 +24,11 @@ bot/
     graph.py                 # LangGraph assembly: creates (graph, checkpointer)
     llm.py                   # ChatOpenAI factory (reads BASE_URL / API_KEY from .env)
     memory.py                # MemoryStore — SQLite kv per user (memory.sqlite)
+    utils/                   # Pure utility functions (no state)
+      context.py             #   token estimation + message formatting for summarization
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   router, call_llm — invoke an LLM
-      action_node/           #   detect_intent (routing)
+      action_node/           #   detect_intent (routing), summarize (context window management)
       tool_node/             #   tools invoked by LLM via function calling (future)
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
@@ -46,6 +48,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
     → detect_intent (action_node)  ← DIRECT / @-mention → should_respond
     → router (llm_node)            ← LLM name-mention fallback
     → call_llm (llm_node)          ← dynamic SystemMessage injection + generate reply
+    → summarize (action_node)      ← token threshold check → progressive summary
   → send reply via SatoriApiClient
   → extract memories via MemoryStore
 ```
@@ -79,18 +82,21 @@ Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not clos
 
 ### SystemMessage injection
 
-`call_llm_node` builds the persona SystemMessage **dynamically each invocation**, prepends it to `state["messages"]`, and returns only the `AIMessage` to state:
+`call_llm_node` builds a **three-layer** SystemMessage list **dynamically each invocation**, prepends it to `state["messages"]`, and returns only the `AIMessage` to state:
 
 ```python
-system = SystemMessage(state["persona"] + state["user_memories"])
-response = await llm.ainvoke([system] + state["messages"])
-return {"messages": [AIMessage(...)], "reply_text": reply}
+# Persona is formatted with bot_name for self-awareness
+persona = state["persona"].format(bot_name=state.get("bot_name", ""))
+system_msgs = [SystemMessage(content=persona)]
+# Layer 1: conversation_summary (from summarize_node)
+# Layer 2: user_memories (from MemoryStore)
 ```
 
-- SystemMessage **never enters state** — it is a local variable discarded after the LLM call
+- SystemMessages are **local variables** — never persisted to checkpoint
 - Persona is always at `messages[0]` regardless of conversation length — immune to context-window truncation
 - Persona changes take effect immediately (no `has_persona` gate)
 - Checkpoint stores only conversation history (HumanMessage + AIMessage), not system instructions
+- `DEFAULT_PERSONA_PROMPT` uses `{bot_name}` placeholder — formatted at invocation time, same pattern as `ROUTER_PROMPT`
 
 ### Reply is sent outside the graph
 
@@ -116,4 +122,4 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **`db/` directory**: auto-created on startup. Old `bot_memory.sqlite*` at project root is auto-migrated on launch. `BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
 
-- **Persona fallback**: `main.py` uses `config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT` — the `BotConfig.persona_prompt` default is a real prompt string, not empty. Set `BOT_PERSONA_PROMPT=""` to force fallback to `DEFAULT_PERSONA_PROMPT`.
+- **Persona fallback**: `main.py` uses `config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT` — the `BotConfig.persona_prompt` default is a real prompt string, not empty. Set `BOT_PERSONA_PROMPT=""` to force fallback to `DEFAULT_PERSONA_PROMPT`. Both use `{bot_name}` placeholder, formatted at invocation time in `call_llm_node`.
