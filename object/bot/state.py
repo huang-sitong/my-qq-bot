@@ -19,6 +19,7 @@ class BotState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     persona: str
     user_memories: str
+    conversation_summary: str   # progressive summary of older messages (dynamic inject)
     session_id: str
     new_message: HumanMessage
     reply_text: str
