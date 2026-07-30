@@ -33,16 +33,16 @@ def estimate_context_tokens(
     if persona.strip():
         all_msgs.append(SystemMessage(content=persona))
 
-    # Layer 1: user memories (optional)
-    if memories.strip():
-        all_msgs.append(SystemMessage(
-            content=f"关于当前用户已知的信息：\n{memories}"
-        ))
-
-    # Layer 2: conversation summary (optional)
+    # Layer 1: conversation summary (optional)
     if summary.strip():
         all_msgs.append(SystemMessage(
             content=f"之前的对话摘要：\n{summary}"
+        ))
+
+    # Layer 2: user memories (optional)
+    if memories.strip():
+        all_msgs.append(SystemMessage(
+            content=f"关于当前用户已知的信息：\n{memories}"
         ))
 
     # Layer 3..N: recent messages

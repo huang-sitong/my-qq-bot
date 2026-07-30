@@ -14,7 +14,7 @@ from langchain_core.messages import (
 )
 from langchain_openai import ChatOpenAI
 
-from bot.core.context import estimate_context_tokens, format_messages_for_summary
+from bot.core.utils import estimate_context_tokens, format_messages_for_summary
 from common import BotConfig, SUMMARY_PROMPT
 from object.bot.state import BotState
 

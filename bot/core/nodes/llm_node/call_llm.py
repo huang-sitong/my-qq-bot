@@ -18,18 +18,18 @@ async def call_llm_node(state: BotState, llm: ChatOpenAI) -> dict:
     # Build dynamic SystemMessages (never persisted to checkpoint)
     system_msgs = [SystemMessage(content=state["persona"])]
 
-    # Layer 1: user memories (optional)
-    memories = state.get("user_memories", "").strip()
-    if memories:
-        system_msgs.append(SystemMessage(
-            content=f"关于当前用户已知的信息：\n{memories}"
-        ))
-
-    # Layer 2: conversation summary (optional)
+    # Layer 1: conversation summary (optional)
     summary = state.get("conversation_summary", "").strip()
     if summary:
         system_msgs.append(SystemMessage(
             content=f"之前的对话摘要：\n{summary}"
+        ))
+
+    # Layer 2: user memories (optional)
+    memories = state.get("user_memories", "").strip()
+    if memories:
+        system_msgs.append(SystemMessage(
+            content=f"关于当前用户已知的信息：\n{memories}"
         ))
 
     # Layer 3..N: recent messages
