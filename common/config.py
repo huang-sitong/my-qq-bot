@@ -22,7 +22,7 @@ class BotConfig:
 
     # --- Persona ---
     persona_prompt: str = field(
-        default_factory=lambda: os.getenv("BOT_PERSONA_PROMPT", "你是一个通用的AI助手，请用中文友好地回答问题。"),
+        default_factory=lambda: os.getenv("BOT_PERSONA_PROMPT", "你是一个AI助手，名字叫 \"{bot_name}\"，请用中文友好地回答问题。"),
     )
 
     # --- Context Window ---

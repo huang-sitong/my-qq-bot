@@ -16,7 +16,8 @@ async def call_llm_node(state: BotState, llm: ChatOpenAI) -> dict:
     conversation length.
     """
     # Build dynamic SystemMessages (never persisted to checkpoint)
-    system_msgs = [SystemMessage(content=state["persona"])]
+    persona = state["persona"].format(bot_name=state.get("bot_name", ""))
+    system_msgs = [SystemMessage(content=persona)]
 
     # Layer 1: conversation summary (optional)
     summary = state.get("conversation_summary", "").strip()
