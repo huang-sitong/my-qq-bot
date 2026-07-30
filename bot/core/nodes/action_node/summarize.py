@@ -57,6 +57,7 @@ async def summarize_node(
         token_counter="approximate",
         strategy="last",
         start_on="human",
+        chars_per_token=1.5,
     )
     keep_ids = {m.id for m in keep_messages if getattr(m, "id", None)}
     to_summarize = [m for m in state["messages"] if m.id not in keep_ids]
@@ -80,6 +81,7 @@ async def summarize_node(
             max_tokens=config.summary_max_input_tokens,
             token_counter="approximate",
             strategy="last",
+            chars_per_token=1.5,
         )
         formatted_messages = (
             trimmed_input[0].content if trimmed_input else formatted_messages
