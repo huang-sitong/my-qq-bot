@@ -25,6 +25,22 @@ class BotConfig:
         default_factory=lambda: os.getenv("BOT_PERSONA_PROMPT", "你是一个通用的AI助手，请用中文友好地回答问题。"),
     )
 
+    # --- Context Window ---
+    llm_context_window: int = 200_000
+    # Maximum context window in tokens for the LLM model.
+
+    summary_trigger_ratio: float = 0.6
+    # Fraction of context_window at which summarization triggers.
+    # e.g. 0.6 x 200K = 120K tokens.
+
+    summary_keep_ratio: float = 0.2
+    # Fraction of context_window to retain as the sliding window after trimming.
+    # e.g. 0.2 x 200K = 40K tokens of recent messages.
+
+    summary_max_input_tokens: int = 8_000
+    # Maximum tokens to send to the summarization LLM call.
+    # Prevents the summarization call itself from exceeding context.
+
     # --- LLM ---
     llm_model: str = field(
         default_factory=lambda: os.getenv("BOT_LLM_MODEL", "sensenova-6.7-flash-lite"),
