@@ -43,7 +43,7 @@ async def main():
         max_retries=config.llm_max_retries,
         request_timeout=config.llm_request_timeout,
     )
-    graph, checkpointer = await create_graph(llm, db_dir=config.db_dir)
+    graph, checkpointer = await create_graph(llm, config, db_dir=config.db_dir)
 
     memory_store = MemoryStore(db_dir=config.db_dir)
     handler = MessageHandler(client, graph, persona, memory_store, llm, api_client)
