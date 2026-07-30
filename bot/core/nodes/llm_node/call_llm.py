@@ -9,20 +9,31 @@ logger = logging.getLogger(__name__)
 
 
 async def call_llm_node(state: BotState, llm: ChatOpenAI) -> dict:
-    """Call the LLM with dynamically injected persona and extract reply text.
+    """Call the LLM with dynamically injected persona, memories, and summary.
 
-    The SystemMessage is built fresh each invocation and never persisted
+    SystemMessages are built fresh each invocation and never persisted
     to checkpoint, so the persona is always at messages[0] regardless of
     conversation length.
     """
-    # Build dynamic SystemMessage
-    system_content = state["persona"]
+    # Build dynamic SystemMessages (never persisted to checkpoint)
+    system_msgs = [SystemMessage(content=state["persona"])]
+
+    # Layer 1: user memories (optional)
     memories = state.get("user_memories", "").strip()
     if memories:
-        system_content += f"\n\n关于当前用户已知的信息：\n{memories}"
+        system_msgs.append(SystemMessage(
+            content=f"关于当前用户已知的信息：\n{memories}"
+        ))
 
-    # Prepend SystemMessage for this call only (not persisted)
-    messages = [SystemMessage(content=system_content)] + state["messages"]
+    # Layer 2: conversation summary (optional)
+    summary = state.get("conversation_summary", "").strip()
+    if summary:
+        system_msgs.append(SystemMessage(
+            content=f"之前的对话摘要：\n{summary}"
+        ))
+
+    # Layer 3..N: recent messages
+    messages = system_msgs + state["messages"]
 
     try:
         response = await llm.ainvoke(messages)
