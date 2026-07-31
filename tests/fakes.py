@@ -52,6 +52,7 @@ def make_state(**overrides) -> dict:
         "conversation_summary": "",
         "session_id": "test:session",
         "thread_id": "test:thread",
+        "user_id": "u1",
         "new_message": None,
         "reply_text": "",
         "should_respond": True,

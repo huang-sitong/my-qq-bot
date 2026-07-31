@@ -22,6 +22,7 @@ class BotState(TypedDict):
     conversation_summary: str   # progressive summary of older messages (dynamic inject)
     session_id: str
     thread_id: str        # checkpoint isolation key = platform:guild:channel
+    user_id: str          # 当前消息发送者的用户 ID（记忆工具按用户维度存取）
     new_message: HumanMessage
     reply_text: str
     should_respond: bool
