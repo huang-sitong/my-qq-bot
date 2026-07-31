@@ -1,0 +1,66 @@
+"""测试桩：脚本化 LLM、Stub RAG 服务、最小图状态工厂。
+
+ScriptedLLM.bind_tools 返回 self —— ainvoke 忽略工具 schema、按序弹出
+脚本消息，因此工具绑定路径与普通路径共用同一条消息队列。
+"""
+
+from langchain_core.messages import AIMessage
+
+
+class ScriptedLLM:
+    """按序返回脚本响应的假 LLM。"""
+
+    def __init__(self, responses: list[AIMessage]):
+        self._responses = list(responses)
+        self._index = 0
+
+    def bind_tools(self, tools, **kwargs):
+        return self
+
+    async def ainvoke(self, messages, **kwargs):
+        if self._index >= len(self._responses):
+            raise AssertionError("ScriptedLLM exhausted: no more scripted responses")
+        msg = self._responses[self._index]
+        self._index += 1
+        return msg
+
+
+class StubRagService:
+    """假 RagService：enabled 开关 + 脚本化检索结果。"""
+
+    def __init__(self, enabled=True, search_results=None, raise_on_search=False):
+        self.enabled = enabled
+        self.search_results = search_results or []
+        self.raise_on_search = raise_on_search
+        self.last_query = None
+        self.last_thread_id = None
+
+    async def search(self, query, thread_id, top_k=None, score_threshold=None):
+        self.last_query = query
+        self.last_thread_id = thread_id
+        if self.raise_on_search:
+            raise RuntimeError("search failed")
+        return self.search_results
+
+
+def make_state(**overrides) -> dict:
+    """构造最小图状态，供节点单元测试使用。"""
+    state = {
+        "messages": [],
+        "persona": "你是{bot_name}",
+        "user_memories": "",
+        "conversation_summary": "",
+        "session_id": "test:session",
+        "thread_id": "test:thread",
+        "new_message": None,
+        "reply_text": "",
+        "should_respond": True,
+        "bot_name": "测试机器人",
+        "channel_type": 0,
+        "bot_id": "bot1",
+        "raw_content": "你好",
+        "user_name": "张三",
+        "rag_tool_rounds": 0,
+    }
+    state.update(overrides)
+    return state
