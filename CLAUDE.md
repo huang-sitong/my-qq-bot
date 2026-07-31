@@ -28,15 +28,15 @@ bot/
       embedder.py            #   EmbeddingService — Ollama qwen3-embedding，Instruct 前缀
       service.py             #   RagService — index_turn / search 组合接口
       store.py               #   RagVectorStore — sqlite-vec 向量表 + 元数据表 (rag.sqlite)
-      tools.py               #   search_chat_history 工具工厂（供 ReAct 循环）
     utils/                   # Pure utility functions (no state)
       context.py             #   token estimation + message formatting for summarization
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   router, call_llm — invoke an LLM
       action_node/           #   detect_intent (routing), summarize (context window management)
-      tool_node/             #   tools invoked by LLM via function calling (future)
+      tool_node/             #   rag_tool_node — 执行 LLM 请求的工具调用（图级循环）
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
+      search_chat_history.py #   search_chat_history 工具（TOOL_SCHEMA + 纯函数）
   handler.py                 # MessageHandler — ingress: validation → queue → graph → reply → RAG index
 object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
@@ -53,7 +53,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
     → detect_intent (action_node)  ← DIRECT / @-mention → should_respond
     → router (llm_node)            ← LLM name-mention fallback
     → call_llm (llm_node)          ← dynamic SystemMessage injection
-                                      + ReAct 循环：LLM 可调用 search_chat_history 工具检索群聊历史
+      tool_node (tool_node)    ← call_llm 返回 tool_calls 时执行 search_chat_history，回环到 call_llm
     → summarize (action_node)      ← token threshold check → progressive summary
   → send reply via SatoriApiClient
   → extract memories via MemoryStore
@@ -91,7 +91,7 @@ Each node file is a standalone `async def(state, ...) -> dict`.
 
 ### `create_graph()` returns a tuple
 
-`create_graph(llm, config, db_dir="db", rag_service=None)` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`. `rag_service` is passed through to `call_llm_node` for the ReAct loop.
+`create_graph(llm, config, db_dir="db", rag_service=None)` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`. `rag_service` is passed to `call_llm_node` (tool binding) and `tool_node` (tool execution) for the graph-level tool loop.
 
 ### SystemMessage injection
 
@@ -108,16 +108,16 @@ system_msgs = [SystemMessage(content=persona)]
 - SystemMessages are **local variables** — never persisted to checkpoint
 - Persona is always at `messages[0]` regardless of conversation length — immune to context-window truncation
 - Persona changes take effect immediately (no `has_persona` gate)
-- Checkpoint stores only conversation history (HumanMessage + AIMessage), not system instructions
+- Checkpoint stores conversation history (HumanMessage + AIMessage + ToolMessage)，not system instructions
 - `DEFAULT_PERSONA_PROMPT` uses `{bot_name}` placeholder — formatted at invocation time, same pattern as `ROUTER_PROMPT`
 
 ### RAG（群聊历史检索）
 
-- **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm_node` 进入 **ReAct 循环**：LLM 通过 `bind_tools` 获得 `search_chat_history` 工具，**自行决定何时检索**，最多 `rag_max_agent_rounds` 轮。
+- **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm` 绑定 `search_chat_history` 工具，**LLM 自行决定何时检索**。若返回 `tool_calls`，条件边路由到 `tool_node` 执行，回边到 `call_llm` 继续；轮次达到 `rag_max_agent_rounds` 后走无工具路径强制收尾。
 - **索引**：每轮**有回复**的对话在图外由 `MessageHandler._index_turn()` 写入向量库（用户消息 + Bot 回复两条记录）；用户内容先经 `_strip_leading_mention` 去掉 @提及前缀。索引失败仅降级（记日志不抛出）。
 - **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。
-- **工具闭环**：`make_search_tool` 闭包捕获当前 `thread_id`，LLM 无需知道内部标识；工具调用的中间消息只存在于循环局部，最终仅 AIMessage 写回 checkpoint。
+- **工具闭环**：`search_chat_history(query, rag_service, thread_id)` 是纯函数，`rag_tool_node` 从 state 注入 `thread_id` 与 `rag_service`；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。
 - **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`）。
 
 ### Reply is sent outside the graph
@@ -129,10 +129,8 @@ system_msgs = [SystemMessage(content=persona)]
 When adding nodes, follow the classification in `bot/core/nodes/`:
 - **`llm_node/`** — nodes that call an LLM for reasoning/generation (fixed position in graph)
 - **`action_node/`** — deterministic, no-LLM logic nodes (fixed position in graph)
-- **`tool_node/`** — nodes invoked by LLM via function calling (LLM decides when)
+- **`tool_node/`** — tools invoked by LLM via function calling（`rag_tool_node` 执行 `search_chat_history`，经条件边回环）
 - **`subgraph/`** — nested CompiledStateGraph for complex multi-step sub-flows
-
-> Note: the RAG tool factory lives in `bot/core/rag/tools.py` (not `bot/core/tools/`), because it is domain-specific to `RagService` and is invoked directly by `call_llm_node`.
 
 ## Gotchas
 
@@ -147,5 +145,7 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 - **`db/` directory**: auto-created on startup. Old `bot_memory.sqlite*` at project root is auto-migrated on launch. `BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
 
 - **sqlite-vec**: `rag.sqlite` 需要 `sqlite_vec.load()` 扩展；`chat_embeddings` 是 `vec0` 虚拟表（cosine 距离，维度 = `embed_dimensions`），元数据按 `rowid` 关联普通表。每线程超过 `rag_retention_per_thread` 时按 `timestamp DESC` 淘汰最旧记录。
+
+- **工具定位**: RAG 工具在 `bot/core/tools/search_chat_history.py`，执行节点在 `bot/core/nodes/tool_node/rag_tool_node.py`。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
 
 - **Persona fallback**: `main.py` uses `config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT` — the `BotConfig.persona_prompt` default is a real prompt string, not empty. Set `BOT_PERSONA_PROMPT=""` to force fallback to `DEFAULT_PERSONA_PROMPT`. Both use `{bot_name}` placeholder, formatted at invocation time in `call_llm_node`.
