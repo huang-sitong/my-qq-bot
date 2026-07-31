@@ -155,6 +155,14 @@ class MessageHandler:
             "Processing message from %s (session=%s, thread=%s): %.60s",
             user_id, session_id, thread_id, raw_content,
         )
+        # recursion_limit 是 LangGraph 的兜底，真实上限由 rag_max_agent_rounds 决定
+        # （4 + 2n 个 super-step，n = 工具轮次），这里按配置放一个充裕的安全网。
+        max_rounds = (
+            self._rag_service.config.rag_max_agent_rounds
+            if self._rag_service is not None
+            else 3
+        )
+        recursion_limit = 2 * max_rounds + 8
         try:
             result = await self.graph.ainvoke(
                 {
@@ -172,7 +180,10 @@ class MessageHandler:
                     "raw_content": raw_content,
                     "user_name": user_name,
                 },
-                {"configurable": {"thread_id": thread_id}},
+                {
+                    "configurable": {"thread_id": thread_id},
+                    "recursion_limit": recursion_limit,
+                },
             )
         except Exception:
             logger.exception("Graph invoke failed for session %s", session_id)

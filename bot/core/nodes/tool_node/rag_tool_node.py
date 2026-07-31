@@ -33,5 +33,5 @@ async def rag_tool_node(state: BotState, rag_service=None) -> dict:
                 state.get("session_id", ""),
             )
             content = "检索历史消息失败。"
-        tool_messages.append(ToolMessage(content=content, tool_call_id=tc["id"]))
+        tool_messages.append(ToolMessage(content=content, tool_call_id=tc.get("id", "")))
     return {"messages": tool_messages}

@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from bot.core.graph import create_graph
 from common import BotConfig
@@ -51,5 +51,7 @@ def test_graph_loops_tool_call_then_answers(tmp_path):
     result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
 
     assert result["reply_text"] == "我们上次决定用 qwen3-embedding 做嵌入"
-    # 循环确实发生：state 中应包含 ToolMessage
-    assert any(type(m).__name__ == "ToolMessage" for m in result["messages"])
+    # 循环确实发生：state 中应包含 ToolMessage，且 stub 检索结果流入其 content
+    tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    assert tool_msgs, "expected a ToolMessage from the tool loop"
+    assert "上次我们决定用 qwen3-embedding" in tool_msgs[0].content

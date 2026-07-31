@@ -86,6 +86,7 @@ Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not clos
 - `router_node` bound with `partial(router_node, llm=llm)`
 - `call_llm_node` bound with `partial(call_llm_node, llm=llm, rag_service=rag_service, bot_config=config)`
 - `summarize_node` bound with `partial(summarize_node, llm=llm, bot_config=config)`
+- `tool_node` bound with `partial(rag_tool_node, rag_service=rag_service)`
 
 Each node file is a standalone `async def(state, ...) -> dict`.
 
@@ -117,7 +118,7 @@ system_msgs = [SystemMessage(content=persona)]
 - **索引**：每轮**有回复**的对话在图外由 `MessageHandler._index_turn()` 写入向量库（用户消息 + Bot 回复两条记录）；用户内容先经 `_strip_leading_mention` 去掉 @提及前缀。索引失败仅降级（记日志不抛出）。
 - **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。
-- **工具闭环**：`search_chat_history(query, rag_service, thread_id)` 是纯函数，`rag_tool_node` 从 state 注入 `thread_id` 与 `rag_service`；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。
+- **工具闭环**：`search_chat_history(query, rag_service, thread_id)` 是纯函数，`rag_tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。
 - **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`）。
 
 ### Reply is sent outside the graph
