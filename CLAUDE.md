@@ -13,7 +13,7 @@ uv run python -c "..."   # quick import / logic check
 ## Architecture
 
 ```
-main.py                      # entrypoint — wires BotConfig, LLM, Graph, Handler
+main.py                      # entrypoint — wires BotConfig, LLM, Graph, Handler, RagService
 common/                      # shared config + prompts (single source of truth)
   config.py                  #   BotConfig dataclass (env-var overrides)
   prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, EXTRACT_PROMPT, SUMMARY_PROMPT
@@ -24,6 +24,11 @@ bot/
     graph.py                 # LangGraph assembly: creates (graph, checkpointer)
     llm.py                   # ChatOpenAI factory (reads BASE_URL / API_KEY from .env)
     memory.py                # MemoryStore — SQLite kv per user (memory.sqlite)
+    rag/                     # 群聊历史 RAG（向量检索）
+      embedder.py            #   EmbeddingService — Ollama qwen3-embedding，Instruct 前缀
+      service.py             #   RagService — index_turn / search 组合接口
+      store.py               #   RagVectorStore — sqlite-vec 向量表 + 元数据表 (rag.sqlite)
+      tools.py               #   search_chat_history 工具工厂（供 ReAct 循环）
     utils/                   # Pure utility functions (no state)
       context.py             #   token estimation + message formatting for summarization
     nodes/                   # Graph nodes classified by execution mechanism:
@@ -32,33 +37,36 @@ bot/
       tool_node/             #   tools invoked by LLM via function calling (future)
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
-  handler.py                 # MessageHandler — ingress: validation → queue → graph → reply
+  handler.py                 # MessageHandler — ingress: validation → queue → graph → reply → RAG index
 object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
   satori/                    #   Satori protocol: enums, models, events, API endpoints
-db/                          # runtime databases (checkpoint.sqlite, memory.sqlite)
+db/                          # runtime databases (checkpoint.sqlite, memory.sqlite, rag.sqlite)
 ```
 
 ### Data flow
 
 ```
 WebSocket event → SatoriClient → MessageHandler.handle()
-  → validation + enqueue → worker dequeues
+  → validation + enqueue → worker dequeues（按 thread_id 加锁串行化）
   → graph.ainvoke(state, thread_id)
     → detect_intent (action_node)  ← DIRECT / @-mention → should_respond
     → router (llm_node)            ← LLM name-mention fallback
-    → call_llm (llm_node)          ← dynamic SystemMessage injection + generate reply
+    → call_llm (llm_node)          ← dynamic SystemMessage injection
+                                      + ReAct 循环：LLM 可调用 search_chat_history 工具检索群聊历史
     → summarize (action_node)      ← token threshold check → progressive summary
   → send reply via SatoriApiClient
   → extract memories via MemoryStore
+  → index turn into RagService（用户消息 + Bot 回复）
 ```
 
-### Two-database design
+### Three-database design
 
 | File | Managed by | Purpose |
 |---|---|---|
 | `db/checkpoint.sqlite` | LangGraph `AsyncSqliteSaver` | Conversation state checkpoints (tables: `checkpoint`, `writes`, `user_memory`) |
 | `db/memory.sqlite` | `MemoryStore` | Long-term user facts extracted by LLM (table: `user_memories`) |
+| `db/rag.sqlite` | `RagVectorStore` | Group chat history vectors for semantic retrieval (`chat_embeddings` vec0 table + `chat_embedding_meta`) |
 
 ### Session vs Thread
 
@@ -74,11 +82,16 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 
 ### Node dependency injection
 
-Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not closures). In `graph.py`, `router_node` and `call_llm_node` are bound with `partial(node_fn, llm=llm)`. Each node file is a standalone `async def(state, ...) -> dict`.
+Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not closures). In `graph.py`:
+- `router_node` bound with `partial(router_node, llm=llm)`
+- `call_llm_node` bound with `partial(call_llm_node, llm=llm, rag_service=rag_service, bot_config=config)`
+- `summarize_node` bound with `partial(summarize_node, llm=llm, bot_config=config)`
+
+Each node file is a standalone `async def(state, ...) -> dict`.
 
 ### `create_graph()` returns a tuple
 
-`create_graph()` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`.
+`create_graph(llm, config, db_dir="db", rag_service=None)` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`. `rag_service` is passed through to `call_llm_node` for the ReAct loop.
 
 ### SystemMessage injection
 
@@ -98,6 +111,15 @@ system_msgs = [SystemMessage(content=persona)]
 - Checkpoint stores only conversation history (HumanMessage + AIMessage), not system instructions
 - `DEFAULT_PERSONA_PROMPT` uses `{bot_name}` placeholder — formatted at invocation time, same pattern as `ROUTER_PROMPT`
 
+### RAG（群聊历史检索）
+
+- **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm_node` 进入 **ReAct 循环**：LLM 通过 `bind_tools` 获得 `search_chat_history` 工具，**自行决定何时检索**，最多 `rag_max_agent_rounds` 轮。
+- **索引**：每轮**有回复**的对话在图外由 `MessageHandler._index_turn()` 写入向量库（用户消息 + Bot 回复两条记录）；用户内容先经 `_strip_leading_mention` 去掉 @提及前缀。索引失败仅降级（记日志不抛出）。
+- **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。
+- **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。
+- **工具闭环**：`make_search_tool` 闭包捕获当前 `thread_id`，LLM 无需知道内部标识；工具调用的中间消息只存在于循环局部，最终仅 AIMessage 写回 checkpoint。
+- **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`）。
+
 ### Reply is sent outside the graph
 
 `MessageHandler.handle()` calls `SatoriApiClient.send_message()` after `graph.ainvoke()` returns. There is no `send_reply` node in the graph — the `reply_text` field flows through state and is consumed by the handler.
@@ -110,16 +132,20 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 - **`tool_node/`** — nodes invoked by LLM via function calling (LLM decides when)
 - **`subgraph/`** — nested CompiledStateGraph for complex multi-step sub-flows
 
+> Note: the RAG tool factory lives in `bot/core/rag/tools.py` (not `bot/core/tools/`), because it is domain-specific to `RagService` and is invoked directly by `call_llm_node`.
+
 ## Gotchas
 
 - **`object/` package**: setuptools `__legacy__` backend renames `data_object` → `object` in editable installs. Always import from `object.*`, never `data_object.*`.
 
-- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`. Detection uses `f'<at id="{bot_id}"' in content`.
+- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`. Detection uses `f'<at id="{bot_id}"' in content`. Note there are **two** mention-strippers: `bot/handler.py:_strip_leading_mention` (RAG 索引前) and `bot/core/nodes/action_node/detect_intent.py:_strip_mention` (构造 HumanMessage 前).
 
 - **`uv` package manager**: PyPI mirror is `https://pypi.tuna.tsinghua.edu.cn/simple`. Python >=3.12.
 
 - **`.env` secrets**: `BASE_URL` + `API_KEY` (not `GO_BASE_URL`/`GO_API_KEY`). `.env-template` is the documented schema.
 
 - **`db/` directory**: auto-created on startup. Old `bot_memory.sqlite*` at project root is auto-migrated on launch. `BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
+
+- **sqlite-vec**: `rag.sqlite` 需要 `sqlite_vec.load()` 扩展；`chat_embeddings` 是 `vec0` 虚拟表（cosine 距离，维度 = `embed_dimensions`），元数据按 `rowid` 关联普通表。每线程超过 `rag_retention_per_thread` 时按 `timestamp DESC` 淘汰最旧记录。
 
 - **Persona fallback**: `main.py` uses `config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT` — the `BotConfig.persona_prompt` default is a real prompt string, not empty. Set `BOT_PERSONA_PROMPT=""` to force fallback to `DEFAULT_PERSONA_PROMPT`. Both use `{bot_name}` placeholder, formatted at invocation time in `call_llm_node`.
