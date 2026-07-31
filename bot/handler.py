@@ -31,12 +31,14 @@ class MessageHandler:
         persona: str,
         api_client: SatoriApiClient,
         rag_service=None,
+        bot_config=None,
     ) -> None:
         self.client = client
         self.graph = graph
         self._persona = persona
         self._api_client = api_client
         self._rag_service = rag_service
+        self._bot_config = bot_config
         self._bot_id: str | None = None
         self._bot_name: str | None = None
         self._queue: asyncio.Queue[dict | None] = asyncio.Queue()
@@ -150,9 +152,11 @@ class MessageHandler:
         )
         # recursion_limit 是 LangGraph 的兜底，真实上限由 rag_max_agent_rounds 决定
         # （4 + 2n 个 super-step，n = 工具轮次），这里按配置放一个充裕的安全网。
+        # 与 call_llm_node 读取同一份配置（BOT_RAG_MAX_AGENT_ROUNDS），
+        # 避免 memory-only 模式下配置大于 3 时 recursion_limit 被低估触发 GraphRecursionError。
         max_rounds = (
-            self._rag_service.config.rag_max_agent_rounds
-            if self._rag_service is not None
+            self._bot_config.rag_max_agent_rounds
+            if self._bot_config is not None
             else 3
         )
         recursion_limit = 2 * max_rounds + 8

@@ -1,6 +1,7 @@
 import logging
 import os
 import sqlite3
+import threading
 
 logger = logging.getLogger(__name__)
 
@@ -35,46 +36,53 @@ class MemoryStore:
     def __init__(self, db_dir: str = "db") -> None:
         self.db_path = os.path.join(db_dir, "memory.sqlite")
         self._conn: sqlite3.Connection | None = None
+        self._lock = threading.Lock()
         self._init_db()
 
     @property
     def conn(self) -> sqlite3.Connection:
         if self._conn is None:
-            self._conn = sqlite3.connect(self.db_path)
+            self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self._conn.row_factory = sqlite3.Row
         return self._conn
 
     def _init_db(self) -> None:
-        self.conn.execute(CREATE_SQL)
-        self.conn.commit()
-        logger.info("MemoryStore ready (db=%s)", self.db_path)
+        with self._lock:
+            self.conn.execute(CREATE_SQL)
+            self.conn.commit()
+            logger.info("MemoryStore ready (db=%s)", self.db_path)
 
     def load_memories(self, user_id: str) -> list[dict]:
-        rows = self.conn.execute(
-            "SELECT key, value FROM user_memories WHERE user_id = ? ORDER BY updated_at DESC",
-            (user_id,),
-        ).fetchall()
-        return [{"key": row["key"], "value": row["value"]} for row in rows]
+        with self._lock:
+            rows = self.conn.execute(
+                "SELECT key, value FROM user_memories WHERE user_id = ? ORDER BY updated_at DESC",
+                (user_id,),
+            ).fetchall()
+            return [{"key": row["key"], "value": row["value"]} for row in rows]
 
     def store_memory(self, user_id: str, key: str, value: str) -> None:
-        self.conn.execute(UPSERT_SQL, (user_id, key, value))
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(UPSERT_SQL, (user_id, key, value))
+            self.conn.commit()
 
     def store_memories(self, user_id: str, memories: list[dict]) -> None:
-        for m in memories:
-            self.conn.execute(UPSERT_SQL, (user_id, m["key"], m["value"]))
-        self.conn.commit()
+        with self._lock:
+            for m in memories:
+                self.conn.execute(UPSERT_SQL, (user_id, m["key"], m["value"]))
+            self.conn.commit()
 
     def delete_memory(self, user_id: str, key: str) -> None:
-        self.conn.execute(
-            "DELETE FROM user_memories WHERE user_id = ? AND key = ?",
-            (user_id, key),
-        )
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute(
+                "DELETE FROM user_memories WHERE user_id = ? AND key = ?",
+                (user_id, key),
+            )
+            self.conn.commit()
 
     def clear_user_memories(self, user_id: str) -> None:
-        self.conn.execute("DELETE FROM user_memories WHERE user_id = ?", (user_id,))
-        self.conn.commit()
+        with self._lock:
+            self.conn.execute("DELETE FROM user_memories WHERE user_id = ?", (user_id,))
+            self.conn.commit()
 
     def format_memories(self, user_id: str) -> str:
         memories = self.load_memories(user_id)
@@ -83,6 +91,7 @@ class MemoryStore:
         return "\n".join(f"- {m['key']}：{m['value']}" for m in memories)
 
     def close(self) -> None:
-        if self._conn is not None:
-            self._conn.close()
-            self._conn = None
+        with self._lock:
+            if self._conn is not None:
+                self._conn.close()
+                self._conn = None

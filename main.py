@@ -51,7 +51,9 @@ async def main():
     )
 
     handler = MessageHandler(
-        client, graph, persona, api_client, rag_service=rag_service,
+        client, graph, persona, api_client,
+        rag_service=rag_service,
+        bot_config=config,
     )
 
     # --- Register event handlers ---
