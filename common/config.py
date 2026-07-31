@@ -1,6 +1,11 @@
 import os
 from dataclasses import dataclass, field
 
+from dotenv import load_dotenv
+
+# 在读取任何 env 覆盖项之前加载 .env，保证 BotConfig 的 env 默认值生效
+load_dotenv()
+
 
 @dataclass
 class BotConfig:
@@ -53,4 +58,30 @@ class BotConfig:
     )
     llm_request_timeout: int = field(
         default_factory=lambda: int(os.getenv("BOT_LLM_REQUEST_TIMEOUT", "30")),
+    )
+
+    # --- RAG (群聊历史向量检索) ---
+    rag_enabled: bool = field(
+        default_factory=lambda: os.getenv("BOT_RAG_ENABLED", "1") not in ("0", "false", "False", ""),
+    )
+    embed_model: str = field(
+        default_factory=lambda: os.getenv("BOT_EMBED_MODEL", "qwen3-embedding:0.6b"),
+    )
+    ollama_base_url: str = field(
+        default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+    )
+    embed_dimensions: int = field(
+        default_factory=lambda: int(os.getenv("BOT_EMBED_DIMENSIONS", "1024")),
+    )
+    rag_top_k: int = field(
+        default_factory=lambda: int(os.getenv("BOT_RAG_TOP_K", "5")),
+    )
+    rag_score_threshold: float = field(
+        default_factory=lambda: float(os.getenv("BOT_RAG_SCORE_THRESHOLD", "0.35")),
+    )
+    rag_retention_per_thread: int = field(
+        default_factory=lambda: int(os.getenv("BOT_RAG_RETENTION_PER_THREAD", "2000")),
+    )
+    rag_max_agent_rounds: int = field(
+        default_factory=lambda: int(os.getenv("BOT_RAG_MAX_AGENT_ROUNDS", "3")),
     )

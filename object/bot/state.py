@@ -21,6 +21,7 @@ class BotState(TypedDict):
     user_memories: str
     conversation_summary: str   # progressive summary of older messages (dynamic inject)
     session_id: str
+    thread_id: str        # checkpoint isolation key = platform:guild:channel
     new_message: HumanMessage
     reply_text: str
     should_respond: bool
