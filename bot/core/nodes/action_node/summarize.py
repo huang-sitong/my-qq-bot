@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 async def summarize_node(
     state: BotState,
     llm: ChatOpenAI,
-    config: BotConfig,
+    bot_config: BotConfig,
 ) -> dict:
     """Check context size; if over threshold, summarize old messages.
 
@@ -32,7 +32,7 @@ async def summarize_node(
     messages to compress.  Otherwise returns ``RemoveMessage`` updates
     and a new ``conversation_summary``.
     """
-    trigger = int(config.summary_trigger_ratio * config.llm_context_window)
+    trigger = int(bot_config.summary_trigger_ratio * bot_config.llm_context_window)
 
     # 1. Check if summarization is needed
     total = estimate_context_tokens(
@@ -50,7 +50,7 @@ async def summarize_node(
         return {}  # No summarization needed
 
     # 2. Split messages: keep recent, summarize the rest
-    keep_tokens = int(config.summary_keep_ratio * config.llm_context_window)
+    keep_tokens = int(bot_config.summary_keep_ratio * bot_config.llm_context_window)
     keep_messages = trim_messages(
         state["messages"],
         max_tokens=keep_tokens,
@@ -75,10 +75,10 @@ async def summarize_node(
     formatted_messages = format_messages_for_summary(to_summarize)
 
     # Truncate input to summarization LLM if needed
-    if config.summary_max_input_tokens > 0:
+    if bot_config.summary_max_input_tokens > 0:
         trimmed_input = trim_messages(
             [HumanMessage(content=formatted_messages)],
-            max_tokens=config.summary_max_input_tokens,
+            max_tokens=bot_config.summary_max_input_tokens,
             token_counter="approximate",
             strategy="last",
             chars_per_token=1.5,

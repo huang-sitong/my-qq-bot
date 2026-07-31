@@ -13,6 +13,12 @@ from object.satori import EventBody, LoginList
 logger = logging.getLogger(__name__)
 
 
+def _strip_leading_mention(content: str) -> str:
+    """Remove a leading ``<at …/>`` mention tag so stored content is clean."""
+    idx = content.find(">")
+    return content[idx + 1:].lstrip() if idx != -1 else content
+
+
 class MessageHandler:
     """Orchestrates message dispatch from Satori events to the LangGraph.
 
@@ -28,6 +34,7 @@ class MessageHandler:
         memory_store: MemoryStore,
         extract_llm: ChatOpenAI,
         api_client: SatoriApiClient,
+        rag_service=None,
     ) -> None:
         self.client = client
         self.graph = graph
@@ -35,6 +42,7 @@ class MessageHandler:
         self._memory_store = memory_store
         self._extract_llm = extract_llm
         self._api_client = api_client
+        self._rag_service = rag_service
         self._bot_id: str | None = None
         self._bot_name: str | None = None
         self._queue: asyncio.Queue[dict | None] = asyncio.Queue()
@@ -152,6 +160,7 @@ class MessageHandler:
                 {
                     "new_message": HumanMessage(content=""),  # placeholder
                     "session_id": session_id,
+                    "thread_id": thread_id,
                     "persona": self._persona,
                     "user_memories": memories_text,
                     "reply_text": "",
@@ -168,11 +177,13 @@ class MessageHandler:
             logger.exception("Graph invoke failed for session %s", session_id)
             return
 
-        # --- Post-graph: reply + memory extraction ---
+        # --- Post-graph: reply + memory extraction + RAG indexing ---
         reply_text = result.get("reply_text", "")
         if reply_text:
             await self._send_reply(channel_id, reply_text)
             await self._extract_memories(user_id, raw_content, reply_text)
+            if self._rag_service is not None:
+                await self._index_turn(thread_id, user_id, user_name, raw_content, reply_text)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -206,3 +217,21 @@ class MessageHandler:
                 logger.info("Stored %d memories for user %s", len(memories), user_id)
         except Exception:
             logger.debug("Memory extraction skipped (non-critical)", exc_info=True)
+
+    # ------------------------------------------------------------------
+    # RAG indexing
+    # ------------------------------------------------------------------
+
+    async def _index_turn(
+        self,
+        thread_id: str,
+        user_id: str,
+        user_name: str,
+        user_message: str,
+        bot_reply: str,
+    ) -> None:
+        """将本轮对话（用户消息 + Bot 回复）索引入向量库。失败仅降级。"""
+        content = _strip_leading_mention(user_message)
+        await self._rag_service.index_turn(
+            thread_id, user_id, user_name, content, bot_reply,
+        )

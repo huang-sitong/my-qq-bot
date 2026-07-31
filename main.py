@@ -5,6 +5,7 @@ import os
 from bot import (
     MemoryStore,
     MessageHandler,
+    RagService,
     SatoriApiClient,
     SatoriClient,
     create_graph,
@@ -43,10 +44,16 @@ async def main():
         max_retries=config.llm_max_retries,
         request_timeout=config.llm_request_timeout,
     )
-    graph, checkpointer = await create_graph(llm, config, db_dir=config.db_dir)
+    rag_service = RagService(config) if config.rag_enabled else None
+    graph, checkpointer = await create_graph(
+        llm, config, db_dir=config.db_dir, rag_service=rag_service,
+    )
 
     memory_store = MemoryStore(db_dir=config.db_dir)
-    handler = MessageHandler(client, graph, persona, memory_store, llm, api_client)
+    handler = MessageHandler(
+        client, graph, persona, memory_store, llm, api_client,
+        rag_service=rag_service,
+    )
 
     # --- Register event handlers ---
     client.on("message-created")(handler.handle)
@@ -64,6 +71,8 @@ async def main():
         await handler.stop()
         await client.disconnect()
         await api_client.close()
+        if rag_service is not None:
+            rag_service.close()
         logger.info("Bye.")
 
 

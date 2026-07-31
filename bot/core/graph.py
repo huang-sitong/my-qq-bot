@@ -16,7 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 async def create_graph(
-    llm: ChatOpenAI, config: BotConfig, db_dir: str = "db"
+    llm: ChatOpenAI,
+    config: BotConfig,
+    db_dir: str = "db",
+    rag_service=None,
 ) -> tuple[CompiledStateGraph, AsyncSqliteSaver]:
     """Build and compile the conversation graph.
 
@@ -26,8 +29,10 @@ async def create_graph(
     builder = StateGraph(BotState)
     builder.add_node("detect_intent", detect_intent)
     builder.add_node("router", partial(router_node, llm=llm))
-    builder.add_node("call_llm", partial(call_llm_node, llm=llm))
-    builder.add_node("summarize", partial(summarize_node, llm=llm, config=config))
+    builder.add_node(
+        "call_llm", partial(call_llm_node, llm=llm, rag_service=rag_service, bot_config=config)
+    )
+    builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
 
     builder.add_edge(START, "detect_intent")
     builder.add_edge("detect_intent", "router")
