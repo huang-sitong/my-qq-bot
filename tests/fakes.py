@@ -64,3 +64,20 @@ def make_state(**overrides) -> dict:
     }
     state.update(overrides)
     return state
+
+
+class StubMemoryStore:
+    """内存版 MemoryStore，供记忆工具测试。"""
+
+    def __init__(self):
+        self._data: dict[tuple[str, str], str] = {}
+
+    def store_memory(self, user_id: str, key: str, value: str) -> None:
+        self._data[(user_id, key)] = value
+
+    def load_memories(self, user_id: str) -> list[dict]:
+        return [
+            {"key": k, "value": v}
+            for (uid, k), v in self._data.items()
+            if uid == user_id
+        ]
