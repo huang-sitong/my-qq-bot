@@ -8,7 +8,7 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from bot.core.nodes import call_llm_node, detect_intent, router_node, summarize_node
+from bot.core.nodes import call_llm_node, detect_intent, rag_tool_node, router_node, summarize_node
 from common import BotConfig
 from object.bot.state import BotState
 
@@ -33,6 +33,7 @@ async def create_graph(
         "call_llm", partial(call_llm_node, llm=llm, rag_service=rag_service, bot_config=config)
     )
     builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
+    builder.add_node("tool_node", partial(rag_tool_node, rag_service=rag_service))
 
     builder.add_edge(START, "detect_intent")
     builder.add_edge("detect_intent", "router")
@@ -40,7 +41,11 @@ async def create_graph(
         "router",
         lambda s: "call_llm" if s.get("should_respond", True) else END,
     )
-    builder.add_edge("call_llm", "summarize")   # always run (node handles skip)
+    builder.add_conditional_edges(
+        "call_llm",
+        lambda s: "tool_node" if getattr(s["messages"][-1], "tool_calls", None) else "summarize",
+    )
+    builder.add_edge("tool_node", "call_llm")
     builder.add_edge("summarize", END)
 
     checkpoint_path = os.path.join(db_dir, "checkpoint.sqlite")
