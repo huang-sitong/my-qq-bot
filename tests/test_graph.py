@@ -32,7 +32,7 @@ def _initial_state() -> dict:
         "channel_type": 1,
         "raw_content": "还记得我们聊过 RAG 吗？",
         "user_name": "张三",
-        "rag_tool_rounds": 0,
+        "tool_rounds": 0,
     }
 
 

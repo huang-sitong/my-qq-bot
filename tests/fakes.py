@@ -13,6 +13,7 @@ class ScriptedLLM:
     def __init__(self, responses: list[AIMessage]):
         self._responses = list(responses)
         self._index = 0
+        self.last_messages = None
 
     def bind_tools(self, tools, **kwargs):
         return self
@@ -20,6 +21,7 @@ class ScriptedLLM:
     async def ainvoke(self, messages, **kwargs):
         if self._index >= len(self._responses):
             raise AssertionError("ScriptedLLM exhausted: no more scripted responses")
+        self.last_messages = list(messages)
         msg = self._responses[self._index]
         self._index += 1
         return msg
@@ -61,7 +63,7 @@ def make_state(**overrides) -> dict:
         "bot_id": "bot1",
         "raw_content": "你好",
         "user_name": "张三",
-        "rag_tool_rounds": 0,
+        "tool_rounds": 0,
     }
     state.update(overrides)
     return state

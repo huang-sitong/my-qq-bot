@@ -27,7 +27,7 @@ class BotState(TypedDict):
     reply_text: str
     should_respond: bool
     bot_name: str
-    rag_tool_rounds: int   # RAG 工具调用轮次计数（call_llm 递增，工具回环上限）
+    tool_rounds: int       # 工具调用轮次计数（call_llm 递增，工具回环上限）
     # --- Fields for detect_intent node ---
     channel_type: int       # ChannelType enum value (0=TEXT, 1=DIRECT)
     bot_id: str             # bot's own user ID for @-mention detection

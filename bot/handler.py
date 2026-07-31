@@ -175,7 +175,7 @@ class MessageHandler:
                     "should_respond": False,  # detect_intent decides
                     "bot_name": self._bot_name or "",
                     "bot_id": self._bot_id or "",
-                    "rag_tool_rounds": 0,
+                    "tool_rounds": 0,
                     "channel_type": channel_type,
                     "raw_content": raw_content,
                     "user_name": user_name,
