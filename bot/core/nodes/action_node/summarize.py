@@ -38,7 +38,6 @@ async def summarize_node(
     total = estimate_context_tokens(
         state["messages"],
         state.get("persona", ""),
-        state.get("user_memories", ""),
         state.get("conversation_summary", ""),
     )
     logger.debug(

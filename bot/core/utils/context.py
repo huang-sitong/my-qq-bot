@@ -18,12 +18,11 @@ _CHARS_PER_TOKEN = 1.5
 def estimate_context_tokens(
     messages: list[BaseMessage],
     persona: str,
-    memories: str,
     summary: str,
 ) -> int:
     """Estimate total tokens for the full context sent to the LLM.
 
-    Builds the same three-layer structure that ``call_llm_node`` uses
+    Builds the same layer structure that ``call_llm_node`` uses
     and passes it through ``count_tokens_approximately`` for a single
     consistent token count.
     """
@@ -39,13 +38,7 @@ def estimate_context_tokens(
             content=f"之前的对话摘要：\n{summary}"
         ))
 
-    # Layer 2: user memories (optional)
-    if memories.strip():
-        all_msgs.append(SystemMessage(
-            content=f"关于当前用户已知的信息：\n{memories}"
-        ))
-
-    # Layer 3..N: recent messages
+    # Layer 2..N: recent messages
     all_msgs.extend(messages)
 
     return count_tokens_approximately(

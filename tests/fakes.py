@@ -50,7 +50,6 @@ def make_state(**overrides) -> dict:
     state = {
         "messages": [],
         "persona": "你是{bot_name}",
-        "user_memories": "",
         "conversation_summary": "",
         "session_id": "test:session",
         "thread_id": "test:thread",

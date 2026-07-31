@@ -45,14 +45,13 @@ async def main():
         request_timeout=config.llm_request_timeout,
     )
     rag_service = RagService(config) if config.rag_enabled else None
+    memory_store = MemoryStore(db_dir=config.db_dir)
     graph, checkpointer = await create_graph(
-        llm, config, db_dir=config.db_dir, rag_service=rag_service,
+        llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
     )
 
-    memory_store = MemoryStore(db_dir=config.db_dir)
     handler = MessageHandler(
-        client, graph, persona, memory_store, llm, api_client,
-        rag_service=rag_service,
+        client, graph, persona, api_client, rag_service=rag_service,
     )
 
     # --- Register event handlers ---
@@ -73,6 +72,7 @@ async def main():
         await api_client.close()
         if rag_service is not None:
             rag_service.close()
+        memory_store.close()
         logger.info("Bye.")
 
 

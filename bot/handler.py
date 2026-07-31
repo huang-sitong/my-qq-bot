@@ -2,10 +2,8 @@ import asyncio
 import logging
 
 from langchain_core.messages import HumanMessage
-from langchain_openai import ChatOpenAI
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
-from bot.core.memory import MemoryStore
 from bot.transport.http.client import SatoriApiClient
 from bot.transport.websocket.client import SatoriClient
 from object.satori import EventBody, LoginList
@@ -31,16 +29,12 @@ class MessageHandler:
         client: SatoriClient,
         graph: CompiledGraph,
         persona: str,
-        memory_store: MemoryStore,
-        extract_llm: ChatOpenAI,
         api_client: SatoriApiClient,
         rag_service=None,
     ) -> None:
         self.client = client
         self.graph = graph
         self._persona = persona
-        self._memory_store = memory_store
-        self._extract_llm = extract_llm
         self._api_client = api_client
         self._rag_service = rag_service
         self._bot_id: str | None = None
@@ -148,7 +142,6 @@ class MessageHandler:
         if event.user:
             user_name = event.user.nick or event.user.name or event.user.id or ""
         session_id = f"{platform}:{guild_id}:{channel_id}:{user_id}"
-        memories_text = self._memory_store.format_memories(user_id)
 
         # --- Invoke graph ---
         logger.info(
@@ -170,12 +163,12 @@ class MessageHandler:
                     "session_id": session_id,
                     "thread_id": thread_id,
                     "persona": self._persona,
-                    "user_memories": memories_text,
                     "reply_text": "",
                     "should_respond": False,  # detect_intent decides
                     "bot_name": self._bot_name or "",
                     "bot_id": self._bot_id or "",
                     "tool_rounds": 0,
+                    "user_id": user_id,
                     "channel_type": channel_type,
                     "raw_content": raw_content,
                     "user_name": user_name,
@@ -189,11 +182,10 @@ class MessageHandler:
             logger.exception("Graph invoke failed for session %s", session_id)
             return
 
-        # --- Post-graph: reply + memory extraction + RAG indexing ---
+        # --- Post-graph: reply + RAG indexing ---
         reply_text = result.get("reply_text", "")
         if reply_text:
             await self._send_reply(channel_id, reply_text)
-            await self._extract_memories(user_id, raw_content, reply_text)
             if self._rag_service is not None:
                 await self._index_turn(thread_id, user_id, user_name, raw_content, reply_text)
 
@@ -211,24 +203,6 @@ class MessageHandler:
             await self._api_client.send_message(channel_id, content)
         except Exception:
             logger.exception("Failed to send reply to channel %s", channel_id)
-
-    # ------------------------------------------------------------------
-    # Memory extraction
-    # ------------------------------------------------------------------
-
-    async def _extract_memories(self, user_id: str, user_message: str, bot_reply: str) -> None:
-        """Extract user facts from conversation and persist them."""
-        prompt = MemoryStore.EXTRACT_PROMPT.format(
-            user_message=user_message, bot_reply=bot_reply,
-        )
-        try:
-            response = await self._extract_llm.ainvoke(prompt)
-            memories = MemoryStore.parse_extraction(response.content)
-            if memories:
-                self._memory_store.store_memories(user_id, memories)
-                logger.info("Stored %d memories for user %s", len(memories), user_id)
-        except Exception:
-            logger.debug("Memory extraction skipped (non-critical)", exc_info=True)
 
     # ------------------------------------------------------------------
     # RAG indexing

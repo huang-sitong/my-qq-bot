@@ -1,7 +1,7 @@
 """search_chat_history 工具。
 
 纯函数：按查询检索群聊历史并格式化为上下文文本块。
-rag_service 与 thread_id 由 rag_tool_node 在调用时注入，LLM 无需知道内部标识。
+rag_service 与 thread_id 由 tool_node 在调用时注入，LLM 无需知道内部标识。
 """
 
 import logging

@@ -31,7 +31,13 @@ async def create_graph(
     builder.add_node("detect_intent", detect_intent)
     builder.add_node("router", partial(router_node, llm=llm))
     builder.add_node(
-        "call_llm", partial(call_llm_node, llm=llm, rag_service=rag_service, bot_config=config)
+        "call_llm", partial(
+            call_llm_node,
+            llm=llm,
+            rag_service=rag_service,
+            memory_store=memory_store,
+            bot_config=config,
+        )
     )
     builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
     builder.add_node("tool_node", partial(tool_node, rag_service=rag_service, memory_store=memory_store))

@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from bot.core.graph import create_graph
 from common import BotConfig
-from tests.fakes import ScriptedLLM, StubRagService
+from tests.fakes import ScriptedLLM, StubMemoryStore, StubRagService
 
 TOOL_CALLS = [
     {"name": "search_chat_history", "args": {"query": "之前聊了什么"}, "id": "call_1", "type": "tool_call"},
@@ -24,7 +24,6 @@ def _initial_state() -> dict:
         "session_id": "test:session",
         "thread_id": "test:thread",
         "persona": "你是{bot_name}",
-        "user_memories": "",
         "reply_text": "",
         "should_respond": False,
         "bot_name": "测试机器人",
@@ -32,6 +31,7 @@ def _initial_state() -> dict:
         "channel_type": 1,
         "raw_content": "还记得我们聊过 RAG 吗？",
         "user_name": "张三",
+        "user_id": "u1",
         "tool_rounds": 0,
     }
 
@@ -55,3 +55,27 @@ def test_graph_loops_tool_call_then_answers(tmp_path):
     tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
     assert tool_msgs, "expected a ToolMessage from the tool loop"
     assert "上次我们决定用 qwen3-embedding" in tool_msgs[0].content
+
+
+def test_graph_memory_tool_roundtrip(tmp_path):
+    store = StubMemoryStore()
+    store.store_memory("u1", "名字", "张三")
+    llm = ScriptedLLM([
+        # 第一次 call_llm：请求调用 recall 工具
+        AIMessage(content="", tool_calls=[
+            {"name": "recall_user_memory", "args": {"keyword": "名字"},
+             "id": "call_m", "type": "tool_call"},
+        ]),
+        # 第二次 call_llm（回环后）：给出最终回复
+        AIMessage(content="你之前说过你叫张三"),
+    ])
+    graph, _ = asyncio.run(
+        create_graph(llm, BotConfig(rag_enabled=False), db_dir=str(tmp_path), memory_store=store)
+    )
+
+    result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == "你之前说过你叫张三"
+    tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    assert tool_msgs
+    assert "张三" in tool_msgs[0].content

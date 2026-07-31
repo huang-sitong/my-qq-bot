@@ -7,7 +7,6 @@ templates — keep environment-specific secrets in ``.env`` instead.
 from .config import BotConfig
 from .prompts import (
     DEFAULT_PERSONA_PROMPT,
-    EXTRACT_PROMPT,
     MEMORY_TOOL_HINT,
     ROUTER_PROMPT,
     SUMMARY_PROMPT,
@@ -16,7 +15,6 @@ from .prompts import (
 __all__ = [
     "BotConfig",
     "DEFAULT_PERSONA_PROMPT",
-    "EXTRACT_PROMPT",
     "MEMORY_TOOL_HINT",
     "ROUTER_PROMPT",
     "SUMMARY_PROMPT",
