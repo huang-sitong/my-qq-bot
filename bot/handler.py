@@ -4,7 +4,7 @@ import logging
 from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
-from bot.core.utils import clean_text, parse_content
+from bot.core.utils import parse_content
 from bot.transport.http.client import SatoriApiClient
 from bot.transport.websocket.client import SatoriClient
 from object.satori import EventBody, LoginList
@@ -25,14 +25,12 @@ class MessageHandler:
         graph: CompiledGraph,
         persona: str,
         api_client: SatoriApiClient,
-        rag_service=None,
         bot_config=None,
     ) -> None:
         self.client = client
         self.graph = graph
         self._persona = persona
         self._api_client = api_client
-        self._rag_service = rag_service
         self._bot_config = bot_config
         self._bot_id: str | None = None
         self._bot_name: str | None = None
@@ -187,16 +185,10 @@ class MessageHandler:
             logger.exception("Graph invoke failed for session %s", session_id)
             return
 
-        # --- Post-graph: reply + RAG indexing ---
+        # --- Post-graph: reply (RAG indexing is now a graph node after summarize) ---
         reply_text = result.get("reply_text", "")
         if reply_text:
             await self._send_reply(channel_id, reply_text)
-            if self._rag_service is not None:
-                await self._index_turn(thread_id, user_id, user_name, raw_content, reply_text)
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # Reply sending
@@ -208,27 +200,3 @@ class MessageHandler:
             await self._api_client.send_message(channel_id, content)
         except Exception:
             logger.exception("Failed to send reply to channel %s", channel_id)
-
-    # ------------------------------------------------------------------
-    # RAG indexing
-    # ------------------------------------------------------------------
-
-    async def _index_turn(
-        self,
-        thread_id: str,
-        user_id: str,
-        user_name: str,
-        user_message: str,
-        bot_reply: str,
-    ) -> None:
-        """将本轮对话（用户消息 + Bot 回复）索引入向量库。
-
-        用户消息先清洗：剥掉全部元素标签（@/图片/文件…）只留纯文本；
-        纯媒体消息无文本则跳过（避免把标签噪声入库）。失败仅降级。
-        """
-        content = clean_text(user_message)
-        if not content.strip():
-            return
-        await self._rag_service.index_turn(
-            thread_id, user_id, user_name, content, bot_reply,
-        )

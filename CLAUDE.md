@@ -33,7 +33,7 @@ bot/
       content_parser.py      #   Satori content 解析：消息类型分类 + 附件 + 清洗文本（clean_text / to_llm_text）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   router, call_llm — invoke an LLM
-      action_node/           #   detect_intent (routing), summarize (context window management)
+      action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
       tool_node/             #   tool_node — 执行 LLM 请求的工具调用（图级循环）
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
@@ -57,8 +57,8 @@ WebSocket event → SatoriClient → MessageHandler.handle()
     → call_llm (llm_node)          ← dynamic SystemMessage injection
       tool_node (tool_node)    ← call_llm 返回 tool_calls 时按工具名分发（search_chat_history / remember_user_memory / recall_user_memory），回环到 call_llm
     → summarize (action_node)      ← token threshold check → progressive summary
+    → index_turn (action_node)     ← 有回复的对话写入 RAG 向量库（用户消息 + Bot 回复）
   → send reply via SatoriApiClient
-  → index turn into RagService（用户消息 + Bot 回复）
 ```
 
 ### Three-database design
@@ -116,7 +116,7 @@ system_msgs = [SystemMessage(content=persona)]
 ### RAG（群聊历史检索）
 
 - **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm` 绑定 `search_chat_history` 工具（`memory_store` 注入时同时绑定 `remember_user_memory` / `recall_user_memory`），**LLM 自行决定何时检索**。若返回 `tool_calls`，条件边路由到 `tool_node` 执行，回边到 `call_llm` 继续；`tool_rounds`（总工具轮次计数）达到 `rag_max_agent_rounds` 后走无工具路径强制收尾。
-- **索引**：每轮**有回复**的对话在图外由 `MessageHandler._index_turn()` 写入向量库（用户消息 + Bot 回复两条记录）；用户内容先经 `_strip_leading_mention` 去掉 @提及前缀。索引失败仅降级（记日志不抛出）。
+- **索引**：每轮**有回复**的对话由图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）写入向量库（用户消息 + Bot 回复两条记录）；用户内容先经 `clean_text` 清洗（剥全部元素标签 + unescape），纯媒体消息跳过。索引失败仅降级（`RagService.index_turn` 内部吞异常）。
 - **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。
 - **工具闭环**：`search_chat_history(query, rag_service, thread_id)` 是纯函数，`tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。

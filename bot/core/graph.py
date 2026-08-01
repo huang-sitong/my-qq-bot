@@ -8,7 +8,14 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from bot.core.nodes import call_llm_node, detect_intent, router_node, summarize_node, tool_node
+from bot.core.nodes import (
+    call_llm_node,
+    detect_intent,
+    index_turn_node,
+    router_node,
+    summarize_node,
+    tool_node,
+)
 from common import BotConfig
 from object.bot.state import BotState
 
@@ -40,6 +47,7 @@ async def create_graph(
         )
     )
     builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
+    builder.add_node("index_turn", partial(index_turn_node, rag_service=rag_service))
     builder.add_node("tool_node", partial(tool_node, rag_service=rag_service, memory_store=memory_store))
 
     builder.add_edge(START, "detect_intent")
@@ -53,7 +61,8 @@ async def create_graph(
         lambda s: "tool_node" if getattr(s["messages"][-1], "tool_calls", None) else "summarize",
     )
     builder.add_edge("tool_node", "call_llm")
-    builder.add_edge("summarize", END)
+    builder.add_edge("summarize", "index_turn")
+    builder.add_edge("index_turn", END)
 
     checkpoint_path = os.path.join(db_dir, "checkpoint.sqlite")
     conn = await aiosqlite.connect(checkpoint_path)
