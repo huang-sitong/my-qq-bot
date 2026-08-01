@@ -91,3 +91,17 @@ class BotConfig:
     rag_max_agent_rounds: int = field(
         default_factory=lambda: int(os.getenv("BOT_RAG_MAX_AGENT_ROUNDS", "3")),
     )
+
+    # --- Vision (本地 Ollama 视觉模型，图片描述) ---
+    vision_enabled: bool = field(
+        default_factory=lambda: os.getenv("BOT_VISION_ENABLED", "1") not in ("0", "false", "False", ""),
+    )
+    vision_model: str = field(
+        default_factory=lambda: os.getenv("BOT_VISION_MODEL", "qwen3-vl:2b"),
+    )
+    vision_max_images: int = field(
+        default_factory=lambda: int(os.getenv("BOT_VISION_MAX_IMAGES", "3")),
+    )
+    vision_timeout: int = field(
+        default_factory=lambda: int(os.getenv("BOT_VISION_TIMEOUT", "60")),
+    )

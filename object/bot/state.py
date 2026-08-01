@@ -36,3 +36,5 @@ class BotState(TypedDict):
     # --- Message classification (computed in MessageHandler, ingress) ---
     content_kind: str       # MessageKind.value: "text"/"image"/"file"/"audio"/"video"
     llm_text: str           # media tags -> placeholder, @ stripped — HumanMessage content
+    image_srcs: list[str]   # 本轮图片 URL（describe_image 视觉理解用）
+    vision_desc: str        # 本轮图片描述（RAG 索引；仅 image 轮有效）
