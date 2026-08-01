@@ -5,14 +5,10 @@
 视觉服务为 None 或非图片消息时 no-op（占位符保留，行为同旧版）。
 """
 
-import logging
-
 from langchain_core.messages import HumanMessage
 
 from bot.core.vision.service import VisionService
 from object.bot.state import BotState
-
-logger = logging.getLogger(__name__)
 
 
 def replace_placeholders(content: str, descriptions: list[str]) -> str:
