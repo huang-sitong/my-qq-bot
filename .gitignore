@@ -17,3 +17,5 @@ wheels/
 # Runtime data
 db/*.sqlite*
 !db/.gitkeep
+# Captured Satori wire-format samples (diagnostic output)
+docs/captured_messages.jsonl

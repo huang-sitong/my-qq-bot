@@ -30,6 +30,7 @@ bot/
       store.py               #   RagVectorStore — sqlite-vec 向量表 + 元数据表 (rag.sqlite)
     utils/                   # Pure utility functions (no state)
       context.py             #   token estimation + message formatting for summarization
+      content_parser.py      #   Satori content 解析：消息类型分类 + 附件 + 清洗文本（clean_text / to_llm_text）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   router, call_llm — invoke an LLM
       action_node/           #   detect_intent (routing), summarize (context window management)
