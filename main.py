@@ -8,6 +8,7 @@ from bot import (
     RagService,
     SatoriApiClient,
     SatoriClient,
+    VisionService,
     create_graph,
     setup_llm,
 )
@@ -46,8 +47,17 @@ async def main():
     )
     rag_service = RagService(config) if config.rag_enabled else None
     memory_store = MemoryStore(db_dir=config.db_dir)
+    vision_service = None
+    if config.vision_enabled:
+        vision_service = VisionService(
+            base_url=config.ollama_base_url,
+            model=config.vision_model,
+            timeout=config.vision_timeout,
+            max_images=config.vision_max_images,
+        )
     graph, checkpointer = await create_graph(
         llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
+        vision_service=vision_service,
     )
 
     handler = MessageHandler(
@@ -73,6 +83,8 @@ async def main():
         await api_client.close()
         if rag_service is not None:
             rag_service.close()
+        if vision_service is not None:
+            await vision_service.close()
         memory_store.close()
         logger.info("Bye.")
 
