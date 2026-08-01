@@ -36,6 +36,7 @@ class StubRagService:
         self.raise_on_search = raise_on_search
         self.last_query = None
         self.last_thread_id = None
+        self.last_indexed = None
 
     async def search(self, query, thread_id, top_k=None, score_threshold=None):
         self.last_query = query
@@ -43,6 +44,15 @@ class StubRagService:
         if self.raise_on_search:
             raise RuntimeError("search failed")
         return self.search_results
+
+    async def index_turn(self, thread_id, user_id, user_name, user_message, bot_reply):
+        self.last_indexed = {
+            "thread_id": thread_id,
+            "user_id": user_id,
+            "user_name": user_name,
+            "user_message": user_message,
+            "bot_reply": bot_reply,
+        }
 
 
 def make_state(**overrides) -> dict:

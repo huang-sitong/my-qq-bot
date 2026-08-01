@@ -4,17 +4,12 @@ import logging
 from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
+from bot.core.utils import clean_text, parse_content
 from bot.transport.http.client import SatoriApiClient
 from bot.transport.websocket.client import SatoriClient
 from object.satori import EventBody, LoginList
 
 logger = logging.getLogger(__name__)
-
-
-def _strip_leading_mention(content: str) -> str:
-    """Remove a leading ``<at …/>`` mention tag so stored content is clean."""
-    idx = content.find(">")
-    return content[idx + 1:].lstrip() if idx != -1 else content
 
 
 class MessageHandler:
@@ -145,10 +140,14 @@ class MessageHandler:
             user_name = event.user.nick or event.user.name or event.user.id or ""
         session_id = f"{platform}:{guild_id}:{channel_id}:{user_id}"
 
+        # --- Message classification (ingress) ---
+        parsed = parse_content(raw_content)
+        content_kind = parsed.kind.value
+
         # --- Invoke graph ---
         logger.info(
-            "Processing message from %s (session=%s, thread=%s): %.60s",
-            user_id, session_id, thread_id, raw_content,
+            "Processing %s message from %s (session=%s, thread=%s): %.60s",
+            content_kind, user_id, session_id, thread_id, raw_content,
         )
         # recursion_limit 是 LangGraph 的兜底，真实上限由 rag_max_agent_rounds 决定
         # （4 + 2n 个 super-step，n = 工具轮次），这里按配置放一个充裕的安全网。
@@ -176,6 +175,8 @@ class MessageHandler:
                     "channel_type": channel_type,
                     "raw_content": raw_content,
                     "user_name": user_name,
+                    "content_kind": content_kind,
+                    "llm_text": parsed.llm_text,
                 },
                 {
                     "configurable": {"thread_id": thread_id},
@@ -220,8 +221,14 @@ class MessageHandler:
         user_message: str,
         bot_reply: str,
     ) -> None:
-        """将本轮对话（用户消息 + Bot 回复）索引入向量库。失败仅降级。"""
-        content = _strip_leading_mention(user_message)
+        """将本轮对话（用户消息 + Bot 回复）索引入向量库。
+
+        用户消息先清洗：剥掉全部元素标签（@/图片/文件…）只留纯文本；
+        纯媒体消息无文本则跳过（避免把标签噪声入库）。失败仅降级。
+        """
+        content = clean_text(user_message)
+        if not content.strip():
+            return
         await self._rag_service.index_turn(
             thread_id, user_id, user_name, content, bot_reply,
         )

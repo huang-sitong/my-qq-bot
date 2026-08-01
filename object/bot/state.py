@@ -32,3 +32,6 @@ class BotState(TypedDict):
     bot_id: str             # bot's own user ID for @-mention detection
     raw_content: str        # original message before mention-stripping
     user_name: str          # sender's display name (for group chat attribution)
+    # --- Message classification (computed in MessageHandler, ingress) ---
+    content_kind: str       # MessageKind.value: "text"/"image"/"file"/"audio"/"video"
+    llm_text: str           # media tags -> placeholder, @ stripped — HumanMessage content

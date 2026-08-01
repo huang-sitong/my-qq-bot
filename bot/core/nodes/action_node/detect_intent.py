@@ -42,8 +42,11 @@ async def detect_intent(state: BotState) -> dict:
     else:
         should_respond = False  # let router_node (LLM) decide
 
-    # 2) Strip @-mention and build HumanMessage
-    content = _strip_mention(raw_content)
+    # 2) Build HumanMessage: prefer handler-computed llm_text (media->placeholder,
+    #    @ stripped); fall back to stripping the leading mention ourselves.
+    content = state.get("llm_text")
+    if content is None:
+        content = _strip_mention(raw_content)
     is_group = channel_type != ChannelType.DIRECT
     if is_group and user_name:
         new_message = HumanMessage(content=content, name=user_name)
