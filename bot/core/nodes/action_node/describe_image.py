@@ -46,7 +46,7 @@ async def describe_image_node(state: BotState, vision_service: VisionService | N
     new_content = replace_placeholders(msg.content, descriptions)
     vision_desc = "；".join(d for d in descriptions if d)
     if new_content == msg.content and not vision_desc:
-        return {}  # 全部失败 → 无需改动
+        return {"vision_desc": ""}  # 图片轮全失败：清空陈旧 vision_desc，防跨轮污染 RAG 索引
     return {
         "messages": [HumanMessage(content=new_content, id=msg.id)],  # 同 id → 原位替换
         "vision_desc": vision_desc,

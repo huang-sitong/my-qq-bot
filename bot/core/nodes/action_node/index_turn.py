@@ -3,8 +3,8 @@
 Runs after ``summarize``. It is reached by both replied turns (user +
 bot reply, 2 records) and non-replied group text (user only, 1 record —
 ``bot_reply`` is empty and ``RagService.index_turn`` filters it out).
-Media-only content (empty ``clean_text``) is skipped；图片回复轮带视觉
-描述（``vision_desc``）则并入用户消息索引。
+Media-only content (empty ``clean_text``) is skipped; image turns with a
+``vision_desc`` merge the description into the indexed user message.
 """
 
 import logging

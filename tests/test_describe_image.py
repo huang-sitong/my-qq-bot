@@ -48,7 +48,7 @@ def test_partial_failure_keeps_placeholder():
     assert result["vision_desc"] == "狗"
 
 
-def test_all_failed_is_noop():
+def test_all_failed_clears_stale_vision_desc():
     fake = FakeVisionService(["", ""])
     msg = HumanMessage(content="[图片]")
-    assert asyncio.run(describe_image_node(_state(msg), fake)) == {}
+    assert asyncio.run(describe_image_node(_state(msg), fake)) == {"vision_desc": ""}
