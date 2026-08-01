@@ -108,4 +108,5 @@ class RagService:
             return []
 
     def close(self) -> None:
+        self._embedder.close()
         self._store.close()

@@ -73,6 +73,12 @@ class BotConfig:
     embed_dimensions: int = field(
         default_factory=lambda: int(os.getenv("BOT_EMBED_DIMENSIONS", "1024")),
     )
+    embed_cache_enabled: bool = field(
+        default_factory=lambda: os.getenv("BOT_EMBED_CACHE_ENABLED", "1") not in ("0", "false", "False", ""),
+    )
+    embed_cache_max_entries: int = field(
+        default_factory=lambda: int(os.getenv("BOT_EMBED_CACHE_MAX_ENTRIES", "20000")),
+    )
     rag_top_k: int = field(
         default_factory=lambda: int(os.getenv("BOT_RAG_TOP_K", "5")),
     )

@@ -26,6 +26,7 @@ bot/
     memory.py                # MemoryStore — SQLite kv per user (memory.sqlite)
     rag/                     # 群聊历史 RAG（向量检索）
       embedder.py            #   EmbeddingService — Ollama qwen3-embedding，Instruct 前缀
+      cache.py               #   EmbeddingCache — content 哈希 → 向量磁盘缓存 (embed_cache.sqlite)
       service.py             #   RagService — index_turn / search 组合接口
       store.py               #   RagVectorStore — sqlite-vec 向量表 + 元数据表 (rag.sqlite)
     utils/                   # Pure utility functions (no state)
@@ -68,6 +69,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 | `db/checkpoint.sqlite` | LangGraph `AsyncSqliteSaver` | Conversation state checkpoints (tables: `checkpoint`, `writes`, `user_memory`) |
 | `db/memory.sqlite` | `MemoryStore` | Long-term user facts written by LLM via remember/recall tools (table: `user_memories`) |
 | `db/rag.sqlite` | `RagVectorStore` | Group chat history vectors for semantic retrieval (`chat_embeddings` vec0 table + `chat_embedding_meta`) |
+| `db/embed_cache.sqlite` | `EmbeddingCache` | 嵌入向量磁盘缓存（表 `embed_cache`，key=sha256(model+文本)） |
 
 ### Session vs Thread
 
@@ -117,10 +119,10 @@ system_msgs = [SystemMessage(content=persona)]
 
 - **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm` 绑定 `search_chat_history` 工具（`memory_store` 注入时同时绑定 `remember_user_memory` / `recall_user_memory`），**LLM 自行决定何时检索**。若返回 `tool_calls`，条件边路由到 `tool_node` 执行，回边到 `call_llm` 继续；`tool_rounds`（总工具轮次计数）达到 `rag_max_agent_rounds` 后走无工具路径强制收尾。
 - **索引**：每轮**有回复**的对话由图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）写入向量库（用户消息 + Bot 回复两条记录）；用户内容先经 `clean_text` 清洗（剥全部元素标签 + unescape），纯媒体消息跳过。索引失败仅降级（`RagService.index_turn` 内部吞异常）。
-- **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。
+- **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。嵌入结果按 `(model, 文本)` 哈希落盘缓存（`cache.py`，`db/embed_cache.sqlite`，key 含 model 故换模型自动失效），重复文本命中缓存不再调 Ollama。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。
 - **工具闭环**：`search_chat_history(query, rag_service, thread_id)` 是纯函数，`tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。
-- **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`）。
+- **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_EMBED_CACHE_ENABLED` / `BOT_EMBED_CACHE_MAX_ENTRIES` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`）。
 
 ### 记忆工具（用户持久记忆）
 
