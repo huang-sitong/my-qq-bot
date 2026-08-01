@@ -10,6 +10,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from bot.core.nodes import (
     call_llm_node,
+    describe_image_node,
     detect_intent,
     index_turn_node,
     summarize_node,
@@ -24,12 +25,12 @@ logger = logging.getLogger(__name__)
 def _route_after_detect(state: BotState) -> str:
     """Deterministic 3-way route from detect_intent (no LLM router).
 
-    - should_respond → call_llm (reply path)
+    - should_respond → describe_image (vision for image turns, no-op for text) → call_llm
     - non-replied text → summarize (context + compression + single-record index)
     - non-replied media (image group non-@ / file / audio / video) → END
     """
     if state.get("should_respond", False):
-        return "call_llm"
+        return "describe_image"
     if state.get("content_kind", "") == "text":
         return "summarize"
     return END
@@ -41,6 +42,7 @@ async def create_graph(
     db_dir: str = "db",
     rag_service=None,
     memory_store=None,
+    vision_service=None,
 ) -> tuple[CompiledStateGraph, AsyncSqliteSaver]:
     """Build and compile the conversation graph.
 
@@ -61,6 +63,7 @@ async def create_graph(
     builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
     builder.add_node("index_turn", partial(index_turn_node, rag_service=rag_service))
     builder.add_node("tool_node", partial(tool_node, rag_service=rag_service, memory_store=memory_store))
+    builder.add_node("describe_image", partial(describe_image_node, vision_service=vision_service))
 
     builder.add_edge(START, "detect_intent")
     builder.add_conditional_edges("detect_intent", _route_after_detect)
@@ -69,6 +72,7 @@ async def create_graph(
         lambda s: "tool_node" if getattr(s["messages"][-1], "tool_calls", None) else "summarize",
     )
     builder.add_edge("tool_node", "call_llm")
+    builder.add_edge("describe_image", "call_llm")
     builder.add_edge("summarize", "index_turn")
     builder.add_edge("index_turn", END)
 

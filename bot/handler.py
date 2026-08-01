@@ -141,6 +141,7 @@ class MessageHandler:
         # --- Message classification (ingress) ---
         parsed = parse_content(raw_content)
         content_kind = parsed.kind.value
+        image_srcs = [a.src for a in parsed.attachments if a.type == "img"]
 
         # --- Invoke graph ---
         logger.info(
@@ -175,6 +176,7 @@ class MessageHandler:
                     "user_name": user_name,
                     "content_kind": content_kind,
                     "llm_text": parsed.llm_text,
+                    "image_srcs": image_srcs,
                 },
                 {
                     "configurable": {"thread_id": thread_id},

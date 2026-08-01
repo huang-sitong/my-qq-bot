@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from bot.core.graph import create_graph
 from common import BotConfig
-from tests.fakes import ScriptedLLM, StubMemoryStore, StubRagService
+from tests.fakes import FakeVisionService, ScriptedLLM, StubMemoryStore, StubRagService
 
 TOOL_CALLS = [
     {"name": "search_chat_history", "args": {"query": "之前聊了什么"}, "id": "call_1", "type": "tool_call"},
@@ -140,3 +140,50 @@ def test_private_file_ends_without_reply(tmp_path):
     assert result["reply_text"] == ""
     assert rag.last_indexed is None
     assert result["messages"] == []
+
+
+def test_graph_image_reply_includes_vision_description(tmp_path):
+    rag = StubRagService()
+    vision = FakeVisionService(["一只猫坐在窗台上"])
+    llm = ScriptedLLM([AIMessage(content="好可爱的猫！")])
+    graph, _ = asyncio.run(
+        create_graph(
+            llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path),
+            rag_service=rag, vision_service=vision,
+        )
+    )
+    state = {
+        **_initial_state(),
+        "content_kind": "image",
+        "raw_content": '<img src="https://x/1.jpg"/>',
+        "llm_text": "[图片]",
+        "image_srcs": ["https://x/1.jpg"],
+    }
+    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == "好可爱的猫！"
+    humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
+    assert humans and humans[0].content == "[图片：一只猫坐在窗台上]"
+    assert rag.last_indexed is not None
+    assert "一只猫坐在窗台上" in rag.last_indexed["user_message"]
+
+
+def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
+    rag = StubRagService()
+    llm = ScriptedLLM([AIMessage(content="我看不到图")])
+    graph, _ = asyncio.run(
+        create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+    )
+    state = {
+        **_initial_state(),
+        "content_kind": "image",
+        "raw_content": '<img src="https://x/1.jpg"/>',
+        "llm_text": "[图片]",
+        "image_srcs": ["https://x/1.jpg"],
+    }
+    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == "我看不到图"
+    humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
+    assert humans and humans[0].content == "[图片]"  # 占位符保留
+    assert rag.last_indexed is None  # 纯图片无描述 → 不入库
