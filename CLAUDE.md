@@ -33,14 +33,14 @@ bot/
       context.py             #   token estimation + message formatting for summarization
       content_parser.py      #   Satori content 解析：消息类型分类 + 附件 + 清洗文本（clean_text / to_llm_text）
     nodes/                   # Graph nodes classified by execution mechanism:
-      llm_node/              #   router, call_llm — invoke an LLM
+      llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
       action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
       tool_node/             #   tool_node — 执行 LLM 请求的工具调用（图级循环）
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tool_node / subgraph
       search_chat_history.py #   search_chat_history 工具（TOOL_SCHEMA + 纯函数）
       user_memory.py         #   remember_user_memory / recall_user_memory 工具（TOOL_SCHEMA + 纯函数）
-  handler.py                 # MessageHandler — ingress: validation → queue → graph → reply → RAG index
+  handler.py                 # MessageHandler — ingress: validation → queue → graph → reply（RAG 索引在图内 index_turn）
 object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
   satori/                    #   Satori protocol: enums, models, events, API endpoints
@@ -53,12 +53,12 @@ db/                          # runtime databases (checkpoint.sqlite, memory.sqli
 WebSocket event → SatoriClient → MessageHandler.handle()
   → validation + enqueue → worker dequeues（按 thread_id 加锁串行化）
   → graph.ainvoke(state, thread_id)
-    → detect_intent (action_node)  ← DIRECT / @-mention → should_respond
-    → router (llm_node)            ← LLM name-mention fallback
+    → detect_intent (action_node)  ← 确定性三路（无 LLM router）：text/image 对 DIRECT/@ 回复；file/audio/video 永不回复；媒体非回复不入上下文
+      → 条件边：should_respond → call_llm；非回复文本 → summarize；其余 → END
     → call_llm (llm_node)          ← dynamic SystemMessage injection
       tool_node (tool_node)    ← call_llm 返回 tool_calls 时按工具名分发（search_chat_history / remember_user_memory / recall_user_memory），回环到 call_llm
     → summarize (action_node)      ← token threshold check → progressive summary
-    → index_turn (action_node)     ← 有回复的对话写入 RAG 向量库（用户消息 + Bot 回复）
+    → index_turn (action_node)     ← 回复轮索引 2 条（用户+Bot）；群聊非@文本索引 1 条（仅用户）；纯媒体不索引
   → send reply via SatoriApiClient
 ```
 
@@ -86,7 +86,6 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 ### Node dependency injection
 
 Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not closures). In `graph.py`:
-- `router_node` bound with `partial(router_node, llm=llm)`
 - `call_llm_node` bound with `partial(call_llm_node, llm=llm, rag_service=rag_service, memory_store=memory_store, bot_config=config)`
 - `summarize_node` bound with `partial(summarize_node, llm=llm, bot_config=config)`
 - `tool_node` bound with `partial(tool_node, rag_service=rag_service, memory_store=memory_store)`
@@ -113,12 +112,12 @@ system_msgs = [SystemMessage(content=persona)]
 - Persona is always at `messages[0]` regardless of conversation length — immune to context-window truncation
 - Persona changes take effect immediately (no `has_persona` gate)
 - Checkpoint stores conversation history (HumanMessage + AIMessage + ToolMessage)，not system instructions
-- `DEFAULT_PERSONA_PROMPT` uses `{bot_name}` placeholder — formatted at invocation time, same pattern as `ROUTER_PROMPT`
+- `DEFAULT_PERSONA_PROMPT` uses `{bot_name}` placeholder — formatted at invocation time（`ROUTER_PROMPT` 已随 router 摘除停用，仅保留文件）
 
 ### RAG（群聊历史检索）
 
 - **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm` 绑定 `search_chat_history` 工具（`memory_store` 注入时同时绑定 `remember_user_memory` / `recall_user_memory`），**LLM 自行决定何时检索**。若返回 `tool_calls`，条件边路由到 `tool_node` 执行，回边到 `call_llm` 继续；`tool_rounds`（总工具轮次计数）达到 `rag_max_agent_rounds` 后走无工具路径强制收尾。
-- **索引**：每轮**有回复**的对话由图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）写入向量库（用户消息 + Bot 回复两条记录）；用户内容先经 `clean_text` 清洗（剥全部元素标签 + unescape），纯媒体消息跳过。索引失败仅降级（`RagService.index_turn` 内部吞异常）。
+- **索引**：图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）对**回复轮**写入 2 条（用户消息 + Bot 回复）、对**群聊非@文本**只写入 1 条（仅用户消息，`bot_reply` 为空由 `RagService.index_turn` 配对过滤）；用户内容先经 `clean_text` 清洗（剥全部元素标签 + unescape），纯媒体消息跳过。索引失败仅降级（`RagService.index_turn` 内部吞异常）。
 - **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。嵌入结果按 `(model, 文本)` 哈希落盘缓存（`cache.py`，`db/embed_cache.sqlite`，key 含 model 故换模型自动失效），重复文本命中缓存不再调 Ollama。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。
 - **工具闭环**：`search_chat_history(query, rag_service, thread_id)` 是纯函数，`tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。
@@ -146,7 +145,9 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **`object/` package**: setuptools `__legacy__` backend renames `data_object` → `object` in editable installs. Always import from `object.*`, never `data_object.*`.
 
-- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`. Detection uses `f'<at id="{bot_id}"' in content`. Note there are **two** mention-strippers: `bot/handler.py:_strip_leading_mention` (RAG 索引前) and `bot/core/nodes/action_node/detect_intent.py:_strip_mention` (构造 HumanMessage 前).
+- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`. Detection uses `f'<at id="{bot_id}"' in content`（`detect_intent`）。剥 at 主路径是 `content_parser.to_llm_text`（构造 HumanMessage 前）；`detect_intent._strip_mention` 仅在 state 无 `llm_text` 时兜底。
+
+- **回复判定树（router 已架空，纯确定性）**: text/image 在私聊或群聊@时回复；file/audio/video 永不回复（即使私聊）。群聊非@的**文本**仍入上下文并跳 `summarize`、只索引用户消息 1 条；**图片**直接 END（不入上下文、不索引）。图文混合按主类型（content_kind）判定。注意：`detect_intent` 的 `add_to_context` 与 `graph._route_after_detect` 两处逻辑需同步。
 
 - **`uv` package manager**: PyPI mirror is `https://pypi.tuna.tsinghua.edu.cn/simple`. Python >=3.12.
 

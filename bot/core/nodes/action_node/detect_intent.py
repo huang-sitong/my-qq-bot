@@ -1,8 +1,12 @@
-"""detect_intent — fast-path routing: determine if the bot should respond.
+"""detect_intent — deterministic routing: decide if the bot should respond.
 
-Sets ``should_respond`` from channel type and @-mention detection,
-then strips the @-mention prefix and builds the HumanMessage with
-correct user attribution for group chats.
+``should_respond`` is decided purely from channel type, content kind and
+@-mention detection (no LLM router):
+- text/image: reply on private chat or group @-mention
+- file/audio/video: never reply (even in private chat)
+
+Media messages that are NOT replied to are kept out of ``messages`` so their
+placeholders never pollute later context.
 """
 
 import logging
@@ -24,23 +28,28 @@ def _strip_mention(content: str) -> str:
 
 
 async def detect_intent(state: BotState) -> dict:
-    """Fast-path routing: check DIRECT / @-mention, build HumanMessage.
+    """Deterministic routing: decide should_respond, build HumanMessage.
 
-    Called BEFORE the LLM router so that explicit triggers (private
-    chat, @-mention) skip the LLM routing step entirely.
+    The old LLM router is gone: group messages only get a reply on
+    @-mention. Non-replied text still enters context (later summarized +
+    single-record indexed); non-replied media is dropped entirely.
     """
     channel_type = state.get("channel_type", 0)
     bot_id = state.get("bot_id", "")
     raw_content = state.get("raw_content", "")
     user_name = state.get("user_name", "")
+    content_kind = state.get("content_kind", "")
 
-    # 1) Decide should_respond from explicit signals
-    if channel_type == ChannelType.DIRECT:
+    # 1) Decide should_respond — deterministic, no LLM. media never replies
+    #    (the media gate is checked before DIRECT so a private file stays silent).
+    if content_kind in ("file", "audio", "video"):
+        should_respond = False
+    elif channel_type == ChannelType.DIRECT:
         should_respond = True
     elif bot_id and f'<at id="{bot_id}"' in raw_content:
         should_respond = True
     else:
-        should_respond = False  # let router_node (LLM) decide
+        should_respond = False  # 群聊非@：确定性不回复（不再走 LLM router）
 
     # 2) Build HumanMessage: prefer handler-computed llm_text (media->placeholder,
     #    @ stripped); fall back to stripping the leading mention ourselves.
@@ -53,12 +62,15 @@ async def detect_intent(state: BotState) -> dict:
     else:
         new_message = HumanMessage(content=content)
 
+    # 3) Non-replied media must NOT enter context — its placeholder would
+    #    pollute later @-mention turns. Keep them out of ``messages``.
+    add_to_context = should_respond or content_kind == "text"
     logger.debug(
-        "detect_intent: should_respond=%s channel_type=%s is_group=%s",
-        should_respond, channel_type, is_group,
+        "detect_intent: should_respond=%s channel_type=%s content_kind=%s add_to_context=%s",
+        should_respond, channel_type, content_kind, add_to_context,
     )
     return {
         "should_respond": should_respond,
         "new_message": new_message,
-        "messages": [new_message],
+        "messages": [new_message] if add_to_context else [],
     }

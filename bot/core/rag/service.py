@@ -1,7 +1,8 @@
 """RagService — 组合 EmbeddingService 与 RagVectorStore。
 
 对外提供两个异步接口：
-- index_turn: 将一轮对话（用户消息 + Bot 回复）嵌入并入库
+- index_turn: 将一轮对话（用户消息 + Bot 回复）嵌入并入库；bot_reply 为空时
+  只入库用户消息 1 条（群聊非@文本的被动索引）
 - search:    按查询词检索历史，返回格式化上下文
 """
 
@@ -49,32 +50,31 @@ class RagService:
         user_message: str,
         bot_reply: str,
     ) -> None:
-        """嵌入并存储一轮对话（用户消息 + Bot 回复）。失败不抛出，仅降级。"""
+        """嵌入并存储一轮对话（用户消息 + Bot 回复）。失败不抛出，仅降级。
+
+        ``bot_reply`` 可为空（非回复轮）：此时只入库用户消息 1 条，
+        避免写入空的 assistant 记录。
+        """
         if not self.enabled:
             return
         try:
-            contents = [user_message, bot_reply]
-            vectors = await self._embedder.embed_documents(contents)
+            pairs = [(user_message, "user"), (bot_reply, "assistant")]
+            kept = [(c, r) for c, r in pairs if c and c.strip()]
+            if not kept:
+                return
             now = int(time.time())
+            vectors = await self._embedder.embed_documents([c for c, _ in kept])
             records = [
                 {
                     "thread_id": thread_id,
                     "user_id": user_id,
                     "user_name": user_name or "",
-                    "content": user_message,
-                    "role": "user",
+                    "content": content,
+                    "role": role,
                     "timestamp": now,
-                    "embedding": vectors[0],
-                },
-                {
-                    "thread_id": thread_id,
-                    "user_id": user_id,
-                    "user_name": user_name or "",
-                    "content": bot_reply,
-                    "role": "assistant",
-                    "timestamp": now,
-                    "embedding": vectors[1],
-                },
+                    "embedding": vec,
+                }
+                for (content, role), vec in zip(kept, vectors)
             ]
             await asyncio.to_thread(self._store.add, records)
         except Exception:

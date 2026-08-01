@@ -73,6 +73,7 @@ def make_state(**overrides) -> dict:
         "raw_content": "你好",
         "user_name": "张三",
         "tool_rounds": 0,
+        "content_kind": "text",
     }
     state.update(overrides)
     return state

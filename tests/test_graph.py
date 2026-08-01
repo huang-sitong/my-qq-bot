@@ -18,7 +18,7 @@ SAMPLE = [
 
 
 def _initial_state() -> dict:
-    # channel_type=1 (DIRECT) → detect_intent 直接置 should_respond=True，router 不消耗脚本消息
+    # channel_type=1 (DIRECT) → detect_intent 置 should_respond=True → call_llm
     return {
         "new_message": HumanMessage(content="还记得我们聊过 RAG 吗？"),
         "session_id": "test:session",
@@ -33,6 +33,7 @@ def _initial_state() -> dict:
         "user_name": "张三",
         "user_id": "u1",
         "tool_rounds": 0,
+        "content_kind": "text",
     }
 
 
@@ -79,3 +80,63 @@ def test_graph_memory_tool_roundtrip(tmp_path):
     tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
     assert tool_msgs
     assert "张三" in tool_msgs[0].content
+
+
+# ----------------------------------------------------------------------
+# 确定性路由（router 已摘除）：群聊非@ text 入上下文+单条索引；媒体直接 END
+# ----------------------------------------------------------------------
+
+def test_group_non_mention_text_indexes_without_reply(tmp_path):
+    rag = StubRagService()
+    # 非回复路径不触发任何 LLM：call_llm 不执行，summarize 低于阈值 no-op
+    llm = ScriptedLLM([])
+    graph, _ = asyncio.run(
+        create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+    )
+    state = {
+        **_initial_state(),
+        "channel_type": 0,  # 群聊
+        "raw_content": "晚上吃什么",
+        "llm_text": "晚上吃什么",
+    }
+    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == ""  # 不回复
+    assert rag.last_indexed is not None  # 但索引了用户消息
+    assert rag.last_indexed["user_message"] == "晚上吃什么"
+    assert rag.last_indexed["bot_reply"] == ""  # 空回复 → 只索引 1 条
+
+
+def test_group_non_mention_image_ends_without_index(tmp_path):
+    rag = StubRagService()
+    graph, _ = asyncio.run(
+        create_graph(ScriptedLLM([]), BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+    )
+    state = {
+        **_initial_state(),
+        "channel_type": 0,  # 群聊
+        "content_kind": "image",
+        "raw_content": '<img src="x"/>',
+    }
+    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == ""
+    assert rag.last_indexed is None  # 不索引
+    assert result["messages"] == []  # 不入上下文
+
+
+def test_private_file_ends_without_reply(tmp_path):
+    rag = StubRagService()
+    graph, _ = asyncio.run(
+        create_graph(ScriptedLLM([]), BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+    )
+    state = {
+        **_initial_state(),
+        "content_kind": "file",  # 私聊 + 文件 → 媒体门盖过 DIRECT
+        "raw_content": '<file src="x"/>',
+    }
+    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == ""
+    assert rag.last_indexed is None
+    assert result["messages"] == []

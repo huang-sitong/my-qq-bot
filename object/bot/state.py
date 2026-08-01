@@ -12,9 +12,10 @@ class BotState(TypedDict):
     only returns the *new* messages to append. Old messages are
     automatically checkpointed by SqliteSaver.
 
-    ``should_respond`` is set by ``detect_intent`` (fast path: DIRECT
-    or @-mention) and may be overridden by ``router_node`` (LLM
-    name-mention fallback for group chats).
+    ``should_respond`` is set by ``detect_intent`` deterministically
+    (text/image reply on DIRECT or @-mention; file/audio/video never
+    reply). The LLM ``router_node`` has been unplugged from the graph —
+    no downstream node overrides it.
     """
     messages: Annotated[list[BaseMessage], add_messages]
     persona: str

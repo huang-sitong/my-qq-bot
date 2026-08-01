@@ -1,7 +1,13 @@
-"""detect_intent：llm_text（handler 注入的清洗文本）优先，raw_content 兜底。"""
+"""detect_intent：确定性路由 + llm_text 优先的消息构造。
+
+- should_respond：text/image 对 DIRECT/@ 回复；file/audio/video 一律不回复
+- 非回复媒体不入上下文（messages 为空），非回复文本入上下文
+- HumanMessage 用 handler 注入的 llm_text，raw_content 兜底
+"""
 
 import asyncio
 
+import pytest
 from langchain_core.messages import HumanMessage
 
 from bot.core.nodes.action_node.detect_intent import detect_intent
@@ -27,6 +33,7 @@ def test_image_only_empty_llm_text_is_preserved():
     state = make_state(
         llm_text="",
         raw_content='<img src="x"/>',
+        content_kind="image",
         channel_type=1,  # DIRECT
         bot_id="bot1",
         user_name="",
@@ -47,7 +54,11 @@ def test_falls_back_to_mention_strip_when_llm_text_absent():
     assert result["messages"][0].content == "你好"
 
 
-def test_group_without_mention_defers_to_router():
+# ----------------------------------------------------------------------
+# 确定性判定树
+# ----------------------------------------------------------------------
+
+def test_group_without_mention_does_not_respond():
     state = make_state(
         llm_text="晚上吃什么",
         raw_content="晚上吃什么",
@@ -56,3 +67,74 @@ def test_group_without_mention_defers_to_router():
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is False
+
+
+def test_group_text_without_mention_added_to_context():
+    state = make_state(
+        llm_text="晚上吃什么",
+        raw_content="晚上吃什么",
+        channel_type=0,
+        bot_id="bot1",
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is False
+    assert len(result["messages"]) == 1  # 非回复文本仍入上下文
+
+
+def test_group_at_mention_responds():
+    state = make_state(
+        raw_content='<at id="bot1" name="Bot"/> 你好',
+        content_kind="text",
+        channel_type=0,
+        bot_id="bot1",
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is True
+
+
+@pytest.mark.parametrize("kind", ["file", "audio", "video"])
+def test_media_never_responds_even_in_direct(kind):
+    state = make_state(
+        content_kind=kind,
+        raw_content=f'<{kind} src="x"/>',
+        channel_type=1,  # DIRECT 也盖不过媒体门
+        bot_id="bot1",
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is False
+    assert result["messages"] == []  # 不入上下文
+
+
+def test_media_never_responds_even_with_mention():
+    state = make_state(
+        content_kind="file",
+        raw_content='<at id="bot1" name="Bot"/><file src="x"/>',
+        channel_type=0,
+        bot_id="bot1",
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is False
+    assert result["messages"] == []
+
+
+def test_image_in_direct_responds():
+    state = make_state(
+        content_kind="image",
+        raw_content='<img src="x"/>',
+        channel_type=1,  # DIRECT
+        bot_id="bot1",
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is True
+
+
+def test_image_in_group_without_at_does_not_respond():
+    state = make_state(
+        content_kind="image",
+        raw_content='<img src="x"/>',
+        channel_type=0,
+        bot_id="bot1",
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is False
+    assert result["messages"] == []  # 不入上下文、不索引

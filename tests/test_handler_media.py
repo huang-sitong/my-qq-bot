@@ -1,4 +1,4 @@
-"""index_turn_node：RAG 索引图节点（无回复/纯媒体跳过、at 剥离、unescape）。"""
+"""index_turn_node：RAG 索引图节点（无回复也索引用户消息、纯媒体跳过、at 剥离、unescape）。"""
 
 import asyncio
 
@@ -14,10 +14,12 @@ def test_index_turn_noop_when_rag_disabled():
     _run(None, raw_content="你好", reply_text="收到")  # 不抛异常即可
 
 
-def test_index_turn_skips_without_reply():
+def test_index_turn_indexes_user_message_without_reply():
     rag = StubRagService()
     _run(rag, raw_content="你好", reply_text="")
-    assert rag.last_indexed is None
+    assert rag.last_indexed is not None
+    assert rag.last_indexed["user_message"] == "你好"
+    assert rag.last_indexed["bot_reply"] == ""  # service 层过滤 → 只索引 1 条
 
 
 def test_index_turn_skips_media_only():

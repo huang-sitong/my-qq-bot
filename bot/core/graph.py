@@ -12,7 +12,6 @@ from bot.core.nodes import (
     call_llm_node,
     detect_intent,
     index_turn_node,
-    router_node,
     summarize_node,
     tool_node,
 )
@@ -20,6 +19,20 @@ from common import BotConfig
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
+
+
+def _route_after_detect(state: BotState) -> str:
+    """Deterministic 3-way route from detect_intent (no LLM router).
+
+    - should_respond → call_llm (reply path)
+    - non-replied text → summarize (context + compression + single-record index)
+    - non-replied media (image group non-@ / file / audio / video) → END
+    """
+    if state.get("should_respond", False):
+        return "call_llm"
+    if state.get("content_kind", "") == "text":
+        return "summarize"
+    return END
 
 
 async def create_graph(
@@ -36,7 +49,6 @@ async def create_graph(
     """
     builder = StateGraph(BotState)
     builder.add_node("detect_intent", detect_intent)
-    builder.add_node("router", partial(router_node, llm=llm))
     builder.add_node(
         "call_llm", partial(
             call_llm_node,
@@ -51,11 +63,7 @@ async def create_graph(
     builder.add_node("tool_node", partial(tool_node, rag_service=rag_service, memory_store=memory_store))
 
     builder.add_edge(START, "detect_intent")
-    builder.add_edge("detect_intent", "router")
-    builder.add_conditional_edges(
-        "router",
-        lambda s: "call_llm" if s.get("should_respond", True) else END,
-    )
+    builder.add_conditional_edges("detect_intent", _route_after_detect)
     builder.add_conditional_edges(
         "call_llm",
         lambda s: "tool_node" if getattr(s["messages"][-1], "tool_calls", None) else "summarize",

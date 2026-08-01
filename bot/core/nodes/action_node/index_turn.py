@@ -1,9 +1,9 @@
-"""index_turn — persist the current turn (user + bot) into the RAG store.
+"""index_turn — persist the current turn into the RAG store.
 
-Runs after ``summarize``, i.e. only for messages the bot actually
-responded to. Replaces the old handler-side ``_index_turn``: clean the
-user message, skip media-only turns, and delegate to ``rag_service``
-(which swallows failures internally — indexing never blocks the reply).
+Runs after ``summarize``. It is reached by both replied turns (user +
+bot reply, 2 records) and non-replied group text (user only, 1 record —
+``bot_reply`` is empty and ``RagService.index_turn`` filters it out).
+Media-only content (empty ``clean_text``) is skipped.
 """
 
 import logging
@@ -19,9 +19,6 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
     """Index the current turn into the vector store. No-op when RAG is disabled."""
     if rag_service is None:
         return {}
-    reply_text = state.get("reply_text", "")
-    if not reply_text:
-        return {}
     content = clean_text(state.get("raw_content", ""))
     if not content.strip():
         return {}  # media-only message — nothing meaningful to index
@@ -30,6 +27,6 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
         user_id=state.get("user_id", ""),
         user_name=state.get("user_name", ""),
         user_message=content,
-        bot_reply=reply_text,
+        bot_reply=state.get("reply_text", ""),  # empty → service indexes user only
     )
     return {}
