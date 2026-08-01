@@ -1,6 +1,8 @@
 .claude
 .others
-./docs/superpowers/*
+.superpowers
+.pytest_cache
+docs/superpowers
 # Python-generated files
 __pycache__/
 *.py[oc]
