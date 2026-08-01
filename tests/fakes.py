@@ -94,3 +94,17 @@ class StubMemoryStore:
             for (uid, k), v in self._data.items()
             if uid == user_id
         ]
+
+
+class FakeVisionService:
+    """脚本化描述序列的假视觉服务。"""
+
+    def __init__(self, descriptions=None):
+        self.descriptions = descriptions or []
+        self.calls = 0
+        self.last_srcs = None
+
+    async def describe_many(self, srcs):
+        self.calls += 1
+        self.last_srcs = srcs
+        return list(self.descriptions)
