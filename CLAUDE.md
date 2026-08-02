@@ -34,6 +34,7 @@ bot/
     utils/                   # Pure utility functions (no state)
       context.py             #   token estimation + message formatting for summarization
       content_parser.py      #   Satori content 解析逻辑（clean_text / to_llm_text；类型见 object/bot/content.py）
+      routing.py             #   确定性回复判定（decide_reply / keep_in_context / route_after_detect）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
       action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
@@ -151,7 +152,7 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`. Detection uses `f'<at id="{bot_id}"' in content`（`detect_intent`）。剥 at 主路径是 `content_parser.to_llm_text`（构造 HumanMessage 前）；`detect_intent._strip_mention` 仅在 state 无 `llm_text` 时兜底。
 
-- **回复判定树（router 已架空，纯确定性）**: text/image 在私聊或群聊@时回复；file/audio/video 永不回复（即使私聊）。群聊非@的**文本**仍入上下文并跳 `summarize`、只索引用户消息 1 条；群聊非@的**图片**直接 END（不入上下文、不索引）；**回复轮图片**走 describe_image → call_llm。图文混合按主类型（content_kind）判定。注意：`detect_intent` 的 `add_to_context` 与 `graph._route_after_detect` 两处逻辑需同步。
+- **回复判定树（router 已架空，纯确定性）**: text/image 在私聊或群聊@时回复；file/audio/video 永不回复（即使私聊）。群聊非@的**文本**仍入上下文并跳 `summarize`、只索引用户消息 1 条；群聊非@的**图片**直接 END（不入上下文、不索引）；**回复轮图片**走 describe_image → call_llm。图文混合按主类型（content_kind）判定。判定表单一来源为 `bot/core/utils/routing.py`（`decide_reply` / `keep_in_context` / `route_after_detect`），`detect_intent` 与 `graph._route_after_detect` 共同消费，不再需要手动同步。
 
 - **视觉节点（describe_image）**: `graph._route_after_detect` 的 `should_respond` 分支先走 `describe_image`（`bot/core/nodes/action_node/describe_image.py`）再进 `call_llm`。图片轮把 HumanMessage 里的 `[图片]` 原位替换为 `[图片：描述]`（同 message id → 原位替换）并写 `vision_desc`；文本轮 / `vision_service` 为 None 时 no-op（占位符保留）。`VisionService`（`bot/core/vision/service.py`）下载图片 → base64 → Ollama `POST /api/generate`，单张失败返回 `""` 不抛出（占位符保留）。`image_srcs` 由 handler 从 `parse_content` 附件提取注入初始 state。图片描述全失败时节点返回 `{"vision_desc": ""}`，清空陈旧描述防跨轮污染 RAG 索引。
 

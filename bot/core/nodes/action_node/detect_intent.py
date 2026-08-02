@@ -13,6 +13,7 @@ import logging
 
 from langchain_core.messages import HumanMessage
 
+from bot.core.utils.routing import decide_reply, keep_in_context
 from object.bot.state import BotState
 from object.satori import ChannelType
 
@@ -40,16 +41,8 @@ async def detect_intent(state: BotState) -> dict:
     user_name = state.get("user_name", "")
     content_kind = state.get("content_kind", "")
 
-    # 1) Decide should_respond — deterministic, no LLM. media never replies
-    #    (the media gate is checked before DIRECT so a private file stays silent).
-    if content_kind in ("file", "audio", "video"):
-        should_respond = False
-    elif channel_type == ChannelType.DIRECT:
-        should_respond = True
-    elif bot_id and f'<at id="{bot_id}"' in raw_content:
-        should_respond = True
-    else:
-        should_respond = False  # 群聊非@：确定性不回复（不再走 LLM router）
+    # 判定表（decide_reply / keep_in_context）单一来源见 bot.core.utils.routing
+    should_respond = decide_reply(channel_type, content_kind, bot_id, raw_content)
 
     # 2) Build HumanMessage: prefer handler-computed llm_text (media->placeholder,
     #    @ stripped); fall back to stripping the leading mention ourselves.
@@ -64,7 +57,7 @@ async def detect_intent(state: BotState) -> dict:
 
     # 3) Non-replied media must NOT enter context — its placeholder would
     #    pollute later @-mention turns. Keep them out of ``messages``.
-    add_to_context = should_respond or content_kind == "text"
+    add_to_context = keep_in_context(should_respond, content_kind)
     logger.debug(
         "detect_intent: should_respond=%s channel_type=%s content_kind=%s add_to_context=%s",
         should_respond, channel_type, content_kind, add_to_context,

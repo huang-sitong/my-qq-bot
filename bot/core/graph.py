@@ -16,6 +16,7 @@ from bot.core.nodes import (
     summarize_node,
     tool_node,
 )
+from bot.core.utils.routing import route_after_detect
 from common import BotConfig
 from object.bot.state import BotState
 
@@ -23,17 +24,16 @@ logger = logging.getLogger(__name__)
 
 
 def _route_after_detect(state: BotState) -> str:
-    """Deterministic 3-way route from detect_intent (no LLM router).
+    """Deterministic 3-way route（判定表单一来源见 bot.core.utils.routing）。
 
     - should_respond → describe_image (vision for image turns, no-op for text) → call_llm
     - non-replied text → summarize (context + compression + single-record index)
     - non-replied media (image group non-@ / file / audio / video) → END
     """
-    if state.get("should_respond", False):
-        return "describe_image"
-    if state.get("content_kind", "") == "text":
-        return "summarize"
-    return END
+    return route_after_detect(
+        state.get("should_respond", False),
+        state.get("content_kind", ""),
+    ) or END
 
 
 async def create_graph(
