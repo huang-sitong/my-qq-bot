@@ -20,9 +20,7 @@ def build_system_messages(persona: str, summary: str = "") -> list[SystemMessage
 
     与 ``call_llm_node`` 注入的层级结构完全相同——token 估算与实际上下文永不偏离。
     """
-    if not persona.strip():
-        return []
-    msgs = [SystemMessage(content=persona)]
+    msgs = [SystemMessage(content=persona)] if persona.strip() else []
     if summary.strip():
         msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary}"))
     return msgs

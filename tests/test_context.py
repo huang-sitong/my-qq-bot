@@ -16,5 +16,10 @@ def test_skips_empty_summary():
     assert [m.content for m in msgs] == ["你是助手"]
 
 
-def test_skips_empty_persona():
-    assert build_system_messages("   ", "摘要") == []
+def test_skips_empty_persona_keeps_summary():
+    msgs = build_system_messages("   ", "摘要")
+    assert [m.content for m in msgs] == ["之前的对话摘要：\n摘要"]
+
+
+def test_empty_both_returns_empty():
+    assert build_system_messages("   ", "") == []
