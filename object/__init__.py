@@ -7,6 +7,9 @@ that imports only load the modules they actually use.
 __all__ = [
     # bot
     "BotState",
+    "Attachment",
+    "MessageKind",
+    "ParsedContent",
     # satori — enums
     "ChannelType",
     "Direction",
@@ -47,8 +50,9 @@ __all__ = [
 # from the correct sub-module.
 # ---------------------------------------------------------------------------
 _module_map: dict[str, str] = {}
+_BOT_NAMES = {"BotState", "Attachment", "MessageKind", "ParsedContent"}
 for _name in __all__:
-    _module_map[_name] = "bot" if _name == "BotState" else "satori"
+    _module_map[_name] = "bot" if _name in _BOT_NAMES else "satori"
 
 
 def __getattr__(name: str):

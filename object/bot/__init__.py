@@ -1,9 +1,15 @@
 __all__ = [
     "BotState",
+    "Attachment",
+    "MessageKind",
+    "ParsedContent",
 ]
 
 _module_map = {
     "BotState": "state",
+    "Attachment": "content",
+    "MessageKind": "content",
+    "ParsedContent": "content",
 }
 
 
