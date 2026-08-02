@@ -1,4 +1,8 @@
-from bot.core.utils.context import estimate_context_tokens, format_messages_for_summary
+from bot.core.utils.context import (
+    build_system_messages,
+    estimate_context_tokens,
+    format_messages_for_summary,
+)
 from bot.core.utils.content_parser import (
     classify_content,
     clean_text,
@@ -10,6 +14,7 @@ from object.bot.content import Attachment, MessageKind, ParsedContent
 
 __all__ = [
     "Attachment",
+    "build_system_messages",
     "MessageKind",
     "ParsedContent",
     "classify_content",

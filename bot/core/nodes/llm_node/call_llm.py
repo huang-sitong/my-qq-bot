@@ -8,6 +8,7 @@ from bot.core.tools import (
     TOOL_SCHEMA_RECALL,
     TOOL_SCHEMA_REMEMBER,
 )
+from bot.core.utils import build_system_messages
 from common import BotConfig, MEMORY_TOOL_HINT
 from object.bot.state import BotState
 
@@ -29,11 +30,8 @@ async def call_llm_node(
     否则返回最终回复。轮次达到 rag_max_agent_rounds 上限后走无工具路径收尾。
     """
     persona = state["persona"].format(bot_name=state.get("bot_name", ""))
-    system_msgs = [SystemMessage(content=persona)]
-
     summary = state.get("conversation_summary", "").strip()
-    if summary:
-        system_msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary}"))
+    system_msgs = build_system_messages(persona, summary)
 
     use_rag = rag_service is not None and rag_service.enabled
     use_memory = memory_store is not None

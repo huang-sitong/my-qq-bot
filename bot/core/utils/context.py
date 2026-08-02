@@ -15,6 +15,19 @@ logger = logging.getLogger(__name__)
 _CHARS_PER_TOKEN = 1.5
 
 
+def build_system_messages(persona: str, summary: str = "") -> list[SystemMessage]:
+    """构建 call_llm 的前两层 SystemMessage；estimate_context_tokens 复用保证估算一致。
+
+    与 ``call_llm_node`` 注入的层级结构完全相同——token 估算与实际上下文永不偏离。
+    """
+    if not persona.strip():
+        return []
+    msgs = [SystemMessage(content=persona)]
+    if summary.strip():
+        msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary}"))
+    return msgs
+
+
 def estimate_context_tokens(
     messages: list[BaseMessage],
     persona: str,
@@ -26,17 +39,8 @@ def estimate_context_tokens(
     and passes it through ``count_tokens_approximately`` for a single
     consistent token count.
     """
-    all_msgs: list[BaseMessage] = []
-
-    # Layer 0: persona (always present)
-    if persona.strip():
-        all_msgs.append(SystemMessage(content=persona))
-
-    # Layer 1: conversation summary (optional)
-    if summary.strip():
-        all_msgs.append(SystemMessage(
-            content=f"之前的对话摘要：\n{summary}"
-        ))
+    # Layer 0 + 1: persona + conversation summary（构造与 call_llm 共用 build_system_messages）
+    all_msgs = build_system_messages(persona, summary)
 
     # Layer 2..N: recent messages
     all_msgs.extend(messages)
