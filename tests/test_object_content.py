@@ -14,6 +14,7 @@ def test_message_kind_values():
 
 
 def test_types_live_in_object_bot_content():
+    assert content_module.MessageKind is MessageKind
     assert MessageKind.__module__ == "object.bot.content"
     assert ParsedContent.__module__ == "object.bot.content"
     assert Attachment.__module__ == "object.bot.content"

@@ -50,6 +50,7 @@ __all__ = [
 # from the correct sub-module.
 # ---------------------------------------------------------------------------
 _module_map: dict[str, str] = {}
+# 必须与上方 __all__ 的 # bot 组保持同步：新增 bot 导出名若漏加此集合，会被误映射到 "satori"
 _BOT_NAMES = {"BotState", "Attachment", "MessageKind", "ParsedContent"}
 for _name in __all__:
     _module_map[_name] = "bot" if _name in _BOT_NAMES else "satori"
