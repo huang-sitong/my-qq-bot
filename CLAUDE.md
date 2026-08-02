@@ -33,7 +33,7 @@ bot/
       service.py             #   VisionService — 下载图片 → base64 → /api/generate
     utils/                   # Pure utility functions (no state)
       context.py             #   token estimation + message formatting for summarization
-      content_parser.py      #   Satori content 解析：消息类型分类 + 附件 + 清洗文本（clean_text / to_llm_text）
+      content_parser.py      #   Satori content 解析逻辑（clean_text / to_llm_text；类型见 object/bot/content.py）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
       action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
@@ -45,6 +45,7 @@ bot/
   handler.py                 # MessageHandler — ingress: validation → queue → graph → reply（RAG 索引在图内 index_turn）
 object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
+  bot/content.py             #   MessageKind/Attachment/ParsedContent（消息分类领域类型）
   satori/                    #   Satori protocol: enums, models, events, API endpoints
 db/                          # runtime databases (checkpoint.sqlite, memory.sqlite, rag.sqlite)
 ```

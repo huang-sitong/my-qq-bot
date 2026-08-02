@@ -6,12 +6,13 @@ LLOneBot 只发送 ``content`` 字符串（无结构化 ``elements`` 数组）�
 
 - ``clean_text``：剥掉全部标签，供 RAG 索引用（纯文本）
 - ``to_llm_text``：媒体标签替换为 ``[图片]`` 等占位符、剥 at 标签，供 LLM 用
+
+类型定义（MessageKind/Attachment/ParsedContent）见 ``object.bot.content``。
 """
 
 import html
 import re
-from dataclasses import dataclass, field
-from enum import Enum
+from object.bot.content import Attachment, MessageKind, ParsedContent
 
 _MEDIA_TAG_RE = re.compile(r"<(img|file|audio|video)\b([^>]*?)/?>", re.IGNORECASE)
 _AT_TAG_RE = re.compile(r"<at\b[^>]*?/?>", re.IGNORECASE)
@@ -31,36 +32,6 @@ _TAG_TO_KIND = {
     "audio": "audio",
     "video": "video",
 }
-
-
-class MessageKind(str, Enum):
-    TEXT = "text"
-    IMAGE = "image"
-    FILE = "file"
-    AUDIO = "audio"
-    VIDEO = "video"
-
-
-@dataclass
-class Attachment:
-    type: str               # img / file / audio / video（标签名）
-    name: str = ""          # 文件名（file 标签的 name 属性）
-    src: str = ""           # 资源地址（已 unescape）
-    start: int = 0
-    end: int = 0
-
-
-@dataclass
-class ParsedContent:
-    kind: MessageKind       # 主类型：首个媒体标签决定
-    attachments: list[Attachment] = field(default_factory=list)
-    clean_text: str = ""    # 剥全部标签、unescape、折叠空白（RAG 用）
-    llm_text: str = ""      # 媒体→占位符、剥 at（LLM 用）
-    has_text: bool = False
-
-    @property
-    def has_media(self) -> bool:
-        return bool(self.attachments)
 
 
 def _parse_tag_attrs(tag_body: str) -> dict:
