@@ -131,7 +131,9 @@ class MessageHandler:
         thread_id: str = item["thread_id"]
 
         # --- Mechanical data extraction (no business logic) ---
-        channel_type = event.channel.type if event.channel else 0
+        # 强制 int：ChannelType 是 IntEnum，若原样入 checkpoint 会触发
+        # langgraph 未注册类型反序列化警告（未来版本会升级为报错）
+        channel_type = int(event.channel.type) if event.channel else 0
         raw_content = event.message.content or ""
         user_name = ""
         if event.user:
