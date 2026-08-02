@@ -16,7 +16,7 @@ uv run python -c "..."   # quick import / logic check
 main.py                      # entrypoint — wires BotConfig, LLM, Graph, Handler, RagService, MemoryStore
 common/                      # shared config + prompts (single source of truth)
   config.py                  #   BotConfig dataclass (env-var overrides)
-  prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, SUMMARY_PROMPT, MEMORY_TOOL_HINT
+  prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, SUMMARY_PROMPT, MEMORY_TOOL_HINT, VISION_PROMPT, RETRIEVAL_TASK
 bot/
   transport/websocket/       # Satori WS events: connect, identify, reconnect
   transport/http/            # Satori HTTP API: send_message, generic call_api

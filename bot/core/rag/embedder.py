@@ -14,12 +14,9 @@ import os
 from langchain_ollama import OllamaEmbeddings
 
 from bot.core.rag.cache import EmbeddingCache
-from common import BotConfig
+from common import BotConfig, RETRIEVAL_TASK
 
 logger = logging.getLogger(__name__)
-
-# 检索任务描述，Query 与 Document 共用，保持向量空间一致
-RETRIEVAL_TASK = "检索群聊历史中与问题最相关的消息"
 
 
 class EmbeddingService:

@@ -14,10 +14,9 @@ from urllib.parse import urlparse
 
 import httpx
 
-logger = logging.getLogger(__name__)
+from common import VISION_PROMPT
 
-# 轻量、中文友好的图片描述提示词
-VISION_PROMPT = "请用中文简要描述这张图片的内容。"
+logger = logging.getLogger(__name__)
 
 # 单张图片体积上限（字节），防止恶意超大响应拖垮内存/带宽
 _MAX_IMAGE_BYTES = 20 * 1024 * 1024

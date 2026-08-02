@@ -39,3 +39,9 @@ MEMORY_TOOL_HINT = """你可以通过工具读取和保存当前用户的持久�
 - 需要用户的个人信息、或回想之前提到过的用户事实时，调用 recall_user_memory 检索。
 - 用户提到新的持久性个人信息时，调用 remember_user_memory 保存。
 - 记忆按用户区分，只涉及当前发送消息的用户。"""
+
+# 视觉描述提示词（VisionService 用，/api/generate 的 prompt）
+VISION_PROMPT = "请用中文简要描述这张图片的内容。"
+
+# 嵌入检索任务前缀（EmbeddingService 用，Query 与 Document 共用保持向量空间一致）
+RETRIEVAL_TASK = "检索群聊历史中与问题最相关的消息"
