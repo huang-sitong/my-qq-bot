@@ -4,6 +4,7 @@ from bot.core.utils.context import (
     format_messages_for_summary,
 )
 from bot.core.utils.content_parser import (
+    IMAGE_PLACEHOLDER,
     classify_content,
     clean_text,
     parse_attachments,
@@ -14,6 +15,7 @@ from object.bot.content import Attachment, MessageKind, ParsedContent
 
 __all__ = [
     "Attachment",
+    "IMAGE_PLACEHOLDER",
     "build_system_messages",
     "MessageKind",
     "ParsedContent",

@@ -26,6 +26,9 @@ _PLACEHOLDERS = {
     "video": "[视频]",
 }
 
+# [图片] 占位符单一来源（describe_image 原位替换引用，避免魔数重复）
+IMAGE_PLACEHOLDER = _PLACEHOLDERS["img"]
+
 _TAG_TO_KIND = {
     "img": "image",
     "file": "file",

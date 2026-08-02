@@ -10,7 +10,7 @@ Media-only content (empty ``clean_text``) is skipped; image turns with a
 import logging
 
 from bot.core.rag.service import RagService
-from bot.core.utils import clean_text
+from bot.core.utils import MessageKind, clean_text
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -23,7 +23,7 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
     content = clean_text(state.get("raw_content", ""))
     vision_desc = state.get("vision_desc", "").strip()
     # vision_desc 经 checkpoint 跨轮持久，仅 image 轮才并入索引内容
-    if state.get("content_kind") == "image" and vision_desc:
+    if state.get("content_kind") == MessageKind.IMAGE.value and vision_desc:
         content = f"{content} [图片：{vision_desc}]".strip()
     if not content.strip():
         return {}  # 纯媒体且无描述 — nothing meaningful to index

@@ -7,13 +7,14 @@
 
 from langchain_core.messages import HumanMessage
 
+from bot.core.utils import IMAGE_PLACEHOLDER
 from bot.core.vision.service import VisionService
 from object.bot.state import BotState
 
 
 def replace_placeholders(content: str, descriptions: list[str]) -> str:
     """把 content 里每个 [图片] 按序替换成 [图片：描述]；描述为空则保留 [图片]。"""
-    marker = "[图片]"
+    marker = IMAGE_PLACEHOLDER
     parts = []
     idx = 0
     for desc in descriptions:
