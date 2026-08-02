@@ -156,6 +156,8 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **视觉节点（describe_image）**: `graph._route_after_detect` 的 `should_respond` 分支先走 `describe_image`（`bot/core/nodes/action_node/describe_image.py`）再进 `call_llm`。图片轮把 HumanMessage 里的 `[图片]` 原位替换为 `[图片：描述]`（同 message id → 原位替换）并写 `vision_desc`；文本轮 / `vision_service` 为 None 时 no-op（占位符保留）。`VisionService`（`bot/core/vision/service.py`）下载图片 → base64 → Ollama `POST /api/generate`，单张失败返回 `""` 不抛出（占位符保留）。`image_srcs` 由 handler 从 `parse_content` 附件提取注入初始 state。图片描述全失败时节点返回 `{"vision_desc": ""}`，清空陈旧描述防跨轮污染 RAG 索引。
 
+- **`[图片：{desc}]` 变体双文件**: `describe_image.py` 的 `replace_placeholders` 构造、`index_turn.py` 的 RAG 索引各自从 `vision_desc` 本地拼装，互不解析对方输出，当前无静默错配风险；但分隔符（`：`）变更时需同时改两处，测试须覆盖变体字符串。
+
 - **`uv` package manager**: PyPI mirror is `https://pypi.tuna.tsinghua.edu.cn/simple`. Python >=3.12.
 
 - **`.env` secrets**: `BASE_URL` + `API_KEY` (not `GO_BASE_URL`/`GO_API_KEY`). `.env-template` is the documented schema.

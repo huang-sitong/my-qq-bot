@@ -26,15 +26,20 @@ def test_direct_image_replies():
 
 
 def test_group_mention_replies():
-    assert decide_reply(0, "text", "bot1", '<at id="bot1"/> 你好') is True
+    # ChannelType.TEXT（=0，群聊文本频道；Satori 枚举无 GROUP 名）
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", '<at id="bot1"/> 你好') is True
 
 
 def test_group_without_mention_does_not_reply():
-    assert decide_reply(0, "text", "bot1", "晚上吃什么") is False
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "晚上吃什么") is False
 
 
 def test_group_image_without_mention_no_reply():
-    assert decide_reply(0, "image", "bot1", '<img src="x"/>') is False
+    assert decide_reply(ChannelType.TEXT, "image", "bot1", '<img src="x"/>') is False
+
+
+def test_empty_bot_id_in_group_no_reply():
+    assert decide_reply(ChannelType.TEXT, "text", "", '<at id=""/>') is False
 
 
 # --- keep_in_context ---
@@ -56,6 +61,10 @@ def test_not_keep_non_reply_media():
 
 def test_reply_routes_to_describe_image():
     assert route_after_detect(True, "text") == "describe_image"
+
+
+def test_reply_image_routes_to_describe_image():
+    assert route_after_detect(True, "image") == "describe_image"
 
 
 def test_non_reply_text_routes_to_summarize():

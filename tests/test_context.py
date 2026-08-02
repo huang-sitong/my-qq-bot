@@ -23,3 +23,14 @@ def test_skips_empty_persona_keeps_summary():
 
 def test_empty_both_returns_empty():
     assert build_system_messages("   ", "") == []
+
+
+def test_estimate_builds_same_layers_as_builder():
+    from bot.core.utils import estimate_context_tokens
+    from langchain_core.messages import HumanMessage
+
+    msgs = [HumanMessage(content="你好")]
+    expected = build_system_messages("你是助手", "摘要") + msgs
+    # estimate_context_tokens 内部用 build_system_messages 构造层级后 count；
+    # 与显式构造相同消息集合（persona/summary 为空）时应一致 → 估算永不偏离注入
+    assert estimate_context_tokens(msgs, "你是助手", "摘要") == estimate_context_tokens(expected, "", "")
