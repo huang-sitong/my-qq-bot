@@ -14,32 +14,45 @@ from object.satori import ChannelType
 
 @pytest.mark.parametrize("kind", ["file", "audio", "video"])
 def test_media_never_reply_even_direct_or_mention(kind):
-    assert decide_reply(ChannelType.DIRECT, kind, "bot1", f'<at id="bot1"/><{kind} src="x"/>') is False
+    assert decide_reply(ChannelType.DIRECT, kind, "bot1", "Bot", {}) is False
+    assert decide_reply(ChannelType.TEXT, kind, "bot1", "Bot", {"Bot": "bot1"}) is False
 
 
 def test_direct_text_replies():
-    assert decide_reply(ChannelType.DIRECT, "text", "bot1", "你好") is True
+    assert decide_reply(ChannelType.DIRECT, "text", "bot1", "Bot", {}) is True
 
 
 def test_direct_image_replies():
-    assert decide_reply(ChannelType.DIRECT, "image", "bot1", '<img src="x"/>') is True
+    assert decide_reply(ChannelType.DIRECT, "image", "bot1", "Bot", {}) is True
 
 
-def test_group_mention_replies():
-    # ChannelType.TEXT（=0，群聊文本频道；Satori 枚举无 GROUP 名）
-    assert decide_reply(ChannelType.TEXT, "text", "bot1", '<at id="bot1"/> 你好') is True
+def test_group_mention_by_id_replies():
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {"小助手": "bot1"}) is True
+
+
+def test_group_mention_by_name_replies():
+    # bot_id 不在 map，但 bot_name 命中 → 昵称兜底
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "小助手", {"小助手": "10001"}) is True
+
+
+def test_group_mention_by_name_with_empty_bot_id():
+    assert decide_reply(ChannelType.TEXT, "text", "", "小助手", {"小助手": "10001"}) is True
+
+
+def test_group_mention_other_user_no_reply():
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {"张三": "10002"}) is False
 
 
 def test_group_without_mention_does_not_reply():
-    assert decide_reply(ChannelType.TEXT, "text", "bot1", "晚上吃什么") is False
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {}) is False
 
 
 def test_group_image_without_mention_no_reply():
-    assert decide_reply(ChannelType.TEXT, "image", "bot1", '<img src="x"/>') is False
+    assert decide_reply(ChannelType.TEXT, "image", "bot1", "Bot", {}) is False
 
 
-def test_empty_bot_id_in_group_no_reply():
-    assert decide_reply(ChannelType.TEXT, "text", "", '<at id=""/>') is False
+def test_empty_mentions_with_empty_bot_id_no_reply():
+    assert decide_reply(ChannelType.TEXT, "text", "", "Bot", {}) is False
 
 
 # --- keep_in_context ---

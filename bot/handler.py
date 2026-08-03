@@ -178,6 +178,7 @@ class MessageHandler:
                     "user_name": user_name,
                     "content_kind": content_kind,
                     "llm_text": parsed.llm_text,
+                    "mentions": parsed.mentions,
                     "image_srcs": image_srcs,
                 },
                 {

@@ -74,6 +74,7 @@ def make_state(**overrides) -> dict:
         "user_name": "张三",
         "tool_rounds": 0,
         "content_kind": "text",
+        "mentions": {},
     }
     state.update(overrides)
     return state

@@ -2,7 +2,7 @@
 
 ``should_respond`` is decided purely from channel type, content kind and
 @-mention detection (no LLM router):
-- text/image: reply on private chat or group @-mention
+- text/image: reply on private chat or group top-level @-mention (id + name, see parse_mentions)
 - file/audio/video: never reply (even in private chat)
 
 Media messages that are NOT replied to are kept out of ``messages`` so their
@@ -37,12 +37,14 @@ async def detect_intent(state: BotState) -> dict:
     """
     channel_type = state.get("channel_type", 0)
     bot_id = state.get("bot_id", "")
+    bot_name = state.get("bot_name", "")
+    mentions = state.get("mentions", {})
     raw_content = state.get("raw_content", "")
     user_name = state.get("user_name", "")
     content_kind = state.get("content_kind", "")
 
     # 判定表（decide_reply / keep_in_context）单一来源见 bot.core.utils.routing
-    should_respond = decide_reply(channel_type, content_kind, bot_id, raw_content)
+    should_respond = decide_reply(channel_type, content_kind, bot_id, bot_name, mentions)
 
     # 2) Build HumanMessage: prefer handler-computed llm_text (media->placeholder,
     #    @ stripped); fall back to stripping the leading mention ourselves.
