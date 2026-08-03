@@ -106,3 +106,46 @@ def test_parse_content_media_only_has_no_text():
     assert parsed.has_text is False
     assert parsed.has_media is True
     assert parsed.clean_text == ""
+
+
+def test_to_llm_text_link_renders_content_href():
+    assert to_llm_text('<a href="https://x.com/a?b=1&amp;c=2">点击</a> 你好') == "点击 (https://x.com/a?b=1&c=2) 你好"
+
+
+def test_to_llm_text_link_without_href_keeps_inner():
+    assert to_llm_text('<a>无链接</a>') == "无链接"
+
+
+def test_to_llm_text_strips_paired_markup_keeps_text():
+    assert to_llm_text('<b>加粗</b>和<i>斜体</i>') == "加粗和斜体"
+    assert to_llm_text('<code>code</code>') == "code"
+
+
+def test_to_llm_text_quote_keeps_quoted_text():
+    assert to_llm_text('<quote><at id="u1"/>原消息</quote> 回复') == "原消息 回复"
+
+
+def test_to_llm_text_strips_emoji_sharp_br():
+    assert to_llm_text('<emoji name="smile"/> 哈哈') == "哈哈"
+    assert to_llm_text('<sharp id="c1"/> 频道') == "频道"
+    assert to_llm_text('第一行<br/>第二行') == "第一行第二行"
+
+
+def test_to_llm_text_forward_message_keeps_inner():
+    assert to_llm_text('<message><author id="u1" name="张三"/>转发内容</message>') == "转发内容"
+
+
+def test_to_llm_text_strips_comment():
+    assert to_llm_text('前<!-- 注释 -->后') == "前后"
+
+
+def test_clean_text_strips_paired_link_no_closing_leak():
+    assert clean_text('<a href="https://x.com">点击</a> 你好') == "点击 你好"
+
+
+def test_clean_text_strips_quote_and_at():
+    assert clean_text('<quote><at id="u1"/>原消息</quote> 回复') == "原消息 回复"
+
+
+def test_clean_text_strips_comments():
+    assert clean_text('前<!-- 注释 -->后') == "前后"

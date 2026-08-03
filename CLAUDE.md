@@ -33,7 +33,7 @@ bot/
       service.py             #   VisionService — 下载图片 → base64 → /api/generate
     utils/                   # Pure utility functions (no state)
       context.py             #   token estimation + message formatting for summarization
-      content_parser.py      #   Satori content 解析逻辑（clean_text / to_llm_text；类型见 object/bot/content.py）
+      content_parser.py      #   Satori content 解析逻辑（媒体→占位符、链接→标题 (url)、其余全剥；类型见 object/bot/content.py）
       routing.py             #   确定性回复判定（decide_reply / keep_in_context / route_after_detect）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）

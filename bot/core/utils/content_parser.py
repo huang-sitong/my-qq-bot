@@ -4,8 +4,8 @@ LLOneBot 只发送 ``content`` 字符串（无结构化 ``elements`` 数组）�
 语音/视频都以自闭合标签嵌入字符串，例如 ``<img .../>``。本模块用正则解析这些
 标签，产出消息类型（主类型）、附件列表和两种清洗文本：
 
-- ``clean_text``：剥掉全部标签，供 RAG 索引用（纯文本）
-- ``to_llm_text``：媒体标签替换为 ``[图片]`` 等占位符、剥 at 标签，供 LLM 用
+- ``clean_text``：剥掉全部标签（含闭合/注释），供 RAG 索引用（纯文本）
+- ``to_llm_text``：媒体→``[图片]`` 等占位符、链接→``内容 (href)``、其余标签全剥，供 LLM 用
 
 类型定义（MessageKind/Attachment/ParsedContent）见 ``object.bot.content``。
 """
@@ -15,9 +15,10 @@ import re
 from object.bot.content import Attachment, MessageKind, ParsedContent
 
 _MEDIA_TAG_RE = re.compile(r"<(img|file|audio|video)\b([^>]*?)/?>", re.IGNORECASE)
-_AT_TAG_RE = re.compile(r"<at\b[^>]*?/?>", re.IGNORECASE)
-_ALL_TAG_RE = re.compile(r"<[a-z]+\b[^>]*?/?>", re.IGNORECASE)
-_ATTR_RE = re.compile(r'([a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"')
+_TAG_RE = re.compile(r"</?[a-z]+\b[^>]*?/?>", re.IGNORECASE)   # 起始/闭合/自闭合
+_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)             # 注释（message.md 语法）
+_LINK_RE = re.compile(r"<a\b([^>]*)>(.*?)</a>", re.IGNORECASE | re.DOTALL)
+_ATTR_RE = re.compile(r'([a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"')     # 双引号版（Task 2 升级为单/双引号）
 
 _PLACEHOLDERS = {
     "img": "[图片]",
@@ -71,16 +72,28 @@ def classify_content(content: str) -> MessageKind:
 
 
 def clean_text(content: str) -> str:
-    """剥掉全部元素标签（at/img/file/audio/video/...），unescape 并折叠空白。"""
-    text = _ALL_TAG_RE.sub("", content)
+    """剥掉全部元素标签与注释（含闭合标签），unescape 并折叠空白。"""
+    text = _COMMENT_RE.sub("", content)
+    text = _TAG_RE.sub("", text)
     text = html.unescape(text)
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _render_link(m: re.Match) -> str:
+    """链接按 Satori 无平台支持时的建议渲染 content (href)。"""
+    inner = m.group(2).strip()
+    url = _parse_tag_attrs(m.group(1)).get("href", "")
+    if not url:
+        return inner
+    return f"{inner} ({url})" if inner else url
+
+
 def to_llm_text(content: str) -> str:
-    """媒体标签替换为占位符、剥掉 at 标签，保留其余文本供 LLM 使用。"""
-    text = _MEDIA_TAG_RE.sub(lambda m: _PLACEHOLDERS[m.group(1).lower()], content)
-    text = _AT_TAG_RE.sub("", text)
+    """媒体→占位符、链接→content (href)、其余标签（at/排版/引用/转发…）全剥。"""
+    text = _COMMENT_RE.sub("", content)
+    text = _MEDIA_TAG_RE.sub(lambda m: _PLACEHOLDERS[m.group(1).lower()], text)
+    text = _LINK_RE.sub(_render_link, text)
+    text = _TAG_RE.sub("", text)
     return html.unescape(text).strip()
 
 
