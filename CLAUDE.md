@@ -33,8 +33,8 @@ bot/
       service.py             #   VisionService — 下载图片 → base64 → /api/generate
     utils/                   # Pure utility functions (no state)
       context.py             #   token estimation + message formatting for summarization
-      content_parser.py      #   Satori content 解析逻辑（媒体→占位符、链接→标题 (url)、其余全剥；类型见 object/bot/content.py）
-      routing.py             #   确定性回复判定（decide_reply / keep_in_context / route_after_detect）
+      content_parser.py      #   Satori content 解析逻辑（媒体→占位符、@→@昵称(id)、链接→标题 (url)、其余全剥；类型见 object/bot/content.py）
+      routing.py             #   确定性回复判定（decide_reply 按顶层提及集合 id+昵称混合 / keep_in_context / route_after_detect）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
       action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
@@ -57,7 +57,7 @@ db/                          # runtime databases (checkpoint.sqlite, memory.sqli
 WebSocket event → SatoriClient → MessageHandler.handle()
   → validation + enqueue → worker dequeues（按 thread_id 加锁串行化）
   → graph.ainvoke(state, thread_id)
-    → detect_intent (action_node)  ← 确定性三路（无 LLM router）：text/image 对 DIRECT/@ 回复；file/audio/video 永不回复；媒体非回复不入上下文
+    → detect_intent (action_node)  ← 确定性三路（无 LLM router）：text/image 对 DIRECT/顶层@提及 回复；file/audio/video 永不回复；媒体非回复不入上下文
       → 条件边：should_respond → describe_image；非回复文本 → summarize；其余 → END
     → describe_image (action_node) ← 图片回复路径：下载→Ollama qwen3-vl 描述→[图片] 原位替换（vision_desc 供索引）；非图片/禁用 no-op
     → call_llm (llm_node)          ← dynamic SystemMessage injection
@@ -150,11 +150,11 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **`object/` package**: setuptools `__legacy__` backend renames `data_object` → `object` in editable installs. Always import from `object.*`, never `data_object.*`.
 
-- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`. Detection uses `f'<at id="{bot_id}"' in content`（`detect_intent`）。剥 at 主路径是 `content_parser.to_llm_text`（构造 HumanMessage 前）；`detect_intent._strip_mention` 仅在 state 无 `llm_text` 时兜底。
+- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`。回复判定基于 `parse_mentions` 的**顶层提及集合** `{昵称: id}`（引用/转发子树不计），`detect_intent` 以 `bot_id` 命中为主、`bot_name` 昵称兜底。LLM 输入 `to_llm_text` 把 at 渲染为 `@昵称(id)`（`<at type="all"/>`→`所有成员`、`here`→`在线成员`）；`detect_intent._strip_mention` 仅在 state 无 `llm_text` 时兜底。
 
-- **Satori 元素适配（content_parser）**: `to_llm_text` 媒体→占位符、链接→`标题 (url)`、其余标签（at/排版/引用/转发/emoji/sharp/注释）全剥保留内部文本；`clean_text` 剥全部标签含闭合与注释。`_AT_TAG_RE` 已并入 `_TAG_RE`（标签剥离单一来源）。
+- **Satori 元素适配（content_parser）**: `to_llm_text` 媒体→占位符、@→`@昵称(id)`/`所有成员`、链接→`标题 (url)`、其余标签（排版/引用/转发/emoji/sharp/注释）全剥保留内部文本；`clean_text` 剥全部标签含闭合与注释。标签剥离仍走 `_TAG_RE` 单一来源；`_AT_TAG_RE` 仅用于 at 的提取（`parse_mentions`）与渲染。
 
-- **回复判定树（router 已架空，纯确定性）**: text/image 在私聊或群聊@时回复；file/audio/video 永不回复（即使私聊）。群聊非@的**文本**仍入上下文并跳 `summarize`、只索引用户消息 1 条；群聊非@的**图片**直接 END（不入上下文、不索引）；**回复轮图片**走 describe_image → call_llm。图文混合按主类型（content_kind）判定。判定表单一来源为 `bot/core/utils/routing.py`（`decide_reply` / `keep_in_context` / `route_after_detect`），`detect_intent` 与 `graph._route_after_detect` 共同消费，不再需要手动同步。
+- **回复判定树（router 已架空，纯确定性）**: text/image 在私聊或群聊**顶层**@时回复（引用/转发内不计）；file/audio/video 永不回复（即使私聊）。群聊非@的**文本**仍入上下文并跳 `summarize`、只索引用户消息 1 条；群聊非@的**图片**直接 END（不入上下文、不索引）；**回复轮图片**走 describe_image → call_llm。图文混合按主类型（content_kind）判定。判定表单一来源为 `bot/core/utils/routing.py`（`decide_reply` / `keep_in_context` / `route_after_detect`），`decide_reply` 按 `mentions`（`{昵称: id}`）以 id 命中为主、昵称兜底，不再子串匹配 raw_content；`detect_intent` 与 `graph._route_after_detect` 共同消费，不再需要手动同步。
 
 - **视觉节点（describe_image）**: `graph._route_after_detect` 的 `should_respond` 分支先走 `describe_image`（`bot/core/nodes/action_node/describe_image.py`）再进 `call_llm`。图片轮把 HumanMessage 里的 `[图片]` 原位替换为 `[图片：描述]`（同 message id → 原位替换）并写 `vision_desc`；文本轮 / `vision_service` 为 None 时 no-op（占位符保留）。`VisionService`（`bot/core/vision/service.py`）下载图片 → base64 → Ollama `POST /api/generate`，单张失败返回 `""` 不抛出（占位符保留）。`image_srcs` 由 handler 从 `parse_content` 附件提取注入初始 state。图片描述全失败时节点返回 `{"vision_desc": ""}`，清空陈旧描述防跨轮污染 RAG 索引。
 
