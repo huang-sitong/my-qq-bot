@@ -21,11 +21,11 @@ async def router_node(state: BotState, llm: ChatOpenAI) -> dict:
     try:
         response = await llm.ainvoke([
             SystemMessage(content=prompt),
-            HumanMessage(content=f"消息内容：{state['new_message'].content}"),
+            HumanMessage(content=f"消息内容：{state.get('llm_text', '')}"),
         ])
         should_respond = "true" in response.content.strip().lower()
     except Exception:
-        logger.warning("Router LLM call failed for session %s", state["session_id"])
+        logger.warning("Router LLM call failed for thread %s", state.get("thread_id", ""))
         should_respond = False
     logger.debug("Router decision: should_respond=%s", should_respond)
     return {"should_respond": should_respond}
