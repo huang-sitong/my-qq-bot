@@ -52,7 +52,7 @@ async def call_llm_node(
         try:
             response = await llm.bind_tools(schemas).ainvoke(messages)
         except Exception as exc:
-            _log_llm_error(exc, state.get("session_id", ""))
+            _log_llm_error(exc, state.get("thread_id", ""))
             return {
                 "messages": [AIMessage(content="我暂时无法思考，请稍后再试")],
                 "reply_text": "我暂时无法思考，请稍后再试",
@@ -78,12 +78,12 @@ async def _invoke_plain(messages: list, llm: ChatOpenAI, state: BotState) -> str
         response = await llm.ainvoke(messages)
         return response.content if hasattr(response, "content") else str(response)
     except Exception as exc:
-        _log_llm_error(exc, state.get("session_id", ""))
+        _log_llm_error(exc, state.get("thread_id", ""))
         return "我暂时无法思考，请稍后再试"
 
 
-def _log_llm_error(exc: Exception, session_id: str) -> None:
+def _log_llm_error(exc: Exception, thread_id: str) -> None:
     if isinstance(exc, TimeoutError) or "Timeout" in type(exc).__name__:
-        logger.warning("LLM call timed out for session %s", session_id)
+        logger.warning("LLM call timed out for thread %s", thread_id)
     else:
-        logger.exception("LLM call failed for session %s", session_id)
+        logger.exception("LLM call failed for thread %s", thread_id)

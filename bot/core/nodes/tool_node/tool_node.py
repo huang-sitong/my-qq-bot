@@ -45,7 +45,7 @@ async def tool_node(state: BotState, rag_service=None, memory_store=None) -> dic
             else:
                 content = f"未知工具：{name}"
         except Exception:
-            logger.exception("Tool %s failed for session %s", name, state.get("session_id", ""))
+            logger.exception("Tool %s failed for thread %s", name, state.get("thread_id", ""))
             content = "工具执行失败。"
         tool_messages.append(ToolMessage(content=content, tool_call_id=tc.get("id", "")))
     return {"messages": tool_messages}

@@ -41,8 +41,8 @@ async def summarize_node(
         state.get("conversation_summary", ""),
     )
     logger.debug(
-        "summarize check: total=%d trigger=%d session=%s",
-        total, trigger, state.get("session_id", ""),
+        "summarize check: total=%d trigger=%d thread=%s",
+        total, trigger, state.get("thread_id", ""),
     )
 
     if total <= trigger:
@@ -65,8 +65,8 @@ async def summarize_node(
         return {}
 
     logger.info(
-        "Summarizing %d messages (keeping %d) for session %s",
-        len(to_summarize), len(keep_messages), state.get("session_id", ""),
+        "Summarizing %d messages (keeping %d) for thread %s",
+        len(to_summarize), len(keep_messages), state.get("thread_id", ""),
     )
 
     # 3. Generate summary via LLM
@@ -95,15 +95,15 @@ async def summarize_node(
         response = await llm.ainvoke([HumanMessage(content=summary_prompt)])
         new_summary = response.content if hasattr(response, "content") else str(response)
     except Exception:
-        logger.exception("Summary generation failed for session %s", state.get("session_id"))
+        logger.exception("Summary generation failed for thread %s", state.get("thread_id", ""))
         return {}  # Non-critical — skip summarization on failure
 
     # 4. Remove summarized messages from state
     removes = [RemoveMessage(id=m.id) for m in to_summarize]
 
     logger.info(
-        "Summary generated: %d chars, removed %d messages for session %s",
-        len(new_summary), len(to_summarize), state.get("session_id"),
+        "Summary generated: %d chars, removed %d messages for thread %s",
+        len(new_summary), len(to_summarize), state.get("thread_id", ""),
     )
     return {
         "messages": removes,
