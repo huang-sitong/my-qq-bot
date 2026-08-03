@@ -78,7 +78,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 
 ### Session vs Thread
 
-- **session_id** = `platform:guild:channel:user` — used for logging
+- **session_id**（已从 BotState 移除） = `platform:guild:channel:user` — 曾仅用于日志；现日志改打 thread_id，省 checkpoint 冗余
 - **thread_id** (checkpoint isolation):
   - All chats → `platform:guild:channel` (per-channel conversation history, guild-reserved for multi-platform)
 
@@ -122,7 +122,7 @@ system_msgs = [SystemMessage(content=persona)]
 ### RAG（群聊历史检索）
 
 - **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm` 绑定 `search_chat_history` 工具（`memory_store` 注入时同时绑定 `remember_user_memory` / `recall_user_memory`），**LLM 自行决定何时检索**。若返回 `tool_calls`，条件边路由到 `tool_node` 执行，回边到 `call_llm` 继续；`tool_rounds`（总工具轮次计数）达到 `rag_max_agent_rounds` 后走无工具路径强制收尾。
-- **索引**：图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）对**回复轮**写入 2 条（用户消息 + Bot 回复）、对**群聊非@文本**只写入 1 条（仅用户消息，`bot_reply` 为空由 `RagService.index_turn` 配对过滤）；用户内容先经 `clean_text` 清洗（剥全部元素标签 + unescape），纯媒体消息跳过。**图片回复轮**（`content_kind=="image"` 且有 `vision_desc`）将描述并入用户消息（` [图片：{desc}]`）再入库；纯图片无描述不入库。索引失败仅降级（`RagService.index_turn` 内部吞异常）。
+- **索引**：图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）对**回复轮**写入 2 条（用户消息 + Bot 回复）、对**群聊非@文本**只写入 1 条（仅用户消息，`bot_reply` 为空由 `RagService.index_turn` 配对过滤）；用户内容来自 handler 预计算的 `clean_text`（剥全部元素标签 + unescape，`parse_content` 产出），`index_turn` 直接消费、不再图内解析 raw_content；纯媒体消息跳过。**图片回复轮**（`content_kind=="image"` 且有 `vision_desc`）将描述并入用户消息（` [图片：{desc}]`）再入库；纯图片无描述不入库。索引失败仅降级（`RagService.index_turn` 内部吞异常）。
 - **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。嵌入结果按 `(model, 文本)` 哈希落盘缓存（`cache.py`，`db/embed_cache.sqlite`，key 含 model 故换模型自动失效），重复文本命中缓存不再调 Ollama。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。
 - **工具闭环**：`search_chat_history(query, rag_service, thread_id)` 是纯函数，`tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。
@@ -150,7 +150,7 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **`object/` package**: setuptools `__legacy__` backend renames `data_object` → `object` in editable installs. Always import from `object.*`, never `data_object.*`.
 
-- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`。回复判定基于 `parse_mentions` 的**顶层提及集合** `{id: 昵称}`（引用/转发子树不计），`detect_intent` 以 `bot_id` 命中为主、`bot_name` 昵称兜底。LLM 输入 `to_llm_text` 把 at 渲染为 `@昵称(id)`（`<at type="all"/>`→`所有成员`、`here`→`在线成员`）；`detect_intent._strip_mention` 仅在 state 无 `llm_text` 时兜底。
+- **@-mention format**: LLOneBot/Satori uses XML `<at id="QQ号" name="昵称"/>`, not `@name`。回复判定基于 `parse_mentions` 的**顶层提及集合** `{id: 昵称}`（引用/转发子树不计），`detect_intent` 以 `bot_id` 命中为主、`bot_name` 昵称兜底。LLM 输入 `to_llm_text` 把 at 渲染为 `@昵称(id)`（`<at type="all"/>`→`所有成员`、`here`→`在线成员`）；`llm_text` 由 handler 每轮必注入，detect_intent 直接消费（无兜底）。
 
 - **Satori 元素适配（content_parser）**: `to_llm_text` 媒体→占位符、@→`@昵称(id)`/`所有成员`、链接→`标题 (url)`、其余标签（排版/引用/转发/emoji/sharp/注释）全剥保留内部文本；`clean_text` 剥全部标签含闭合与注释。标签剥离仍走 `_TAG_RE` 单一来源；`_AT_TAG_RE` 仅用于 at 的提取（`parse_mentions`）与渲染。
 
