@@ -15,7 +15,7 @@ from object.satori import ChannelType
 @pytest.mark.parametrize("kind", ["file", "audio", "video"])
 def test_media_never_reply_even_direct_or_mention(kind):
     assert decide_reply(ChannelType.DIRECT, kind, "bot1", "Bot", {}) is False
-    assert decide_reply(ChannelType.TEXT, kind, "bot1", "Bot", {"Bot": "bot1"}) is False
+    assert decide_reply(ChannelType.TEXT, kind, "bot1", "Bot", {"bot1": "Bot"}) is False
 
 
 def test_direct_text_replies():
@@ -27,20 +27,20 @@ def test_direct_image_replies():
 
 
 def test_group_mention_by_id_replies():
-    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {"小助手": "bot1"}) is True
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {"bot1": "小助手"}) is True
 
 
 def test_group_mention_by_name_replies():
     # bot_id 不在 map，但 bot_name 命中 → 昵称兜底
-    assert decide_reply(ChannelType.TEXT, "text", "bot1", "小助手", {"小助手": "10001"}) is True
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "小助手", {"10001": "小助手"}) is True
 
 
 def test_group_mention_by_name_with_empty_bot_id():
-    assert decide_reply(ChannelType.TEXT, "text", "", "小助手", {"小助手": "10001"}) is True
+    assert decide_reply(ChannelType.TEXT, "text", "", "小助手", {"10001": "小助手"}) is True
 
 
 def test_group_mention_other_user_no_reply():
-    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {"张三": "10002"}) is False
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {"10002": "张三"}) is False
 
 
 def test_group_without_mention_does_not_reply():

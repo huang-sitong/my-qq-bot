@@ -38,4 +38,4 @@ class BotState(TypedDict):
     llm_text: str           # media→占位符、@→@昵称(id)/所有成员 — HumanMessage content
     image_srcs: list[str]   # 本轮图片 URL（describe_image 视觉理解用）
     vision_desc: str        # 本轮图片描述（RAG 索引；仅 image 轮有效）
-    mentions: dict[str, str]   # 顶层 @ 提及 {昵称: id}（detect_intent 判定用）
+    mentions: dict[str, str]   # 顶层 @ 提及 {id: 昵称}（detect_intent 判定用）

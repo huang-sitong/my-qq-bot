@@ -6,7 +6,7 @@ LLOneBot 只发送 ``content`` 字符串（无结构化 ``elements`` 数组）�
 
 - ``clean_text``：剥掉全部标签（含闭合/注释），供 RAG 索引用（纯文本）
 - ``to_llm_text``：媒体→``[图片]`` 等占位符、@→``@昵称(id)``/``所有成员``、链接→``内容 (href)``、其余标签全剥，供 LLM 用（注：``<a@b.com>``/``<https://...>`` 等非元素尖括号序列同样被剥除）
-- ``parse_mentions``：只数顶层 at 提及 ``{昵称: id}``（引用/转发子树不计），供路由判定用
+- ``parse_mentions``：只数顶层 at 提及 ``{id: 昵称}``（引用/转发子树不计），供路由判定用
 
 类型定义（MessageKind/Attachment/ParsedContent）见 ``object.bot.content``。
 """
@@ -88,7 +88,7 @@ def _top_level_text(content: str) -> str:
 
 
 def parse_mentions(content: str) -> dict[str, str]:
-    """返回顶层 at 提及 {昵称: id}；引用/转发子树不计；type=all/here 跳过。"""
+    """返回顶层 at 提及 {id: 昵称}；引用/转发子树不计；type=all/here 跳过。"""
     mentions = {}
     for m in _AT_TAG_RE.finditer(_top_level_text(content)):
         attrs = _parse_tag_attrs(m.group(1))
@@ -97,8 +97,7 @@ def parse_mentions(content: str) -> dict[str, str]:
         uid = attrs.get("id", "")
         if not uid:                # 无 id 不算（type-only / 空 at）
             continue
-        name = attrs.get("name") or uid   # name 可缺失 → 用 id 当 key
-        mentions[name] = uid
+        mentions[uid] = attrs.get("name") or ""   # name 可缺失 → 空串
     return mentions
 
 

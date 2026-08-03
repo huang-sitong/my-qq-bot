@@ -97,7 +97,7 @@ def test_parse_content_combines_fields():
     assert isinstance(parsed.attachments[0], Attachment)
     assert parsed.clean_text == "看看这张"
     assert parsed.llm_text == "@Bot(bot1) 看看这张 [图片]"
-    assert parsed.mentions == {"Bot": "bot1"}
+    assert parsed.mentions == {"bot1": "Bot"}
     assert parsed.has_text is True
     assert parsed.has_media is True
 
@@ -175,12 +175,12 @@ def test_to_llm_text_link_multiline_inner():
 
 def test_parse_mentions_collects_names():
     content = '<at id="10001" name="小助手"/><at id="10002" name="张三"/> 大家'
-    assert parse_mentions(content) == {"小助手": "10001", "张三": "10002"}
+    assert parse_mentions(content) == {"10001": "小助手", "10002": "张三"}
 
 
 def test_parse_mentions_top_level_only_quote_excluded():
     content = '<quote><at id="10001" name="小助手"/>原消息</quote><at id="10002" name="张三"/>怎么看'
-    assert parse_mentions(content) == {"张三": "10002"}
+    assert parse_mentions(content) == {"10002": "张三"}
 
 
 def test_parse_mentions_forward_message_excluded():
@@ -191,7 +191,7 @@ def test_parse_mentions_forward_message_excluded():
 def test_parse_mentions_nested_message_keeps_top_level():
     content = ('<message forward><message><at id="10001" name="小助手"/>内层</message></message>'
                '<at id="10002" name="张三"/>外层')
-    assert parse_mentions(content) == {"张三": "10002"}
+    assert parse_mentions(content) == {"10002": "张三"}
 
 
 def test_parse_mentions_skips_type_all():
@@ -199,8 +199,8 @@ def test_parse_mentions_skips_type_all():
     assert parse_mentions('<at type="here"/>') == {}
 
 
-def test_parse_mentions_id_only_fallback():
-    assert parse_mentions('<at id="10001"/>') == {"10001": "10001"}
+def test_parse_mentions_id_only_empty_name():
+    assert parse_mentions('<at id="10001"/>') == {"10001": ""}
 
 
 def test_parse_mentions_empty_no_at():

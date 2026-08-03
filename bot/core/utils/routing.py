@@ -1,7 +1,7 @@
 """确定性回复判定（LLM router 架空后的唯一判定表）。
 
 detect_intent 与 graph._route_after_detect 共同消费，消除双处同步。
-群聊 @ 判定按顶层 at 提及集合（``{昵称: id}``，parse_mentions 产出）。
+群聊 @ 判定按顶层 at 提及集合（``{id: 昵称}``，parse_mentions 产出）。
 纯函数：不 import langgraph；route_after_detect 返回 None 表示 END，由 graph 映射。
 """
 
@@ -22,9 +22,8 @@ def decide_reply(channel_type: int, content_kind: str, bot_id: str, bot_name: st
         return False
     if channel_type == ChannelType.DIRECT:
         return True
-    mentioned_ids = set(mentions.values())
-    mentioned_names = set(mentions)
-    return bool(bot_id in mentioned_ids or (bot_name and bot_name in mentioned_names))
+    mentioned_names = set(mentions.values())
+    return bool(bot_id in mentions or (bot_name and bot_name in mentioned_names))
 
 
 def keep_in_context(should_respond: bool, content_kind: str) -> bool:

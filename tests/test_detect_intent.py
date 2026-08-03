@@ -48,7 +48,7 @@ def test_falls_back_to_mention_strip_when_llm_text_absent():
         raw_content='<at id="bot1" name="Bot"/> 你好',
         channel_type=0,
         bot_id="bot1",
-        mentions={"Bot": "bot1"},
+        mentions={"bot1": "Bot"},
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is True
@@ -88,7 +88,7 @@ def test_group_at_mention_responds():
         content_kind="text",
         channel_type=0,
         bot_id="bot1",
-        mentions={"Bot": "bot1"},
+        mentions={"bot1": "Bot"},
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is True
@@ -113,7 +113,7 @@ def test_media_never_responds_even_with_mention():
         raw_content='<at id="bot1" name="Bot"/><file src="x"/>',
         channel_type=0,
         bot_id="bot1",
-        mentions={"Bot": "bot1"},
+        mentions={"bot1": "Bot"},
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is False
@@ -151,7 +151,7 @@ def test_group_name_only_mention_responds_with_empty_bot_id():
         channel_type=0,
         bot_id="",
         bot_name="小助手",
-        mentions={"小助手": "10001"},
+        mentions={"10001": "小助手"},
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is True
