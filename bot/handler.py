@@ -1,7 +1,6 @@
 import asyncio
 import logging
 
-from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
 from bot.core.utils import parse_content
@@ -138,7 +137,6 @@ class MessageHandler:
         user_name = ""
         if event.user:
             user_name = event.user.nick or event.user.name or event.user.id or ""
-        session_id = f"{platform}:{guild_id}:{channel_id}:{user_id}"
 
         # --- Message classification (ingress) ---
         parsed = parse_content(raw_content)
@@ -147,8 +145,8 @@ class MessageHandler:
 
         # --- Invoke graph ---
         logger.info(
-            "Processing %s message from %s (session=%s, thread=%s): %.60s",
-            content_kind, user_id, session_id, thread_id, raw_content,
+            "Processing %s message from %s (thread=%s): %.60s",
+            content_kind, user_id, thread_id, raw_content,
         )
         # recursion_limit 是 LangGraph 的兜底，真实上限由 rag_max_agent_rounds 决定
         # （4 + 2n 个 super-step，n = 工具轮次），这里按配置放一个充裕的安全网。
@@ -163,8 +161,6 @@ class MessageHandler:
         try:
             result = await self.graph.ainvoke(
                 {
-                    "new_message": HumanMessage(content=""),  # placeholder
-                    "session_id": session_id,
                     "thread_id": thread_id,
                     "persona": self._persona,
                     "reply_text": "",
@@ -174,10 +170,10 @@ class MessageHandler:
                     "tool_rounds": 0,
                     "user_id": user_id,
                     "channel_type": channel_type,
-                    "raw_content": raw_content,
                     "user_name": user_name,
                     "content_kind": content_kind,
                     "llm_text": parsed.llm_text,
+                    "clean_text": parsed.clean_text,
                     "mentions": parsed.mentions,
                     "image_srcs": image_srcs,
                 },
@@ -187,7 +183,7 @@ class MessageHandler:
                 },
             )
         except Exception:
-            logger.exception("Graph invoke failed for session %s", session_id)
+            logger.exception("Graph invoke failed for thread %s", thread_id)
             return
 
         # --- Post-graph: reply (RAG indexing is now a graph node after summarize) ---

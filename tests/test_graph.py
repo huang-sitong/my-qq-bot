@@ -20,8 +20,6 @@ SAMPLE = [
 def _initial_state() -> dict:
     # channel_type=1 (DIRECT) → detect_intent 置 should_respond=True → call_llm
     return {
-        "new_message": HumanMessage(content="还记得我们聊过 RAG 吗？"),
-        "session_id": "test:session",
         "thread_id": "test:thread",
         "persona": "你是{bot_name}",
         "reply_text": "",
@@ -29,11 +27,12 @@ def _initial_state() -> dict:
         "bot_name": "测试机器人",
         "bot_id": "bot1",
         "channel_type": 1,
-        "raw_content": "还记得我们聊过 RAG 吗？",
         "user_name": "张三",
         "user_id": "u1",
         "tool_rounds": 0,
         "content_kind": "text",
+        "llm_text": "还记得我们聊过 RAG 吗？",
+        "clean_text": "还记得我们聊过 RAG 吗？",
     }
 
 
@@ -96,7 +95,7 @@ def test_group_non_mention_text_indexes_without_reply(tmp_path):
     state = {
         **_initial_state(),
         "channel_type": 0,  # 群聊
-        "raw_content": "晚上吃什么",
+        "clean_text": "晚上吃什么",
         "llm_text": "晚上吃什么",
     }
     result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
@@ -116,7 +115,7 @@ def test_group_non_mention_image_ends_without_index(tmp_path):
         **_initial_state(),
         "channel_type": 0,  # 群聊
         "content_kind": "image",
-        "raw_content": '<img src="x"/>',
+        "clean_text": "",
     }
     result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
 
@@ -133,7 +132,7 @@ def test_private_file_ends_without_reply(tmp_path):
     state = {
         **_initial_state(),
         "content_kind": "file",  # 私聊 + 文件 → 媒体门盖过 DIRECT
-        "raw_content": '<file src="x"/>',
+        "clean_text": "",
     }
     result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
 
@@ -155,7 +154,7 @@ def test_graph_image_reply_includes_vision_description(tmp_path):
     state = {
         **_initial_state(),
         "content_kind": "image",
-        "raw_content": '<img src="https://x/1.jpg"/>',
+        "clean_text": "",
         "llm_text": "[图片]",
         "image_srcs": ["https://x/1.jpg"],
     }
@@ -177,7 +176,7 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
     state = {
         **_initial_state(),
         "content_kind": "image",
-        "raw_content": '<img src="https://x/1.jpg"/>',
+        "clean_text": "",
         "llm_text": "[图片]",
         "image_srcs": ["https://x/1.jpg"],
     }

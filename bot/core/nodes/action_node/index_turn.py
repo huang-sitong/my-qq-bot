@@ -3,14 +3,15 @@
 Runs after ``summarize``. It is reached by both replied turns (user +
 bot reply, 2 records) and non-replied group text (user only, 1 record —
 ``bot_reply`` is empty and ``RagService.index_turn`` filters it out).
-Media-only content (empty ``clean_text``) is skipped; image turns with a
-``vision_desc`` merge the description into the indexed user message.
+``clean_text`` 由 handler 预计算注入（``parse_content`` 产出），本节点直接
+消费、不再图内解析 raw_content。纯媒体（clean_text 为空）跳过；image 轮
+带 ``vision_desc`` 时把描述并入索引内容。
 """
 
 import logging
 
 from bot.core.rag.service import RagService
-from bot.core.utils import MessageKind, clean_text
+from bot.core.utils import MessageKind
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
     """Index the current turn into the vector store. No-op when RAG is disabled."""
     if rag_service is None:
         return {}
-    content = clean_text(state.get("raw_content", ""))
+    content = state.get("clean_text", "")
     vision_desc = state.get("vision_desc", "").strip()
     # vision_desc 经 checkpoint 跨轮持久，仅 image 轮才并入索引内容
     if state.get("content_kind") == MessageKind.IMAGE.value and vision_desc:
