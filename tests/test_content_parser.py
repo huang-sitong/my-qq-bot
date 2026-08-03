@@ -149,3 +149,11 @@ def test_clean_text_strips_quote_and_at():
 
 def test_clean_text_strips_comments():
     assert clean_text('前<!-- 注释 -->后') == "前后"
+
+
+def test_parse_attachments_single_quoted_src():
+    assert parse_attachments("<img src='a.png'/>")[0].src == "a.png"
+
+
+def test_parse_attachments_title_fallback_to_name():
+    assert parse_attachments('<file title="报告.pdf" src="b.pdf"/>')[0].name == "报告.pdf"

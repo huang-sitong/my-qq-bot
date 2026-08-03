@@ -18,7 +18,7 @@ _MEDIA_TAG_RE = re.compile(r"<(img|file|audio|video)\b([^>]*?)/?>", re.IGNORECAS
 _TAG_RE = re.compile(r"</?[a-z]+\b[^>]*?/?>", re.IGNORECASE)   # 起始/闭合/自闭合
 _COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)             # 注释（message.md 语法）
 _LINK_RE = re.compile(r"<a\b([^>]*)>(.*?)</a>", re.IGNORECASE | re.DOTALL)
-_ATTR_RE = re.compile(r'([a-zA-Z0-9_-]+)\s*=\s*"([^"]*)"')     # 双引号版（Task 2 升级为单/双引号）
+_ATTR_RE = re.compile(r'([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\')')  # 单/双引号版
 
 _PLACEHOLDERS = {
     "img": "[图片]",
@@ -39,7 +39,11 @@ _TAG_TO_KIND = {
 
 
 def _parse_tag_attrs(tag_body: str) -> dict:
-    return {k: html.unescape(v) for k, v in _ATTR_RE.findall(tag_body)}
+    attrs = {}
+    for m in _ATTR_RE.finditer(tag_body):
+        value = m.group(2) if m.group(2) is not None else m.group(3)
+        attrs[m.group(1)] = html.unescape(value)
+    return attrs
 
 
 def parse_attachments(content: str) -> list[Attachment]:
@@ -51,7 +55,7 @@ def parse_attachments(content: str) -> list[Attachment]:
         attachments.append(
             Attachment(
                 type=tag_type,
-                name=attrs.get("name", ""),
+                name=attrs.get("name") or attrs.get("title", ""),
                 src=attrs.get("src", ""),
                 start=m.start(),
                 end=m.end(),
