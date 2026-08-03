@@ -6,7 +6,8 @@
 - file/audio/video: never reply (even in private chat)
 
 Media messages that are NOT replied to are kept out of ``messages`` so their
-placeholders never pollute later context.
+placeholders never pollute later context. HumanMessage 内容用 handler 注入的
+llm_text（每轮必注入，无兜底）。
 """
 
 import logging
@@ -20,14 +21,6 @@ from object.satori import ChannelType
 logger = logging.getLogger(__name__)
 
 
-def _strip_mention(content: str) -> str:
-    """Remove a leading ``<at …/>`` mention tag from message content."""
-    idx = content.find(">")
-    if idx != -1:
-        return content[idx + 1:].lstrip()
-    return content
-
-
 async def detect_intent(state: BotState) -> dict:
     """Deterministic routing: decide should_respond, build HumanMessage.
 
@@ -39,23 +32,19 @@ async def detect_intent(state: BotState) -> dict:
     bot_id = state.get("bot_id", "")
     bot_name = state.get("bot_name", "")
     mentions = state.get("mentions", {})
-    raw_content = state.get("raw_content", "")
     user_name = state.get("user_name", "")
     content_kind = state.get("content_kind", "")
 
     # 判定表（decide_reply / keep_in_context）单一来源见 bot.core.utils.routing
     should_respond = decide_reply(channel_type, content_kind, bot_id, bot_name, mentions)
 
-    # 2) Build HumanMessage: prefer handler-computed llm_text (media->placeholder,
-    #    @ stripped); fall back to stripping the leading mention ourselves.
-    content = state.get("llm_text")
-    if content is None:
-        content = _strip_mention(raw_content)
+    # 2) Build HumanMessage: handler 每轮必注入 llm_text（媒体->占位符、@ 已渲染）
+    content = state.get("llm_text", "")
     is_group = channel_type != ChannelType.DIRECT
     if is_group and user_name:
-        new_message = HumanMessage(content=content, name=user_name)
+        message = HumanMessage(content=content, name=user_name)
     else:
-        new_message = HumanMessage(content=content)
+        message = HumanMessage(content=content)
 
     # 3) Non-replied media must NOT enter context — its placeholder would
     #    pollute later @-mention turns. Keep them out of ``messages``.
@@ -66,6 +55,5 @@ async def detect_intent(state: BotState) -> dict:
     )
     return {
         "should_respond": should_respond,
-        "new_message": new_message,
-        "messages": [new_message] if add_to_context else [],
+        "messages": [message] if add_to_context else [],
     }

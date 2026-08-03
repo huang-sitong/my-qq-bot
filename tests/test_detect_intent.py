@@ -2,7 +2,7 @@
 
 - should_respond：text/image 对 DIRECT/@ 回复；file/audio/video 一律不回复
 - 非回复媒体不入上下文（messages 为空），非回复文本入上下文
-- HumanMessage 用 handler 注入的 llm_text，raw_content 兜底
+- HumanMessage 用 handler 注入的 llm_text（每轮必注入，无兜底）
 """
 
 import asyncio
@@ -17,7 +17,6 @@ from tests.fakes import make_state
 def test_uses_llm_text_when_present():
     state = make_state(
         llm_text="[图片]这是git",
-        raw_content='<img src="x"/>这是git',
         channel_type=0,
         bot_id="bot1",
         user_name="张三",
@@ -32,7 +31,6 @@ def test_uses_llm_text_when_present():
 def test_image_only_empty_llm_text_is_preserved():
     state = make_state(
         llm_text="",
-        raw_content='<img src="x"/>',
         content_kind="image",
         channel_type=1,  # DIRECT
         bot_id="bot1",
@@ -43,16 +41,15 @@ def test_image_only_empty_llm_text_is_preserved():
     assert result["messages"][0].content == ""
 
 
-def test_falls_back_to_mention_strip_when_llm_text_absent():
+def test_absent_llm_text_yields_empty_content():
     state = make_state(
-        raw_content='<at id="bot1" name="Bot"/> 你好',
         channel_type=0,
         bot_id="bot1",
-        mentions={"bot1": "Bot"},
+        user_name="",
     )
     result = asyncio.run(detect_intent(state))
-    assert result["should_respond"] is True
-    assert result["messages"][0].content == "你好"
+    assert result["should_respond"] is False
+    assert result["messages"][0].content == ""
 
 
 # ----------------------------------------------------------------------
@@ -62,7 +59,6 @@ def test_falls_back_to_mention_strip_when_llm_text_absent():
 def test_group_without_mention_does_not_respond():
     state = make_state(
         llm_text="晚上吃什么",
-        raw_content="晚上吃什么",
         channel_type=0,
         bot_id="bot1",
     )
@@ -73,7 +69,6 @@ def test_group_without_mention_does_not_respond():
 def test_group_text_without_mention_added_to_context():
     state = make_state(
         llm_text="晚上吃什么",
-        raw_content="晚上吃什么",
         channel_type=0,
         bot_id="bot1",
     )
@@ -84,7 +79,7 @@ def test_group_text_without_mention_added_to_context():
 
 def test_group_at_mention_responds():
     state = make_state(
-        raw_content='<at id="bot1" name="Bot"/> 你好',
+        llm_text="你好",
         content_kind="text",
         channel_type=0,
         bot_id="bot1",
@@ -98,7 +93,6 @@ def test_group_at_mention_responds():
 def test_media_never_responds_even_in_direct(kind):
     state = make_state(
         content_kind=kind,
-        raw_content=f'<{kind} src="x"/>',
         channel_type=1,  # DIRECT 也盖不过媒体门
         bot_id="bot1",
     )
@@ -110,7 +104,6 @@ def test_media_never_responds_even_in_direct(kind):
 def test_media_never_responds_even_with_mention():
     state = make_state(
         content_kind="file",
-        raw_content='<at id="bot1" name="Bot"/><file src="x"/>',
         channel_type=0,
         bot_id="bot1",
         mentions={"bot1": "Bot"},
@@ -123,7 +116,7 @@ def test_media_never_responds_even_with_mention():
 def test_image_in_direct_responds():
     state = make_state(
         content_kind="image",
-        raw_content='<img src="x"/>',
+        llm_text="",
         channel_type=1,  # DIRECT
         bot_id="bot1",
     )
@@ -134,7 +127,6 @@ def test_image_in_direct_responds():
 def test_image_in_group_without_at_does_not_respond():
     state = make_state(
         content_kind="image",
-        raw_content='<img src="x"/>',
         channel_type=0,
         bot_id="bot1",
     )
@@ -146,7 +138,6 @@ def test_image_in_group_without_at_does_not_respond():
 def test_group_name_only_mention_responds_with_empty_bot_id():
     state = make_state(
         llm_text="@小助手(10001) 你好",
-        raw_content='<at id="10001" name="小助手"/> 你好',
         content_kind="text",
         channel_type=0,
         bot_id="",
