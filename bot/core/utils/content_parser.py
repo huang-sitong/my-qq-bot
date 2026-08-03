@@ -5,7 +5,7 @@ LLOneBot 只发送 ``content`` 字符串（无结构化 ``elements`` 数组）�
 标签，产出消息类型（主类型）、附件列表和两种清洗文本：
 
 - ``clean_text``：剥掉全部标签（含闭合/注释），供 RAG 索引用（纯文本）
-- ``to_llm_text``：媒体→``[图片]`` 等占位符、链接→``内容 (href)``、其余标签全剥，供 LLM 用
+- ``to_llm_text``：媒体→``[图片]`` 等占位符、链接→``内容 (href)``、其余标签全剥，供 LLM 用（注：``<a@b.com>``/``<https://...>`` 等非元素尖括号序列同样被剥除）
 
 类型定义（MessageKind/Attachment/ParsedContent）见 ``object.bot.content``。
 """

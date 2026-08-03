@@ -157,3 +157,15 @@ def test_parse_attachments_single_quoted_src():
 
 def test_parse_attachments_title_fallback_to_name():
     assert parse_attachments('<file title="报告.pdf" src="b.pdf"/>')[0].name == "报告.pdf"
+
+
+def test_to_llm_text_link_empty_inner_renders_bare_url():
+    assert to_llm_text('<a href="https://x.com"> </a>') == "https://x.com"
+
+
+def test_to_llm_text_link_adjacent_links():
+    assert to_llm_text('<a href="1">A</a><a href="2">B</a>') == "A (1)B (2)"
+
+
+def test_to_llm_text_link_multiline_inner():
+    assert to_llm_text('<a href="x">多行\n文本</a>') == "多行\n文本 (x)"
