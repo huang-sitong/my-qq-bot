@@ -7,6 +7,7 @@ from bot.core.utils import (
     clean_text,
     parse_attachments,
     parse_content,
+    parse_mentions,
     to_llm_text,
 )
 
@@ -81,8 +82,8 @@ def test_to_llm_text_replaces_media_with_placeholders():
     assert to_llm_text('<video src="v.mp4"/>') == "[视频]"
 
 
-def test_to_llm_text_strips_at_keeps_text():
-    assert to_llm_text(f"{AT} 你好") == "你好"
+def test_to_llm_text_renders_at_keeps_text():
+    assert to_llm_text(f"{AT} 你好") == "@Bot(bot1) 你好"
 
 
 def test_to_llm_text_media_only():
@@ -95,7 +96,8 @@ def test_parse_content_combines_fields():
     assert len(parsed.attachments) == 1
     assert isinstance(parsed.attachments[0], Attachment)
     assert parsed.clean_text == "看看这张"
-    assert parsed.llm_text == "看看这张 [图片]"
+    assert parsed.llm_text == "@Bot(bot1) 看看这张 [图片]"
+    assert parsed.mentions == {"Bot": "bot1"}
     assert parsed.has_text is True
     assert parsed.has_media is True
 
@@ -122,7 +124,7 @@ def test_to_llm_text_strips_paired_markup_keeps_text():
 
 
 def test_to_llm_text_quote_keeps_quoted_text():
-    assert to_llm_text('<quote><at id="u1"/>原消息</quote> 回复') == "原消息 回复"
+    assert to_llm_text('<quote><at id="u1"/>原消息</quote> 回复') == "@u1原消息 回复"
 
 
 def test_to_llm_text_strips_emoji_sharp_br():
@@ -169,3 +171,49 @@ def test_to_llm_text_link_adjacent_links():
 
 def test_to_llm_text_link_multiline_inner():
     assert to_llm_text('<a href="x">多行\n文本</a>') == "多行\n文本 (x)"
+
+
+def test_parse_mentions_collects_names():
+    content = '<at id="10001" name="小助手"/><at id="10002" name="张三"/> 大家'
+    assert parse_mentions(content) == {"小助手": "10001", "张三": "10002"}
+
+
+def test_parse_mentions_top_level_only_quote_excluded():
+    content = '<quote><at id="10001" name="小助手"/>原消息</quote><at id="10002" name="张三"/>怎么看'
+    assert parse_mentions(content) == {"张三": "10002"}
+
+
+def test_parse_mentions_forward_message_excluded():
+    content = '<message><author id="u1" name="张三"/><at id="10001" name="小助手"/>转发内容</message>'
+    assert parse_mentions(content) == {}
+
+
+def test_parse_mentions_nested_message_keeps_top_level():
+    content = ('<message forward><message><at id="10001" name="小助手"/>内层</message></message>'
+               '<at id="10002" name="张三"/>外层')
+    assert parse_mentions(content) == {"张三": "10002"}
+
+
+def test_parse_mentions_skips_type_all():
+    assert parse_mentions('<at type="all"/> 早上好') == {}
+    assert parse_mentions('<at type="here"/>') == {}
+
+
+def test_parse_mentions_id_only_fallback():
+    assert parse_mentions('<at id="10001"/>') == {"10001": "10001"}
+
+
+def test_parse_mentions_empty_no_at():
+    assert parse_mentions("纯文本") == {}
+
+
+def test_to_llm_text_at_without_name_renders_id():
+    assert to_llm_text('<at id="u1"/> 你好') == "@u1 你好"
+
+
+def test_to_llm_text_at_type_all_renders_all_members():
+    assert to_llm_text('<at type="all"/> 早上好') == "所有成员 早上好"
+
+
+def test_to_llm_text_at_type_here_renders_online_members():
+    assert to_llm_text('<at type="here"/>') == "在线成员"

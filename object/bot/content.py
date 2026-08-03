@@ -30,8 +30,9 @@ class ParsedContent:
     kind: MessageKind       # 主类型：首个媒体标签决定
     attachments: list[Attachment] = field(default_factory=list)
     clean_text: str = ""    # 剥全部标签、unescape、折叠空白（RAG 用）
-    llm_text: str = ""      # 媒体→占位符、剥 at（LLM 用）
+    llm_text: str = ""      # 媒体→占位符、@→@昵称(id)/所有成员、剥其余（LLM 用）
     has_text: bool = False
+    mentions: dict[str, str] = field(default_factory=dict)  # 顶层 @ 提及 {昵称: id}
 
     @property
     def has_media(self) -> bool:

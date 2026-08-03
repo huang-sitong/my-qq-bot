@@ -9,6 +9,7 @@ from bot.core.utils.content_parser import (
     clean_text,
     parse_attachments,
     parse_content,
+    parse_mentions,
     to_llm_text,
 )
 from object.bot.content import Attachment, MessageKind, ParsedContent
@@ -25,5 +26,6 @@ __all__ = [
     "format_messages_for_summary",
     "parse_attachments",
     "parse_content",
+    "parse_mentions",
     "to_llm_text",
 ]
