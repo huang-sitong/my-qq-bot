@@ -5,9 +5,8 @@
 
 import asyncio
 import re
-from datetime import datetime, timedelta
 
-from bot.core.rag.service import RagService, TS_FMT
+from bot.core.rag.service import RagService
 from common import BotConfig
 
 ISO_RE = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}")
@@ -134,26 +133,12 @@ def test_index_turn_disabled_is_noop():
     assert store.added == []
 
 
-def test_search_by_user_hours_sets_iso_since():
-    store = RecordingStore()
-    svc = _svc(FakeEmbedder(), store)
-    asyncio.run(svc.search_by_user("t", person="张三", hours=24))
-
-    assert len(store.query_calls) == 1
-    call = store.query_calls[0]
-    assert call["person"] == "张三"
-    assert call["since_iso"] and call["until_iso"] == ""
-    since = datetime.strptime(call["since_iso"], TS_FMT)
-    elapsed = (datetime.now() - since).total_seconds()
-    assert 23 * 3600 < elapsed < 25 * 3600  # ≈ 24h 前，ISO 规范格式
-
-
-def test_search_by_user_explicit_window_wins_over_hours():
+def test_search_by_user_explicit_window_passes_through():
     store = RecordingStore()
     svc = _svc(FakeEmbedder(), store)
     asyncio.run(svc.search_by_user(
-        "t", start_time="2026-07-01 00:00:00", end_time="2026-08-01 23:59:59", hours=24))
+        "t", start_time="2026-07-01 00:00:00", end_time="2026-08-01 23:59:59"))
 
     call = store.query_calls[0]
-    assert call["since_iso"] == "2026-07-01 00:00:00"  # 显式 start 不被 hours 覆盖
+    assert call["since_iso"] == "2026-07-01 00:00:00"
     assert call["until_iso"] == "2026-08-01 23:59:59"

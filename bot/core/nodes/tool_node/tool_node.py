@@ -40,7 +40,6 @@ async def tool_node(state: BotState, rag_service=None, memory_store=None) -> dic
                 content = await search_chat_history(
                     args.get("query", ""), rag_service, thread_id,
                     user_name=args.get("user_name", ""),
-                    hours=args.get("hours", 0),
                     content_keyword=args.get("content_keyword", ""),
                     start_time=args.get("start_time", ""),
                     end_time=args.get("end_time", ""),

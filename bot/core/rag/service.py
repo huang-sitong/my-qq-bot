@@ -8,7 +8,7 @@
 
 import asyncio
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from common import BotConfig
 from bot.core.rag.embedder import EmbeddingService
@@ -110,20 +110,16 @@ class RagService:
         thread_id: str,
         top_k: int | None = None,
         score_threshold: float | None = None,
-        hours: int = 0,
         start_time: str = "",
         end_time: str = "",
     ) -> list[dict]:
         """检索相关历史。失败时返回空列表（不阻塞对话）。
 
-        ``hours``/``start_time``/``end_time`` 与 search_by_user 同语义——
-        时间窗口在语义检索同样生效（检索后剪枝）。
+        ``start_time``/``end_time`` 为 ISO 时间窗口（语义检索同样生效，检索后剪枝）。
         """
         if not self.enabled:
             return []
         try:
-            if hours > 0 and not start_time:
-                start_time = (datetime.now() - timedelta(hours=hours)).strftime(TS_FMT)
             vec = await self._embedder.embed_query(query)
             return await asyncio.to_thread(
                 self._store.search,
@@ -143,7 +139,6 @@ class RagService:
         thread_id: str,
         person: str = "",
         content_keyword: str = "",
-        hours: int = 0,
         start_time: str = "",
         end_time: str = "",
         limit: int = 10,
@@ -151,15 +146,12 @@ class RagService:
         """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无 embedding）。
 
         ``person`` 匹配发言者或接收者——回答"张三近期说了什么"、"bot 回复过张三什么"；
-        ``content_keyword`` 匹配内容子串——回答"谁说过 xx"。时间窗口二选一：
-        ``hours`` 相对最近 N 小时；``start_time``/``end_time`` 绝对边界
-        （ISO 风格字符串，由调用方 normalize_time 规范化）。失败返回空列表。
+        ``content_keyword`` 匹配内容子串——回答"谁说过 xx"。``start_time``/``end_time``
+        为绝对时间边界（ISO 风格字符串，由调用方 normalize_time 规范化）。失败返回空列表。
         """
         if not self.enabled:
             return []
         try:
-            if hours > 0 and not start_time:
-                start_time = (datetime.now() - timedelta(hours=hours)).strftime(TS_FMT)
             return await asyncio.to_thread(
                 self._store.query_meta,
                 thread_id=thread_id,
