@@ -32,6 +32,8 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
         thread_id=state.get("thread_id", ""),
         user_id=state.get("user_id", ""),
         user_name=state.get("user_name", ""),
+        bot_id=state.get("bot_id", ""),
+        bot_name=state.get("bot_name", ""),
         user_message=content,
         bot_reply=state.get("reply_text", ""),  # empty → service indexes user only
     )

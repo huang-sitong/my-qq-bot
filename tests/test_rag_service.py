@@ -48,13 +48,22 @@ def test_index_turn_with_reply_indexes_two():
     store = RecordingStore()
     embedder = FakeEmbedder()
     svc = _svc(embedder, store)
-    asyncio.run(svc.index_turn("t", "u1", "张三", "晚上吃什么", "去吃火锅"))
+    asyncio.run(svc.index_turn("t", "u1", "张三", "bot1", "小助手", "晚上吃什么", "去吃火锅"))
 
     assert len(store.added) == 1
     records = store.added[0]
     assert len(records) == 2
-    assert [r["role"] for r in records] == ["user", "assistant"]
+    # 用户消息：sender=用户，receiver=bot
+    assert records[0]["sender_id"] == "u1"
+    assert records[0]["sender_name"] == "张三"
+    assert records[0]["receiver_id"] == "bot1"
+    assert records[0]["receiver_name"] == "小助手"
     assert records[0]["content"] == "晚上吃什么"
+    # bot 回复：sender=bot，receiver=用户
+    assert records[1]["sender_id"] == "bot1"
+    assert records[1]["sender_name"] == "小助手"
+    assert records[1]["receiver_id"] == "u1"
+    assert records[1]["receiver_name"] == "张三"
     assert records[1]["content"] == "去吃火锅"
 
 
@@ -62,12 +71,13 @@ def test_index_turn_without_reply_indexes_only_user():
     store = RecordingStore()
     embedder = FakeEmbedder()
     svc = _svc(embedder, store)
-    asyncio.run(svc.index_turn("t", "u1", "张三", "晚上吃什么", ""))
+    asyncio.run(svc.index_turn("t", "u1", "张三", "bot1", "小助手", "晚上吃什么", ""))
 
     assert len(store.added) == 1
     records = store.added[0]
     assert len(records) == 1
-    assert records[0]["role"] == "user"
+    assert records[0]["sender_name"] == "张三"
+    assert records[0]["receiver_name"] == ""  # 非回复轮（群广播），无特定接收者
     assert records[0]["content"] == "晚上吃什么"
 
 
@@ -75,22 +85,23 @@ def test_index_turn_all_empty_is_noop():
     store = RecordingStore()
     embedder = FakeEmbedder()
     svc = _svc(embedder, store)
-    asyncio.run(svc.index_turn("t", "u1", "张三", "", ""))
+    asyncio.run(svc.index_turn("t", "u1", "张三", "bot1", "小助手", "", ""))
 
     assert store.added == []  # 无记录入库
     assert embedder.calls == 0  # 未触发嵌入
 
 
-def test_index_turn_empty_user_but_reply_keeps_role():
+def test_index_turn_empty_user_but_reply_sender_is_bot():
     store = RecordingStore()
     embedder = FakeEmbedder()
     svc = _svc(embedder, store)
-    asyncio.run(svc.index_turn("t", "u1", "张三", "", "这是回复"))
+    asyncio.run(svc.index_turn("t", "u1", "张三", "bot1", "小助手", "", "这是回复"))
 
     assert len(store.added) == 1
     records = store.added[0]
     assert len(records) == 1
-    assert records[0]["role"] == "assistant"  # 配对过滤不标错 role
+    assert records[0]["sender_name"] == "小助手"  # bot 回复，sender 是 bot
+    assert records[0]["receiver_name"] == "张三"
     assert records[0]["content"] == "这是回复"
 
 
@@ -101,6 +112,6 @@ def test_index_turn_disabled_is_noop():
         embedder=FakeEmbedder(),
         store=store,
     )
-    asyncio.run(svc.index_turn("t", "u1", "张三", "你好", "在的"))
+    asyncio.run(svc.index_turn("t", "u1", "张三", "bot1", "小助手", "你好", "在的"))
 
     assert store.added == []

@@ -37,7 +37,12 @@ async def tool_node(state: BotState, rag_service=None, memory_store=None) -> dic
         args = tc.get("args") or {}
         try:
             if name == "search_chat_history":
-                content = await search_chat_history(args.get("query", ""), rag_service, thread_id)
+                content = await search_chat_history(
+                    args.get("query", ""), rag_service, thread_id,
+                    user_name=args.get("user_name", ""),
+                    hours=args.get("hours", 0),
+                    content_keyword=args.get("content_keyword", ""),
+                )
             elif name == "remember_user_memory":
                 content = await remember_user_memory(args["key"], args["value"], memory_store, user_id)
             elif name == "recall_user_memory":

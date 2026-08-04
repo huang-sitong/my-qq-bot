@@ -11,9 +11,10 @@ TOOL_CALLS = [
 ]
 
 SAMPLE = [
-    {"thread_id": "test:thread", "user_id": "u1", "user_name": "张三",
-     "content": "上次我们决定用 qwen3-embedding", "role": "user",
-     "timestamp": 1753910400, "score": 0.85},
+    {"thread_id": "test:thread", "sender_id": "u1", "sender_name": "张三",
+     "receiver_id": "bot1", "receiver_name": "小助手",
+     "content": "上次我们决定用 qwen3-embedding", "timestamp": 1753910400,
+     "score": 0.85},
 ]
 
 

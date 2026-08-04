@@ -47,13 +47,17 @@ class RagService:
         thread_id: str,
         user_id: str,
         user_name: str,
+        bot_id: str,
+        bot_name: str,
         user_message: str,
         bot_reply: str,
     ) -> None:
         """嵌入并存储一轮对话（用户消息 + Bot 回复）。失败不抛出，仅降级。
 
         ``bot_reply`` 可为空（非回复轮）：此时只入库用户消息 1 条，
-        避免写入空的 assistant 记录。
+        避免写入空的 assistant 记录。每条记录显式建模 sender/receiver：
+        - 用户消息：sender=用户(id/昵称)，receiver=bot（回复轮）或空（群广播）
+        - bot 回复：sender=bot，receiver=用户
         """
         if not self.enabled:
             return
@@ -62,20 +66,24 @@ class RagService:
             kept = [(c, r) for c, r in pairs if c and c.strip()]
             if not kept:
                 return
+            replied = bool(bot_reply.strip())
             now = int(time.time())
             vectors = await self._embedder.embed_documents([c for c, _ in kept])
-            records = [
-                {
-                    "thread_id": thread_id,
-                    "user_id": user_id,
-                    "user_name": user_name or "",
-                    "content": content,
-                    "role": role,
-                    "timestamp": now,
-                    "embedding": vec,
-                }
-                for (content, role), vec in zip(kept, vectors)
-            ]
+            records = []
+            for (content, role), vec in zip(kept, vectors):
+                is_user = role == "user"
+                records.append(
+                    {
+                        "thread_id": thread_id,
+                        "sender_id": user_id if is_user else bot_id,
+                        "sender_name": user_name if is_user else (bot_name or "bot"),
+                        "receiver_id": (bot_id if replied else "") if is_user else user_id,
+                        "receiver_name": (bot_name if replied else "") if is_user else user_name,
+                        "content": content,
+                        "timestamp": now,
+                        "embedding": vec,
+                    }
+                )
             await asyncio.to_thread(self._store.add, records)
         except Exception:
             logger.exception("RAG index_turn failed for thread %s", thread_id)
@@ -105,6 +113,31 @@ class RagService:
             )
         except Exception:
             logger.exception("RAG search failed for thread %s", thread_id)
+            return []
+
+    async def search_by_user(
+        self,
+        thread_id: str,
+        person: str = "",
+        content_keyword: str = "",
+        hours: int = 0,
+        limit: int = 10,
+    ) -> list[dict]:
+        """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无 embedding）。
+
+        ``person`` 匹配发言者或接收者——回答"张三近期说了什么"、"bot 回复过张三什么"；
+        ``content_keyword`` 匹配内容子串——回答"谁说过 xx"。失败返回空列表。
+        """
+        if not self.enabled:
+            return []
+        try:
+            since_ts = int(time.time()) - hours * 3600 if hours > 0 else 0
+            return await asyncio.to_thread(
+                self._store.query_meta,
+                thread_id, person, content_keyword, since_ts, limit,
+            )
+        except Exception:
+            logger.exception("RAG search_by_user failed for thread %s", thread_id)
             return []
 
     def close(self) -> None:

@@ -9,6 +9,11 @@ RAG_CALL = AIMessage(content="", tool_calls=[
     {"name": "search_chat_history", "args": {"query": "之前聊了什么"},
      "id": "call_1", "type": "tool_call"},
 ])
+RAG_CALL_USER = AIMessage(content="", tool_calls=[
+    {"name": "search_chat_history",
+     "args": {"query": "", "user_name": "张三", "hours": 24},
+     "id": "call_5", "type": "tool_call"},
+])
 RECALL_CALL = AIMessage(content="", tool_calls=[
     {"name": "recall_user_memory", "args": {"keyword": "食物"},
      "id": "call_2", "type": "tool_call"},
@@ -22,8 +27,9 @@ UNKNOWN_CALL = AIMessage(content="", tool_calls=[
 ])
 
 SAMPLE = [
-    {"thread_id": "test:thread", "user_id": "u1", "user_name": "张三",
-     "content": "之前聊了 RAG", "role": "user", "timestamp": 1753910400,
+    {"thread_id": "test:thread", "sender_id": "u1", "sender_name": "张三",
+     "receiver_id": "bot1", "receiver_name": "小助手",
+     "content": "之前聊了 RAG", "timestamp": 1753910400,
      "score": 0.8},
 ]
 
@@ -34,6 +40,15 @@ def test_dispatches_search_chat_history_to_rag():
     result = asyncio.run(tool_node(state, rag_service=rag, memory_store=StubMemoryStore()))
     assert "之前聊了 RAG" in result["messages"][0].content
     assert rag.last_query == "之前聊了什么"
+    assert rag.last_thread_id == "test:thread"
+
+
+def test_dispatches_search_by_user_sql_mode():
+    rag = StubRagService(search_results=SAMPLE)
+    state = make_state(messages=[RAG_CALL_USER])
+    result = asyncio.run(tool_node(state, rag_service=rag, memory_store=StubMemoryStore()))
+    assert "之前聊了 RAG" in result["messages"][0].content
+    assert rag.last_person == "张三"
     assert rag.last_thread_id == "test:thread"
 
 

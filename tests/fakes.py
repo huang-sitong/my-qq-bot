@@ -45,11 +45,23 @@ class StubRagService:
             raise RuntimeError("search failed")
         return self.search_results
 
-    async def index_turn(self, thread_id, user_id, user_name, user_message, bot_reply):
+    async def search_by_user(self, thread_id, person="", content_keyword="", hours=0, limit=10):
+        self.last_query = person or content_keyword
+        self.last_thread_id = thread_id
+        self.last_person = person
+        self.last_content_keyword = content_keyword
+        if self.raise_on_search:
+            raise RuntimeError("search failed")
+        return self.search_results
+
+    async def index_turn(self, thread_id, user_id, user_name, bot_id, bot_name,
+                         user_message, bot_reply):
         self.last_indexed = {
             "thread_id": thread_id,
             "user_id": user_id,
             "user_name": user_name,
+            "bot_id": bot_id,
+            "bot_name": bot_name,
             "user_message": user_message,
             "bot_reply": bot_reply,
         }

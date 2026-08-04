@@ -14,7 +14,25 @@ import sqlite_vec
 
 logger = logging.getLogger(__name__)
 
-META_COLUMNS = ("thread_id", "user_id", "user_name", "content", "role", "timestamp")
+# 新版 meta 列：显式建模发送者/接收者（含 bot），替代旧的 user_id/user_name/role。
+# 查询入口是昵称（LLM 只认识昵称），故 sender_name/receiver_name 为必填语义列，
+# *_id 保留稳定键用于追踪改名。role 被蕴含（sender==bot 名即 bot 发言）。
+META_COLUMNS = (
+    "thread_id", "sender_id", "sender_name",
+    "receiver_id", "receiver_name", "content", "timestamp",
+)
+
+# 旧版 schema 的标志列（user_id/user_name/role），用于启动时检测并重建
+LEGACY_COLUMNS = ("user_id", "user_name", "role")
+
+
+def _escape_like(text: str) -> str:
+    """转义 LIKE 模式里的通配符（配合 ESCAPE '\\' 使用）。"""
+    return (
+        text.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
 
 
 class RagVectorStore:
@@ -46,6 +64,7 @@ class RagVectorStore:
     def _init_db(self) -> None:
         with self._lock:
             conn = self.conn
+            self._drop_legacy_schema(conn)
             conn.execute(
                 f"CREATE VIRTUAL TABLE IF NOT EXISTS chat_embeddings USING vec0("
                 f"embedding FLOAT[{self.dimensions}] distance_metric=cosine)"
@@ -54,10 +73,11 @@ class RagVectorStore:
                 "CREATE TABLE IF NOT EXISTS chat_embedding_meta ("
                 "  rowid INTEGER PRIMARY KEY,"
                 "  thread_id TEXT NOT NULL,"
-                "  user_id TEXT,"
-                "  user_name TEXT,"
+                "  sender_id TEXT,"
+                "  sender_name TEXT NOT NULL,"
+                "  receiver_id TEXT,"
+                "  receiver_name TEXT NOT NULL DEFAULT '',"
                 "  content TEXT NOT NULL,"
-                "  role TEXT NOT NULL,"
                 "  timestamp INTEGER NOT NULL"
                 ")"
             )
@@ -65,15 +85,37 @@ class RagVectorStore:
                 "CREATE INDEX IF NOT EXISTS idx_meta_thread "
                 "ON chat_embedding_meta(thread_id, timestamp)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_meta_sender "
+                "ON chat_embedding_meta(thread_id, sender_name)"
+            )
             conn.commit()
             logger.info("RagVectorStore ready (db=%s, dim=%d)", self.db_path, self.dimensions)
+
+    def _drop_legacy_schema(self, conn: sqlite3.Connection) -> None:
+        """旧版 meta（user_id/user_name/role）→ 新版（sender/receiver）重建，丢弃历史。
+
+        旧 assistant 记录没有存 bot 名，无法正确迁移到 sender 字段；rag 是辅助
+        检索缓存，直接重建最干净。vec0 与 meta 按 rowid 关联，须两张一起 DROP，
+        否则残留孤儿向量。
+        """
+        row = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='chat_embedding_meta'"
+        ).fetchone()
+        if row is None:
+            return  # 表尚不存在（首次建库），走正常 CREATE
+        schema = (row[0] or "").lower()
+        if any(col in schema for col in LEGACY_COLUMNS):
+            conn.execute("DROP TABLE IF EXISTS chat_embeddings")
+            conn.execute("DROP TABLE IF EXISTS chat_embedding_meta")
+            logger.warning("Dropped legacy chat_embedding schema; rebuilding with sender/receiver")
 
     # ------------------------------------------------------------------
     # 写入
     # ------------------------------------------------------------------
 
     def add(self, records: list[dict]) -> None:
-        """插入一批向量记录。每项: embedding, thread_id, user_id, user_name, content, role, timestamp."""
+        """插入一批向量记录。每项: embedding, thread_id, sender_id, sender_name, receiver_id, receiver_name, content, timestamp."""
         if not records:
             return
         with self._lock:
@@ -81,10 +123,11 @@ class RagVectorStore:
             for r in records:
                 cur = conn.execute(
                     "INSERT INTO chat_embedding_meta"
-                    " (thread_id, user_id, user_name, content, role, timestamp)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
-                    (r["thread_id"], r.get("user_id"), r.get("user_name"),
-                     r["content"], r["role"], r["timestamp"]),
+                    " (thread_id, sender_id, sender_name, receiver_id, receiver_name, content, timestamp)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (r["thread_id"], r.get("sender_id"), r["sender_name"],
+                     r.get("receiver_id"), r.get("receiver_name", ""),
+                     r["content"], r["timestamp"]),
                 )
                 rowid = cur.lastrowid
                 conn.execute(
@@ -153,13 +196,51 @@ class RagVectorStore:
 
     def _fetch_meta(self, rowid: int) -> dict | None:
         row = self.conn.execute(
-            "SELECT thread_id, user_id, user_name, content, role, timestamp"
+            "SELECT thread_id, sender_id, sender_name, receiver_id, receiver_name, content, timestamp"
             " FROM chat_embedding_meta WHERE rowid = ?",
             (rowid,),
         ).fetchone()
         if row is None:
             return None
         return dict(zip(META_COLUMNS, row))
+
+    # ------------------------------------------------------------------
+    # 属性检索（无 embedding）
+    # ------------------------------------------------------------------
+
+    def query_meta(
+        self,
+        thread_id: str,
+        person: str = "",
+        content_keyword: str = "",
+        since_ts: int = 0,
+        limit: int = 10,
+    ) -> list[dict]:
+        """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无向量）。
+
+        ``person`` 模糊匹配 sender_name 或 receiver_name（OR）——回答"张三说了
+        什么 / bot 回了张三什么"。``content_keyword`` 匹配内容子串——回答"谁说过 xx"。
+        均用 LIKE + ESCAPE 转义通配符。
+        """
+        with self._lock:
+            conds, args = ["thread_id = ?", "timestamp >= ?"], [thread_id, since_ts]
+            if person:
+                esc = _escape_like(person)
+                conds.append(
+                    "(sender_name LIKE ? ESCAPE '\\' OR receiver_name LIKE ? ESCAPE '\\')"
+                )
+                args += [f"%{esc}%", f"%{esc}%"]
+            if content_keyword:
+                esc = _escape_like(content_keyword)
+                conds.append("content LIKE ? ESCAPE '\\'")
+                args.append(f"%{esc}%")
+            rows = self.conn.execute(
+                "SELECT thread_id, sender_id, sender_name, receiver_id, receiver_name, content, timestamp"
+                " FROM chat_embedding_meta"
+                f" WHERE {' AND '.join(conds)} ORDER BY timestamp DESC LIMIT ?",
+                args + [limit],
+            ).fetchall()
+            return [dict(zip(META_COLUMNS, row)) for row in rows]
 
     # ------------------------------------------------------------------
     # 维护
