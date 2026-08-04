@@ -8,7 +8,7 @@ SAMPLE = [
     {
         "thread_id": "g", "sender_id": "u1", "sender_name": "张三",
         "receiver_id": "bot1", "receiver_name": "小助手",
-        "content": "之前决定用 qwen3-embedding 做嵌入", "timestamp": 1753910400,
+        "content": "之前决定用 qwen3-embedding 做嵌入", "timestamp": "2026-07-30 12:00:00",
         "score": 0.9,
     },
 ]
@@ -22,6 +22,8 @@ def test_tool_schema_exposes_query_param():
     assert "user_name" in props  # SQL 属性检索模式
     assert "content_keyword" in props
     assert "hours" in props
+    assert "start_time" in props  # ISO 时间窗口
+    assert "end_time" in props
 
 
 def test_format_results_renders_speaker_and_content():
@@ -33,6 +35,11 @@ def test_format_results_renders_speaker_and_content():
 def test_format_results_shows_receiver_with_arrow():
     text = _format_results(SAMPLE)
     assert "张三 → 小助手" in text
+
+
+def test_format_results_shows_iso_time_to_minute():
+    text = _format_results(SAMPLE)
+    assert "2026-07-30 12:00" in text  # ISO 存储，展示截到分钟
 
 
 def test_format_results_empty():
@@ -62,3 +69,22 @@ def test_search_chat_history_sql_mode_with_content_keyword():
         "", rag, "test:thread", content_keyword="qwen3"))
     assert rag.last_content_keyword == "qwen3"
     assert "之前决定用 qwen3-embedding 做嵌入" in text
+
+
+def test_search_chat_history_time_window_normalized():
+    rag = StubRagService(search_results=SAMPLE)
+    text = asyncio.run(search_chat_history(
+        "", rag, "test:thread",
+        start_time="2026-07-01",  # 日期缺省 → 当日 00:00:00
+        end_time="2026-08-01T23:59:59",  # T 分隔 → 空格分隔
+    ))
+    assert "之前决定用 qwen3-embedding 做嵌入" in text
+    assert rag.last_start_time == "2026-07-01 00:00:00"
+    assert rag.last_end_time == "2026-08-01 23:59:59"
+
+
+def test_search_chat_history_invalid_time_returns_error():
+    rag = StubRagService()
+    text = asyncio.run(search_chat_history("", rag, "test:thread", start_time="昨天"))
+    assert "时间参数格式无效" in text
+    assert rag.last_person is None  # 未下钻到检索

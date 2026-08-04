@@ -42,6 +42,8 @@ async def tool_node(state: BotState, rag_service=None, memory_store=None) -> dic
                     user_name=args.get("user_name", ""),
                     hours=args.get("hours", 0),
                     content_keyword=args.get("content_keyword", ""),
+                    start_time=args.get("start_time", ""),
+                    end_time=args.get("end_time", ""),
                 )
             elif name == "remember_user_memory":
                 content = await remember_user_memory(args["key"], args["value"], memory_store, user_id)

@@ -8,13 +8,25 @@
 
 import asyncio
 import logging
-import time
+from datetime import datetime, timedelta
 
 from common import BotConfig
 from bot.core.rag.embedder import EmbeddingService
 from bot.core.rag.store import RagVectorStore
 
 logger = logging.getLogger(__name__)
+
+# 时间戳存储格式（TEXT，定宽零填充）：字典序 == 时间序，SQL 直接 >= / <= 比较。
+# 展示层（search_chat_history._format_time）截到分钟，库里保留秒。
+TS_FMT = "%Y-%m-%d %H:%M:%S"
+
+
+def normalize_time(text: str) -> str:
+    """把 ISO 风格时间（YYYY-MM-DD / YYYY-MM-DD HH:MM:SS / T 分隔）规范成 TS_FMT。
+
+    非法输入抛 ValueError（调用方应转成工具错误提示）。
+    """
+    return datetime.fromisoformat(text.strip()).strftime(TS_FMT)
 
 
 class RagService:
@@ -67,7 +79,7 @@ class RagService:
             if not kept:
                 return
             replied = bool(bot_reply.strip())
-            now = int(time.time())
+            now = datetime.now().strftime(TS_FMT)
             vectors = await self._embedder.embed_documents([c for c, _ in kept])
             records = []
             for (content, role), vec in zip(kept, vectors):
@@ -98,11 +110,20 @@ class RagService:
         thread_id: str,
         top_k: int | None = None,
         score_threshold: float | None = None,
+        hours: int = 0,
+        start_time: str = "",
+        end_time: str = "",
     ) -> list[dict]:
-        """检索相关历史。失败时返回空列表（不阻塞对话）。"""
+        """检索相关历史。失败时返回空列表（不阻塞对话）。
+
+        ``hours``/``start_time``/``end_time`` 与 search_by_user 同语义——
+        时间窗口在语义检索同样生效（检索后剪枝）。
+        """
         if not self.enabled:
             return []
         try:
+            if hours > 0 and not start_time:
+                start_time = (datetime.now() - timedelta(hours=hours)).strftime(TS_FMT)
             vec = await self._embedder.embed_query(query)
             return await asyncio.to_thread(
                 self._store.search,
@@ -110,6 +131,8 @@ class RagService:
                 thread_id,
                 top_k or self.config.rag_top_k,
                 score_threshold or self.config.rag_score_threshold,
+                start_time,
+                end_time,
             )
         except Exception:
             logger.exception("RAG search failed for thread %s", thread_id)
@@ -121,20 +144,30 @@ class RagService:
         person: str = "",
         content_keyword: str = "",
         hours: int = 0,
+        start_time: str = "",
+        end_time: str = "",
         limit: int = 10,
     ) -> list[dict]:
         """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无 embedding）。
 
         ``person`` 匹配发言者或接收者——回答"张三近期说了什么"、"bot 回复过张三什么"；
-        ``content_keyword`` 匹配内容子串——回答"谁说过 xx"。失败返回空列表。
+        ``content_keyword`` 匹配内容子串——回答"谁说过 xx"。时间窗口二选一：
+        ``hours`` 相对最近 N 小时；``start_time``/``end_time`` 绝对边界
+        （ISO 风格字符串，由调用方 normalize_time 规范化）。失败返回空列表。
         """
         if not self.enabled:
             return []
         try:
-            since_ts = int(time.time()) - hours * 3600 if hours > 0 else 0
+            if hours > 0 and not start_time:
+                start_time = (datetime.now() - timedelta(hours=hours)).strftime(TS_FMT)
             return await asyncio.to_thread(
                 self._store.query_meta,
-                thread_id, person, content_keyword, since_ts, limit,
+                thread_id=thread_id,
+                person=person,
+                content_keyword=content_keyword,
+                since_iso=start_time,
+                until_iso=end_time,
+                limit=limit,
             )
         except Exception:
             logger.exception("RAG search_by_user failed for thread %s", thread_id)

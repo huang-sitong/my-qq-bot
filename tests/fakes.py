@@ -36,20 +36,30 @@ class StubRagService:
         self.raise_on_search = raise_on_search
         self.last_query = None
         self.last_thread_id = None
+        self.last_person = None
+        self.last_content_keyword = None
+        self.last_start_time = None
+        self.last_end_time = None
         self.last_indexed = None
 
-    async def search(self, query, thread_id, top_k=None, score_threshold=None):
+    async def search(self, query, thread_id, top_k=None, score_threshold=None,
+                     hours=0, start_time="", end_time=""):
         self.last_query = query
         self.last_thread_id = thread_id
+        self.last_start_time = start_time
+        self.last_end_time = end_time
         if self.raise_on_search:
             raise RuntimeError("search failed")
         return self.search_results
 
-    async def search_by_user(self, thread_id, person="", content_keyword="", hours=0, limit=10):
+    async def search_by_user(self, thread_id, person="", content_keyword="", hours=0,
+                             start_time="", end_time="", limit=10):
         self.last_query = person or content_keyword
         self.last_thread_id = thread_id
         self.last_person = person
         self.last_content_keyword = content_keyword
+        self.last_start_time = start_time
+        self.last_end_time = end_time
         if self.raise_on_search:
             raise RuntimeError("search failed")
         return self.search_results

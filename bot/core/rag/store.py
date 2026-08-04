@@ -22,7 +22,8 @@ META_COLUMNS = (
     "receiver_id", "receiver_name", "content", "timestamp",
 )
 
-# 旧版 schema 的标志列（user_id/user_name/role），用于启动时检测并重建
+# 旧版 schema 的标志：role 时代列（user_id/user_name/role）与 epoch 整数时间戳
+# （timestamp INTEGER）。任一命中即视为不兼容，DROP 重建（丢弃历史）。
 LEGACY_COLUMNS = ("user_id", "user_name", "role")
 
 
@@ -78,7 +79,7 @@ class RagVectorStore:
                 "  receiver_id TEXT,"
                 "  receiver_name TEXT NOT NULL DEFAULT '',"
                 "  content TEXT NOT NULL,"
-                "  timestamp INTEGER NOT NULL"
+                "  timestamp TEXT NOT NULL"
                 ")"
             )
             conn.execute(
@@ -93,9 +94,11 @@ class RagVectorStore:
             logger.info("RagVectorStore ready (db=%s, dim=%d)", self.db_path, self.dimensions)
 
     def _drop_legacy_schema(self, conn: sqlite3.Connection) -> None:
-        """旧版 meta（user_id/user_name/role）→ 新版（sender/receiver）重建，丢弃历史。
+        """不兼容的旧 meta schema → 新版重建，丢弃历史。
 
-        旧 assistant 记录没有存 bot 名，无法正确迁移到 sender 字段；rag 是辅助
+        触发条件：role 时代列（user_id/user_name/role）或 epoch 整数时间戳
+        （timestamp INTEGER，现为 TEXT ISO）。旧 assistant 记录没有存 bot 名、
+        epoch 整数与新 ISO 字符串混列比较全坏，两者都无法正确迁移；rag 是辅助
         检索缓存，直接重建最干净。vec0 与 meta 按 rowid 关联，须两张一起 DROP，
         否则残留孤儿向量。
         """
@@ -105,10 +108,10 @@ class RagVectorStore:
         if row is None:
             return  # 表尚不存在（首次建库），走正常 CREATE
         schema = (row[0] or "").lower()
-        if any(col in schema for col in LEGACY_COLUMNS):
+        if any(col in schema for col in LEGACY_COLUMNS) or "timestamp integer" in schema:
             conn.execute("DROP TABLE IF EXISTS chat_embeddings")
             conn.execute("DROP TABLE IF EXISTS chat_embedding_meta")
-            logger.warning("Dropped legacy chat_embedding schema; rebuilding with sender/receiver")
+            logger.warning("Dropped legacy chat_embedding schema; rebuilding with current schema")
 
     # ------------------------------------------------------------------
     # 写入
@@ -164,10 +167,14 @@ class RagVectorStore:
         thread_id: str,
         top_k: int = 5,
         score_threshold: float = 0.5,
+        since_iso: str = "",
+        until_iso: str = "",
     ) -> list[dict]:
         """按查询向量检索，当前群聊优先，不足时跨群补齐。
 
-        返回按相似度降序的命中记录，每项含元数据与 score（1 - cosine_distance）。
+        可选时间窗口 ``since_iso``/``until_iso``（ISO 字符串）过滤候选
+        （vec0 不支持 meta 过滤，检索后按 timestamp 剪枝）。返回按相似度
+        降序的命中记录，每项含元数据与 score（1 - cosine_distance）。
         """
         with self._lock:
             rows = self.conn.execute(
@@ -181,8 +188,15 @@ class RagVectorStore:
             candidates = []
             for rowid, distance in rows:
                 meta = self._fetch_meta(rowid)
-                if meta is not None:
-                    candidates.append({**meta, "score": 1.0 - distance})
+                if meta is None:
+                    continue
+                if since_iso or until_iso:
+                    ts = meta["timestamp"]
+                    if since_iso and ts < since_iso:
+                        continue
+                    if until_iso and ts > until_iso:
+                        continue
+                candidates.append({**meta, "score": 1.0 - distance})
 
         candidates = [c for c in candidates if c["score"] >= score_threshold]
 
@@ -213,17 +227,26 @@ class RagVectorStore:
         thread_id: str,
         person: str = "",
         content_keyword: str = "",
-        since_ts: int = 0,
+        since_iso: str = "",
+        until_iso: str = "",
         limit: int = 10,
     ) -> list[dict]:
         """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无向量）。
 
         ``person`` 模糊匹配 sender_name 或 receiver_name（OR）——回答"张三说了
         什么 / bot 回了张三什么"。``content_keyword`` 匹配内容子串——回答"谁说过 xx"。
+        时间窗口是 ``YYYY-MM-DD HH:MM:SS`` 字符串（定宽零填充，字典序==时间序，
+        可直接 >= / <= 比较）；``since_iso``/``until_iso`` 可单独给，留空即不设该边界。
         均用 LIKE + ESCAPE 转义通配符。
         """
         with self._lock:
-            conds, args = ["thread_id = ?", "timestamp >= ?"], [thread_id, since_ts]
+            conds, args = ["thread_id = ?"], [thread_id]
+            if since_iso:
+                conds.append("timestamp >= ?")
+                args.append(since_iso)
+            if until_iso:
+                conds.append("timestamp <= ?")
+                args.append(until_iso)
             if person:
                 esc = _escape_like(person)
                 conds.append(

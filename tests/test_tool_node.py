@@ -14,6 +14,11 @@ RAG_CALL_USER = AIMessage(content="", tool_calls=[
      "args": {"query": "", "user_name": "张三", "hours": 24},
      "id": "call_5", "type": "tool_call"},
 ])
+TIME_CALL = AIMessage(content="", tool_calls=[
+    {"name": "search_chat_history",
+     "args": {"query": "", "start_time": "2026-07-01", "end_time": "2026-08-01T23:59:59"},
+     "id": "call_6", "type": "tool_call"},
+])
 RECALL_CALL = AIMessage(content="", tool_calls=[
     {"name": "recall_user_memory", "args": {"keyword": "食物"},
      "id": "call_2", "type": "tool_call"},
@@ -29,7 +34,7 @@ UNKNOWN_CALL = AIMessage(content="", tool_calls=[
 SAMPLE = [
     {"thread_id": "test:thread", "sender_id": "u1", "sender_name": "张三",
      "receiver_id": "bot1", "receiver_name": "小助手",
-     "content": "之前聊了 RAG", "timestamp": 1753910400,
+     "content": "之前聊了 RAG", "timestamp": "2026-07-30 10:00:00",
      "score": 0.8},
 ]
 
@@ -50,6 +55,15 @@ def test_dispatches_search_by_user_sql_mode():
     assert "之前聊了 RAG" in result["messages"][0].content
     assert rag.last_person == "张三"
     assert rag.last_thread_id == "test:thread"
+
+
+def test_dispatches_search_by_time_window():
+    rag = StubRagService(search_results=SAMPLE)
+    state = make_state(messages=[TIME_CALL])
+    result = asyncio.run(tool_node(state, rag_service=rag, memory_store=StubMemoryStore()))
+    assert "之前聊了 RAG" in result["messages"][0].content
+    assert rag.last_start_time == "2026-07-01 00:00:00"  # 日期缺省 → 零点
+    assert rag.last_end_time == "2026-08-01 23:59:59"  # T 分隔 → 空格
 
 
 def test_dispatches_recall_to_memory():
