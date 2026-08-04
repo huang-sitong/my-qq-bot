@@ -14,9 +14,11 @@ import sqlite_vec
 
 logger = logging.getLogger(__name__)
 
-# 新版 meta 列：显式建模发送者/接收者（含 bot），替代旧的 user_id/user_name/role。
+# meta 列：显式建模发送者/接收者（含 bot），替代旧的 user_id/user_name/role。
 # 查询入口是昵称（LLM 只认识昵称），故 sender_name/receiver_name 为必填语义列，
 # *_id 保留稳定键用于追踪改名。role 被蕴含（sender==bot 名即 bot 发言）。
+# timestamp 为 TEXT ISO（YYYY-MM-DD HH:MM:SS，定宽零填充，字典序==时间序），
+# 旧 epoch 整数 schema 由 _drop_legacy_schema 检测重建（见 LEGACY_COLUMNS）。
 META_COLUMNS = (
     "thread_id", "sender_id", "sender_name",
     "receiver_id", "receiver_name", "content", "timestamp",
