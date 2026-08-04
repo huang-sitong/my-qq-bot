@@ -11,7 +11,7 @@ RAG_CALL = AIMessage(content="", tool_calls=[
 ])
 RAG_CALL_USER = AIMessage(content="", tool_calls=[
     {"name": "search_chat_history",
-     "args": {"query": "", "user_name": "张三"},
+     "args": {"query": "", "user_name": "张三", "hours": 24},
      "id": "call_5", "type": "tool_call"},
 ])
 TIME_CALL = AIMessage(content="", tool_calls=[

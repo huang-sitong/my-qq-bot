@@ -16,7 +16,7 @@ TOOL_DESCRIPTION = (
     "检索群聊历史消息。双模式："
     "（1）语义检索——当用户询问之前讨论过的话题、事实、决定、约定时用 query 检索最相关内容；"
     "（2）按人/按内容/按时间属性检索——当用户问『某人说过什么』『谁说过xx』『bot 回复过谁』"
-    "或『某时间段内』时，用 user_name / content_keyword / start_time / end_time"
+    "或『最近一段时间内』时，用 user_name / content_keyword / start_time / end_time / hours"
     "精确过滤（更快更准）。"
 )
 
@@ -39,6 +39,10 @@ TOOL_SCHEMA = {
                 "content_keyword": {
                     "type": "string",
                     "description": "可选：按内容包含的关键词过滤，用于查『谁说过 xx』",
+                },
+                "hours": {
+                    "type": "integer",
+                    "description": "可选：只看最近 N 小时内的消息（相对窗口，与 start_time 二选一）",
                 },
                 "start_time": {
                     "type": "string",
@@ -77,6 +81,7 @@ async def search_chat_history(
     rag_service: RagService,
     thread_id: str,
     user_name: str = "",
+    hours: int = 0,
     content_keyword: str = "",
     start_time: str = "",
     end_time: str = "",
@@ -100,10 +105,11 @@ async def search_chat_history(
             thread_id,
             person=user_name.strip(),
             content_keyword=content_keyword.strip(),
+            hours=hours or 0,
             start_time=start,
             end_time=end,
         )
     else:
         results = await rag_service.search(
-            query, thread_id, start_time=start, end_time=end)
+            query, thread_id, hours=hours or 0, start_time=start, end_time=end)
     return _format_results(results)

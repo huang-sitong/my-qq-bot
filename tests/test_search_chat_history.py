@@ -21,9 +21,9 @@ def test_tool_schema_exposes_query_param():
     assert "query" in props
     assert "user_name" in props  # SQL 属性检索模式
     assert "content_keyword" in props
+    assert "hours" in props
     assert "start_time" in props  # ISO 时间窗口
     assert "end_time" in props
-    assert "hours" not in props  # 相对窗口已移除，只保留绝对时间窗
 
 
 def test_format_results_renders_speaker_and_content():
@@ -57,7 +57,7 @@ def test_search_chat_history_returns_formatted_text():
 def test_search_chat_history_sql_mode_with_user_name():
     rag = StubRagService(search_results=SAMPLE)
     text = asyncio.run(search_chat_history(
-        "", rag, "test:thread", user_name="张三"))
+        "", rag, "test:thread", user_name="张三", hours=24))
     assert "之前决定用 qwen3-embedding 做嵌入" in text
     assert rag.last_person == "张三"
     assert rag.last_thread_id == "test:thread"
