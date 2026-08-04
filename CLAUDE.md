@@ -16,7 +16,7 @@ uv run python -c "..."   # quick import / logic check
 main.py                      # entrypoint — wires BotConfig, LLM, Graph, Handler, RagService, MemoryStore
 common/                      # shared config + prompts (single source of truth)
   config.py                  #   BotConfig dataclass (env-var overrides)
-  prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, SUMMARY_PROMPT, MEMORY_TOOL_HINT, VISION_PROMPT, RETRIEVAL_TASK
+  prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, SUMMARY_PROMPT, MEMORY_TOOL_HINT, CURRENT_TIME_HINT, VISION_PROMPT, RETRIEVAL_TASK
 bot/
   transport/websocket/       # Satori WS events: connect, identify, reconnect
   transport/http/            # Satori HTTP API: send_message, generic call_api
@@ -103,14 +103,16 @@ Each node file is a standalone `async def(state, ...) -> dict`.
 
 ### SystemMessage injection
 
-`call_llm_node` builds a **three-layer** SystemMessage list **dynamically each invocation**, prepends it to `state["messages"]`, and returns only the `AIMessage` to state:
+`call_llm_node` builds a **four-layer** SystemMessage list **dynamically each invocation**, prepends it to `state["messages"]`, and returns only the `AIMessage` to state:
 
 ```python
 # Persona is formatted with bot_name for self-awareness
 persona = state["persona"].format(bot_name=state.get("bot_name", ""))
 system_msgs = [SystemMessage(content=persona)]
-# Layer 1: conversation_summary (from summarize_node)
-# Layer 2: memory tools usage hint (MEMORY_TOOL_HINT, 仅注入 memory_store 时)
+# Layer 1: current time hint（CURRENT_TIME_HINT，动态注入当前时间+星期，供 LLM 算
+#          相对时间/hours/start_time/end_time 的基准；LLM 不知道墙钟时间）
+# Layer 2: conversation_summary (from summarize_node)
+# Layer 3: memory tools usage hint (MEMORY_TOOL_HINT, 仅注入 memory_store 时)
 ```
 
 - SystemMessages are **local variables** — never persisted to checkpoint
@@ -118,6 +120,7 @@ system_msgs = [SystemMessage(content=persona)]
 - Persona changes take effect immediately (no `has_persona` gate)
 - Checkpoint stores conversation history (HumanMessage + AIMessage + ToolMessage)，not system instructions
 - `DEFAULT_PERSONA_PROMPT` uses `{bot_name}` placeholder — formatted at invocation time（`ROUTER_PROMPT` 已随 router 摘除停用，仅保留文件）
+- 层级统一由 `build_system_messages`（`bot/core/utils/context.py`）构造：`estimate_context_tokens` 复用同一函数，token 估算与实际注入永不偏离（`now` 参数仅供测试固定时刻）
 
 ### RAG（群聊历史检索）
 
@@ -125,7 +128,7 @@ system_msgs = [SystemMessage(content=persona)]
 - **索引**：图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）对**回复轮**写入 2 条（用户消息 + Bot 回复）、对**群聊非@文本**只写入 1 条（仅用户消息，`bot_reply` 为空由 `RagService.index_turn` 配对过滤）；用户内容来自 handler 预计算的 `clean_text`（剥全部元素标签 + unescape，`parse_content` 产出），`index_turn` 直接消费、不再图内解析 raw_content；纯媒体消息跳过。**图片回复轮**（`content_kind=="image"` 且有 `vision_desc`）将描述并入用户消息（` [图片：{desc}]`）再入库；纯图片无描述不入库。索引失败仅降级（`RagService.index_turn` 内部吞异常）。**meta 表显式建模发送者/接收者**（`sender_id/name`、`receiver_id/name`，替代旧 `user_id/user_name/role`）：用户消息 sender=用户、receiver=bot（回复轮）或空（群广播）；bot 回复 sender=bot 名、receiver=用户。`bot_id/bot_name` 由 `index_turn` 从 state 注入，使"按 bot 名查 bot 发言"成为可能。`timestamp` 落库为 **ISO 字符串** `YYYY-MM-DD HH:MM:SS`（本地时区，定宽零填充 → 字典序==时间序，SQL 直接 `>= / <=` 比较），替代 epoch 整数；展示层 `_format_time` 截到分钟。
 - **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。嵌入结果按 `(model, 文本)` 哈希落盘缓存（`cache.py`，`db/embed_cache.sqlite`，key 含 model 故换模型自动失效），重复文本命中缓存不再调 Ollama。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。另有**属性检索**（`store.query_meta` / `RagService.search_by_user`，纯 SQL 无 embedding）：`person` 模糊匹配 sender_name 或 receiver_name（查"某人说过什么 / bot 回了谁"）、`content_keyword` 匹配内容子串（查"谁说过 xx"）、ISO 时间窗口（`start_time`/`end_time`，BETWEEN 语义，字典序比较）；LIKE 通配符经 `_escape_like` 转义。**时间窗口在语义检索同样生效**（vec0 不支持 meta 过滤，`search` 检索后按 timestamp 剪枝）。
-- **工具闭环**：`search_chat_history(query, rag_service, thread_id, user_name, hours, content_keyword, start_time, end_time)` 是纯函数，**双模式**——指定 `user_name`/`content_keyword` 走 SQL 属性检索，否则走向量语义检索；`start_time`/`end_time` 为 ISO 时间窗口，**两种模式均生效**，入口经 `normalize_time` 规范化（`fromisoformat` 接受 `YYYY-MM-DD`/T 分隔，非法输入返回错误提示）；`tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。结果渲染 `[时间] 发送者 → 接收者: 内容`（receiver 空时只显示发送者）。
+- **工具闭环**：`search_chat_history(query, rag_service, thread_id, user_name, hours, content_keyword, start_time, end_time)` 是纯函数，**双模式**——指定 `user_name`/`content_keyword` 走 SQL 属性检索，否则走向量语义检索；`start_time`/`end_time` 为 ISO 时间窗口，**两种模式均生效**，入口经 `normalize_time` 规范化（`fromisoformat` 接受 `YYYY-MM-DD`/T 分隔，非法输入返回错误提示）；`hours` 相对窗口在 service 层换算为 ISO 起点。**LLM 计算相对时间/时间窗的基准来自 call_llm 注入的 `CURRENT_TIME_HINT` 当前时间提示**（LLM 不知道墙钟时间，没有该提示 `hours`/`start_time` 无从算起）。`tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。结果渲染 `[时间] 发送者 → 接收者: 内容`（receiver 空时只显示发送者）。
 - **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_EMBED_CACHE_ENABLED` / `BOT_EMBED_CACHE_MAX_ENTRIES` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`；视觉复用 `OLLAMA_BASE_URL`，env `BOT_VISION_ENABLED` / `BOT_VISION_MODEL` / `BOT_VISION_MAX_IMAGES` / `BOT_VISION_TIMEOUT`）。
 
 ### 记忆工具（用户持久记忆）

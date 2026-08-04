@@ -4,23 +4,47 @@ Wraps LangChain built-in ``count_tokens_approximately`` and
 ``trim_messages`` for the QQ bot's three-layer context structure.
 """
 
+import datetime
 import logging
 
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
+
+from common import CURRENT_TIME_HINT
 
 logger = logging.getLogger(__name__)
 
 # Chinese text averages ~1.5 characters per token (vs ~4 for English)
 _CHARS_PER_TOKEN = 1.5
 
+# 当前时间展示格式，与 RagService.TS_FMT 一致（时间提示与检索结果时间戳直观对齐）
+_NOW_FMT = "%Y-%m-%d %H:%M:%S"
+_WEEKDAYS = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
 
-def build_system_messages(persona: str, summary: str = "") -> list[SystemMessage]:
-    """构建 call_llm 的前两层 SystemMessage；estimate_context_tokens 复用保证估算一致。
 
-    与 ``call_llm_node`` 注入的层级结构完全相同——token 估算与实际上下文永不偏离。
+def _current_time_hint(now: datetime.datetime) -> SystemMessage:
+    return SystemMessage(content=CURRENT_TIME_HINT.format(
+        time=now.strftime(_NOW_FMT),
+        weekday=_WEEKDAYS[now.weekday()],
+    ))
+
+
+def build_system_messages(
+    persona: str,
+    summary: str = "",
+    now: datetime.datetime | None = None,
+) -> list[SystemMessage]:
+    """构建 call_llm 的 SystemMessage 层；estimate_context_tokens 复用保证估算一致。
+
+    层级（与 ``call_llm_node`` 注入的结构完全相同——token 估算与实际上下文永不偏离）：
+    - persona（恒为 messages[0]）
+    - 当前时间提示（CURRENT_TIME_HINT，动态注入；``now`` 仅供测试注入固定时刻）
+    - 对话摘要（来自 summarize_node）
     """
+    if now is None:
+        now = datetime.datetime.now()
     msgs = [SystemMessage(content=persona)] if persona.strip() else []
+    msgs.append(_current_time_hint(now))
     if summary.strip():
         msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary}"))
     return msgs

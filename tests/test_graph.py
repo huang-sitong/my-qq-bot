@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from bot.core.graph import create_graph
 from common import BotConfig
@@ -56,6 +56,18 @@ def test_graph_loops_tool_call_then_answers(tmp_path):
     tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
     assert tool_msgs, "expected a ToolMessage from the tool loop"
     assert "上次我们决定用 qwen3-embedding" in tool_msgs[0].content
+
+
+def test_graph_injects_current_time_hint(tmp_path):
+    llm = ScriptedLLM([AIMessage(content="好的")])
+    graph, _ = asyncio.run(
+        create_graph(llm, BotConfig(), db_dir=str(tmp_path))
+    )
+    asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+
+    # 时间提示作为 SystemMessage 注入（LLM 计算相对时间/hours/时间窗的基准）
+    sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
+    assert any("当前时间" in m.content for m in sys_msgs)
 
 
 def test_graph_memory_tool_roundtrip(tmp_path):

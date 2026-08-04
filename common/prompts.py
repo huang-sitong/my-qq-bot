@@ -40,6 +40,11 @@ MEMORY_TOOL_HINT = """你可以通过工具读取和保存当前用户的持久�
 - 用户提到新的持久性个人信息时，调用 remember_user_memory 保存。
 - 记忆按用户区分，只涉及当前发送消息的用户。"""
 
+# 当前时间提示（call_llm 动态注入，供相对时间表述与检索时间窗的计算基准）
+CURRENT_TIME_HINT = """当前时间：{time}（{weekday}，本地时区）。
+涉及“现在/最近/今天/昨天/最近N小时”等相对时间的表述时，以此时间为基准；
+调用 search_chat_history 的时间参数（hours、start_time、end_time）也按此时间计算。"""
+
 # 视觉描述提示词（VisionService 用，/api/generate 的 prompt）
 VISION_PROMPT = "请用中文简要描述这张图片的内容。"
 
