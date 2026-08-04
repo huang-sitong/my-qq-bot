@@ -105,8 +105,29 @@ def test_embed_query_no_cache_when_disabled():
 
 def test_model_change_invalidates_key(tmp_path):
     svc, fake = _svc(tmp_path)
-    text = "Instruct: 检索群聊历史中与问题最相关的消息\nQuery: 你好"
-    key_a = svc._cache_key(text)
+    key_a = svc._cache_key("query", "你好")
     svc._config.embed_model = "model-b"
-    key_b = svc._cache_key(text)
+    key_b = svc._cache_key("query", "你好")
     assert key_a != key_b  # 换模型 → 新 key 空间，旧缓存自然失效
+
+
+def test_query_document_same_content_no_cross_hit(tmp_path):
+    """同内容 Query/Document 前缀不同 → 向量不同，key 必须分开，互不串用。"""
+    svc, fake = _svc(tmp_path)
+    asyncio.run(svc.embed_documents(["你好"]))
+    asyncio.run(svc.embed_query("你好"))
+    assert fake.doc_calls == 1
+    assert fake.query_calls == 1  # query 未命中 document 的缓存
+
+
+def test_cache_text_stores_raw_content(tmp_path):
+    """text 列只存原始内容，不带 Instruct 前缀。"""
+    svc, fake = _svc(tmp_path)
+    asyncio.run(svc.embed_query("你好"))
+    asyncio.run(svc.embed_documents(["再见"]))
+    cache = svc._cache
+    for raw in ("你好", "再见"):
+        rows = cache.conn.execute(
+            "SELECT text FROM embed_cache WHERE text = ?", (raw,)
+        ).fetchall()
+        assert rows and rows[0][0] == raw

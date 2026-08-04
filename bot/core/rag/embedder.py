@@ -2,8 +2,8 @@
 
 qwen3-embedding 是对话模板模型，检索时需加 Instruct 前缀才能达到最佳区分度
 （验证见 test/test_ollama_embedding.py 测试项 5）。
-嵌入结果按 (model, 文本) 哈希写入磁盘缓存（EmbeddingCache），重复文本直接命中，
-不再重复调 Ollama。
+嵌入结果按 (model, 任务前缀, 角色, 原始内容) 哈希写入磁盘缓存（EmbeddingCache），
+重复文本直接命中，不再重复调 Ollama；缓存 text 列只存原始内容（不带 Instruct 前缀）。
 """
 
 import asyncio
@@ -53,19 +53,25 @@ class EmbeddingService:
     def _document_text(self, content: str) -> str:
         return f"Instruct: {RETRIEVAL_TASK}\nDocument: {content}"
 
-    def _cache_key(self, text: str) -> str:
-        """缓存 key：model 变化时自动失效（换模型 → 新 key 空间）。"""
-        return hashlib.sha256(f"{self._config.embed_model}\x00{text}".encode("utf-8")).hexdigest()
+    def _cache_key(self, role: str, raw: str) -> str:
+        """缓存 key 覆盖影响向量的全部变体：model / 任务前缀 / 角色 / 原始内容。
+
+        任一变化 → 新 key 空间，旧缓存自然失效（换模型、改 RETRIEVAL_TASK、
+        Query/Document 角色互换都互不串用）；text 列只存原始内容，前缀不进缓存。
+        """
+        return hashlib.sha256(
+            f"{self._config.embed_model}\x00{RETRIEVAL_TASK}\x00{role}\x00{raw}".encode("utf-8")
+        ).hexdigest()
 
     async def embed_query(self, query: str) -> list[float]:
         text = self._query_text(query)
         if self._cache is not None:
-            key = self._cache_key(text)
+            key = self._cache_key("query", query)
             cached = await asyncio.to_thread(self._cache.get, key)
             if cached is not None:
                 return cached
             vec = await asyncio.to_thread(self._embeddings.embed_query, text)
-            await asyncio.to_thread(self._cache.set, key, self._config.embed_model, text, vec)
+            await asyncio.to_thread(self._cache.set, key, self._config.embed_model, query, vec)
             return vec
         return await asyncio.to_thread(self._embeddings.embed_query, text)
 
@@ -75,7 +81,7 @@ class EmbeddingService:
         texts = [self._document_text(c) for c in contents]
         if self._cache is None:
             return await asyncio.to_thread(self._embeddings.embed_documents, texts)
-        keys = [self._cache_key(t) for t in texts]
+        keys = [self._cache_key("document", c) for c in contents]
         cached = await asyncio.to_thread(self._cache.mget, keys)
         missing = [(i, t) for i, t in enumerate(texts) if cached[i] is None]
         if missing:
@@ -84,7 +90,7 @@ class EmbeddingService:
                 self._embeddings.embed_documents, [t for _, t in missing]
             )
             pairs = [
-                (keys[i], self._config.embed_model, texts[i], v)
+                (keys[i], self._config.embed_model, contents[i], v)
                 for i, v in zip(idxs, vecs)
             ]
             await asyncio.to_thread(self._cache.mset, pairs)
