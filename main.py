@@ -58,7 +58,10 @@ async def main():
         )
     mcp_tools = []
     if config.mcp_enabled:
-        mcp_tools = await load_mcp_tools(config.mcp_server_connections())
+        mcp_tools = await load_mcp_tools(
+            config.mcp_server_connections(),
+            tool_name_prefix=config.mcp_tool_name_prefix,
+        )
         logger.info("Loaded %d MCP tools", len(mcp_tools))
     graph, checkpointer = await create_graph(
         llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,

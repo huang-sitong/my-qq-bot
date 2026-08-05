@@ -15,6 +15,18 @@ def test_mcp_enabled_flag(monkeypatch):
     assert cfg.mcp_enabled is True
 
 
+def test_mcp_tool_name_prefix_false_by_default(monkeypatch):
+    monkeypatch.delenv("BOT_MCP_TOOL_NAME_PREFIX", raising=False)
+    cfg = BotConfig()
+    assert cfg.mcp_tool_name_prefix is False
+
+
+def test_mcp_tool_name_prefix_flag(monkeypatch):
+    monkeypatch.setenv("BOT_MCP_TOOL_NAME_PREFIX", "1")
+    cfg = BotConfig()
+    assert cfg.mcp_tool_name_prefix is True
+
+
 def test_tavily_connection_auto_registered_when_key_set():
     cfg = BotConfig(tavily_api_key="sk-test")
     servers = cfg.mcp_server_connections()

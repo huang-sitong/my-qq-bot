@@ -14,6 +14,7 @@ from typing import Annotated
 
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import InjectedState
+from pydantic import Field
 
 from bot.core.tools.search_chat_history import search_chat_history
 from bot.core.tools.user_memory import recall_user_memory, remember_user_memory
@@ -42,12 +43,24 @@ RECALL_TOOL_DESCRIPTION = (
 
 def _make_search_tool(rag_service) -> BaseTool:
     async def _run(
-        query: str,
-        user_name: str = "",
-        hours: int = 0,
-        content_keyword: str = "",
-        start_time: str = "",
-        end_time: str = "",
+        query: Annotated[str, Field(
+            description="要检索的问题或关键词，用中文表述（语义检索模式；user_name/content_keyword 非空时忽略）",
+        )],
+        user_name: Annotated[str, Field(
+            description="可选：指定涉及的用户昵称，模糊匹配 TA 的发言或 bot 给 TA 的回复",
+        )] = "",
+        hours: Annotated[int, Field(
+            description="可选：只看最近 N 小时内的消息（相对窗口，与 start_time 二选一）",
+        )] = 0,
+        content_keyword: Annotated[str, Field(
+            description="可选：按内容包含的关键词过滤，用于查『谁说过 xx』",
+        )] = "",
+        start_time: Annotated[str, Field(
+            description="可选：时间窗口起始，ISO 格式 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS",
+        )] = "",
+        end_time: Annotated[str, Field(
+            description="可选：时间窗口结束，ISO 格式 YYYY-MM-DD 或 YYYY-MM-DD HH:MM:SS",
+        )] = "",
         thread_id: Annotated[str, InjectedState("thread_id")] = "",
     ) -> str:
         try:
@@ -71,8 +84,12 @@ def _make_search_tool(rag_service) -> BaseTool:
 
 def _make_memory_tools(memory_store) -> list[BaseTool]:
     async def _remember(
-        key: str,
-        value: str,
+        key: Annotated[str, Field(
+            description='记忆的语义标签，如 "喜欢的食物"',
+        )],
+        value: Annotated[str, Field(
+            description="记忆内容，中文表述",
+        )],
         user_id: Annotated[str, InjectedState("user_id")] = "",
     ) -> str:
         try:
@@ -82,7 +99,9 @@ def _make_memory_tools(memory_store) -> list[BaseTool]:
             return "工具执行失败。"
 
     async def _recall(
-        keyword: str = "",
+        keyword: Annotated[str, Field(
+            description="检索关键词，按 key/value 模糊匹配；留空返回全部记忆",
+        )] = "",
         user_id: Annotated[str, InjectedState("user_id")] = "",
     ) -> str:
         try:

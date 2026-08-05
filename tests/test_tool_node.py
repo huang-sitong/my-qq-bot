@@ -1,9 +1,11 @@
 import asyncio
 
 from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.tools import tool as make_tool
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
+from bot.core.graph import _tool_error_message
 from bot.core.tools import build_tools
 from tests.fakes import StubMemoryStore, StubRagService
 
@@ -118,3 +120,27 @@ def test_degrades_on_tool_error():
     rag = StubRagService(raise_on_search=True)
     result = _invoke(_node(rag=rag), {"messages": [RAG_CALL], **DEFAULT_STATE})
     assert result["messages"][0].content == "工具执行失败。"
+
+
+def test_handle_tool_errors_degrades_on_raising_tool():
+    """ToolNode handle_tool_errors 回调兜住工具抛出的任意异常（含 MCP 传输层失败）。
+
+    内部工具已自带降级，但 MCP 外部工具（如 Tavily）的传输/会话异常会直接抛出
+    tool.ainvoke，本测试用 `_tool_error_message`（graph.py 的同一回调）证明
+    ToolNode 把这类异常转成「工具执行失败。」ToolMessage 而非中断整轮。
+    """
+    @make_tool
+    def boom(x: int) -> str:
+        """raise 一个含 URL 的异常，验证日志只记类名不记 repr。"""
+        raise RuntimeError("secret https://mcp.tavily.com/mcp/?tavilyApiKey=LEAK")
+
+    node = ToolNode([boom], handle_tool_errors=_tool_error_message)
+    call = AIMessage(content="", tool_calls=[
+        {"name": "boom", "args": {"x": 1}, "id": "call_boom", "type": "tool_call"},
+    ])
+    result = _invoke(node, {"messages": [call], **DEFAULT_STATE})
+    msg = result["messages"][0]
+    assert isinstance(msg, ToolMessage)
+    assert msg.status == "error"
+    assert msg.content == "工具执行失败。"
+    assert "LEAK" not in msg.content

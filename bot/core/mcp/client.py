@@ -32,6 +32,9 @@ async def load_mcp_tools(servers: dict, *, tool_name_prefix: bool = False) -> li
     for name in client.connections:
         try:
             tools += await client.get_tools(server_name=name)
-        except Exception:
-            logger.exception("MCP server %s 加载失败，跳过", name)
+        except Exception as exc:
+            # 只记 server 名 + 异常类名，绝不记异常 repr/traceback——
+            # Tavily 远程端点异常（401/403/429/5xx）的 repr 内嵌完整 URL
+            # https://mcp.tavily.com/mcp/?tavilyApiKey=<key>，泄漏到日志即密钥泄漏。
+            logger.error("MCP server %s 加载失败，跳过：%s", name, type(exc).__name__)
     return tools

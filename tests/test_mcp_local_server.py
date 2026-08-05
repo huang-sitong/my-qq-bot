@@ -5,12 +5,14 @@
 """
 
 import asyncio
+import logging
 import sys
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
+from bot.core.graph import _tool_error_message
 from bot.core.mcp import load_mcp_tools
 
 SERVER_CODE = '''
@@ -22,6 +24,21 @@ mcp = FastMCP("math")
 def add(a: int, b: int) -> int:
     """Add two numbers"""
     return a + b
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
+'''
+
+DIE_SERVER_CODE = '''
+from mcp.server.fastmcp import FastMCP
+import os
+
+mcp = FastMCP("die")
+
+@mcp.tool()
+def die(x: int) -> str:
+    """Kill the stdio subprocess mid-call to simulate a transport failure."""
+    os._exit(1)
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
@@ -75,5 +92,59 @@ def test_mcp_server_load_failure_skips():
     async def scenario():
         tools = await asyncio.wait_for(load_mcp_tools(servers), timeout=30)
         assert tools == []
+
+    asyncio.run(scenario())
+
+
+def test_mcp_load_failure_logs_class_name_only(monkeypatch, caplog):
+    """加载失败日志绝不包含异常 repr——防 Tavily URL/密钥泄漏到日志。"""
+    from bot.core.mcp import client as client_mod
+
+    class FakeClient:
+        connections = {"tavily": {"transport": "streamable_http"}}
+
+        async def get_tools(self, server_name=None):
+            raise RuntimeError("https://mcp.tavily.com/mcp/?tavilyApiKey=SECRETLEAK")
+
+    monkeypatch.setattr(client_mod, "MultiServerMCPClient", lambda *a, **k: FakeClient())
+
+    with caplog.at_level(logging.ERROR, logger="bot.core.mcp.client"):
+        tools = asyncio.run(load_mcp_tools(
+            {"tavily": {"transport": "streamable_http"}}))
+    assert tools == []
+    assert "SECRETLEAK" not in caplog.text
+    assert "RuntimeError" in caplog.text
+
+
+def test_mcp_transport_failure_degrades(tmp_path):
+    """MCP 工具调用中途子进程死亡（传输层失败）→ ToolNode 降级为「工具执行失败。」。
+
+    验证 handle_tool_errors=_tool_error_message 兜住 MCP 传输层异常（此处为
+    McpError），而不是让它中断整轮对话；异常只按类名记日志，不泄漏 URL。
+    """
+    server = tmp_path / "die_server.py"
+    server.write_text(DIE_SERVER_CODE, encoding="utf-8")
+
+    async def scenario():
+        servers = {
+            "die": {
+                "transport": "stdio",
+                "command": sys.executable,
+                "args": [str(server)],
+            },
+        }
+        tools = await asyncio.wait_for(load_mcp_tools(servers), timeout=30)
+        assert {t.name for t in tools} == {"die"}
+
+        node = ToolNode(tools, handle_tool_errors=_tool_error_message)
+        call = AIMessage(content="", tool_calls=[
+            {"name": "die", "args": {"x": 1}, "id": "call_die", "type": "tool_call"},
+        ])
+        result = await asyncio.wait_for(
+            node.ainvoke({"messages": [call]}, runtime=Runtime()), timeout=30)
+        msg = result["messages"][0]
+        assert isinstance(msg, ToolMessage)
+        assert msg.status == "error"
+        assert msg.content == "工具执行失败。"
 
     asyncio.run(scenario())

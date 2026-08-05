@@ -25,6 +25,17 @@ from object.bot.state import BotState
 logger = logging.getLogger(__name__)
 
 
+def _tool_error_message(exc: Exception) -> str:
+    """ToolNode 异常降级回调：只记异常类名，返回占位文案。
+
+    只记 ``type(exc).__name__``、绝不记 repr/traceback——MCP 远程工具（如 Tavily）
+    传输层异常（超时/5xx）的 repr 内嵌完整 URL（含 tavilyApiKey），泄漏即密钥泄漏。
+    返回 ``工具执行失败。`` 让 LLM 继续，而不是让异常中断整轮对话。
+    """
+    logger.warning("Tool execution failed: %s", type(exc).__name__)
+    return "工具执行失败。"
+
+
 def _route_after_detect(state: BotState) -> str:
     """Deterministic 3-way route（判定表单一来源见 bot.core.utils.routing）。
 
@@ -77,7 +88,7 @@ async def create_graph(
     builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
     builder.add_node("index_turn", partial(index_turn_node, rag_service=rag_service))
     builder.add_node("describe_image", partial(describe_image_node, vision_service=vision_service))
-    builder.add_node("tools", ToolNode(tools))
+    builder.add_node("tools", ToolNode(tools, handle_tool_errors=_tool_error_message))
 
     builder.add_edge(START, "detect_intent")
     builder.add_conditional_edges("detect_intent", _route_after_detect)

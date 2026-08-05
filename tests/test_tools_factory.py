@@ -44,3 +44,22 @@ def test_llm_schema_excludes_injected_args():
     recall_props = recall.tool_call_schema.model_json_schema()["properties"]
     assert "user_id" not in recall_props
     assert "keyword" in recall_props
+
+
+def test_llm_schema_has_param_descriptions():
+    """每个参数必须有 description —— 回归手写 TOOL_SCHEMA 删除后的 schema 退化。"""
+    tools = build_tools(rag_service=StubRagService(), memory_store=StubMemoryStore())
+    by_name = {t.name: t for t in tools}
+
+    search = by_name["search_chat_history"]
+    search_props = search.tool_call_schema.model_json_schema()["properties"]
+    assert "最近 N 小时" in search_props["hours"]["description"]
+    assert "中文表述" in search_props["query"]["description"]
+
+    remember = by_name["remember_user_memory"]
+    remember_props = remember.tool_call_schema.model_json_schema()["properties"]
+    assert "语义标签" in remember_props["key"]["description"]
+
+    recall = by_name["recall_user_memory"]
+    recall_props = recall.tool_call_schema.model_json_schema()["properties"]
+    assert "模糊匹配" in recall_props["keyword"]["description"]
