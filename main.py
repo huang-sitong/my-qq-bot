@@ -16,6 +16,7 @@ from common import (
     BotConfig,
     DEFAULT_PERSONA_PROMPT,
 )
+from bot.core.mcp import load_mcp_tools
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,9 +56,13 @@ async def main():
             timeout=config.vision_timeout,
             max_images=config.vision_max_images,
         )
+    mcp_tools = []
+    if config.mcp_enabled:
+        mcp_tools = await load_mcp_tools(config.mcp_server_connections())
+        logger.info("Loaded %d MCP tools", len(mcp_tools))
     graph, checkpointer = await create_graph(
         llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
-        vision_service=vision_service,
+        vision_service=vision_service, mcp_tools=mcp_tools,
     )
 
     handler = MessageHandler(
