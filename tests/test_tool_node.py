@@ -1,9 +1,11 @@
 import asyncio
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
+from langgraph.prebuilt import ToolNode
+from langgraph.runtime import Runtime
 
-from bot.core.nodes.tool_node import tool_node
-from tests.fakes import StubMemoryStore, StubRagService, make_state
+from bot.core.tools import build_tools
+from tests.fakes import StubMemoryStore, StubRagService
 
 RAG_CALL = AIMessage(content="", tool_calls=[
     {"name": "search_chat_history", "args": {"query": "之前聊了什么"},
@@ -38,64 +40,81 @@ SAMPLE = [
      "score": 0.8},
 ]
 
+DEFAULT_STATE = {"thread_id": "test:thread", "user_id": "u1"}
 
-def test_dispatches_search_chat_history_to_rag():
+
+def _node(*, rag=None, store=None):
+    return ToolNode(build_tools(rag_service=rag, memory_store=store))
+
+
+def _invoke(node, state):
+    """直接驱动 ToolNode（单元测试）。
+
+    langgraph 1.2.2 起，ToolNode.ainvoke 需要注入 Pregel Runtime（编译图内自动注入，
+    直接调用时缺省会抛 ValueError「Missing required config key 'N/A' for 'tools'」）。
+    Runtime 为 langgraph.runtime 公共类，默认参数即可满足本测试场景。
+    """
+    return asyncio.run(node.ainvoke(state, runtime=Runtime()))
+
+
+def test_executes_search_chat_history_query_mode():
     rag = StubRagService(search_results=SAMPLE)
-    state = make_state(messages=[RAG_CALL])
-    result = asyncio.run(tool_node(state, rag_service=rag, memory_store=StubMemoryStore()))
+    result = _invoke(_node(rag=rag, store=StubMemoryStore()),
+                     {"messages": [RAG_CALL], **DEFAULT_STATE})
+    assert isinstance(result["messages"][0], ToolMessage)
     assert "之前聊了 RAG" in result["messages"][0].content
     assert rag.last_query == "之前聊了什么"
     assert rag.last_thread_id == "test:thread"
 
 
-def test_dispatches_search_by_user_sql_mode():
+def test_executes_search_by_user_sql_mode():
     rag = StubRagService(search_results=SAMPLE)
-    state = make_state(messages=[RAG_CALL_USER])
-    result = asyncio.run(tool_node(state, rag_service=rag, memory_store=StubMemoryStore()))
+    result = _invoke(_node(rag=rag, store=StubMemoryStore()),
+                     {"messages": [RAG_CALL_USER], **DEFAULT_STATE})
     assert "之前聊了 RAG" in result["messages"][0].content
     assert rag.last_person == "张三"
     assert rag.last_thread_id == "test:thread"
 
 
-def test_dispatches_search_by_time_window():
+def test_executes_search_by_time_window():
     rag = StubRagService(search_results=SAMPLE)
-    state = make_state(messages=[TIME_CALL])
-    result = asyncio.run(tool_node(state, rag_service=rag, memory_store=StubMemoryStore()))
+    result = _invoke(_node(rag=rag, store=StubMemoryStore()),
+                     {"messages": [TIME_CALL], **DEFAULT_STATE})
     assert "之前聊了 RAG" in result["messages"][0].content
-    assert rag.last_start_time == "2026-07-01 00:00:00"  # 日期缺省 → 零点
-    assert rag.last_end_time == "2026-08-01 23:59:59"  # T 分隔 → 空格
+    assert rag.last_start_time == "2026-07-01 00:00:00"
+    assert rag.last_end_time == "2026-08-01 23:59:59"
 
 
-def test_dispatches_recall_to_memory():
+def test_executes_recall_to_memory():
     store = StubMemoryStore()
     store.store_memory("u1", "喜欢的食物", "火锅")
-    state = make_state(messages=[RECALL_CALL], user_id="u1")
-    result = asyncio.run(tool_node(state, memory_store=store))
+    result = _invoke(_node(store=store), {"messages": [RECALL_CALL], **DEFAULT_STATE})
     assert "火锅" in result["messages"][0].content
 
 
-def test_dispatches_remember_to_memory():
+def test_executes_remember_to_memory():
     store = StubMemoryStore()
-    state = make_state(messages=[REMEMBER_CALL], user_id="u1")
-    result = asyncio.run(tool_node(state, memory_store=store))
+    result = _invoke(_node(store=store), {"messages": [REMEMBER_CALL], **DEFAULT_STATE})
     assert "已记住" in result["messages"][0].content
     assert store.load_memories("u1") == [{"key": "喜欢的食物", "value": "火锅"}]
 
 
-def test_unknown_tool_returns_placeholder():
-    state = make_state(messages=[UNKNOWN_CALL])
-    result = asyncio.run(tool_node(state))
-    assert result["messages"][0].content == "未知工具：no_such_tool"
+def test_unknown_tool_returns_error_message():
+    result = _invoke(_node(rag=StubRagService(), store=StubMemoryStore()),
+                     {"messages": [UNKNOWN_CALL], **DEFAULT_STATE})
+    msg = result["messages"][0]
+    assert isinstance(msg, ToolMessage)
+    assert msg.status == "error"
+    assert "no_such_tool" in msg.content
 
 
 def test_noop_without_tool_calls():
-    state = make_state(messages=[AIMessage(content="普通回复")])
-    result = asyncio.run(tool_node(state))
-    assert result == {}
+    state = {"messages": [AIMessage(content="普通回复")], **DEFAULT_STATE}
+    result = _invoke(_node(rag=StubRagService(), store=StubMemoryStore()), state)
+    assert result["messages"] == []
 
 
 def test_degrades_on_tool_error():
     rag = StubRagService(raise_on_search=True)
-    state = make_state(messages=[RAG_CALL])
-    result = asyncio.run(tool_node(state, rag_service=rag))
+    result = _invoke(_node(rag=rag), {"messages": [RAG_CALL], **DEFAULT_STATE})
     assert result["messages"][0].content == "工具执行失败。"

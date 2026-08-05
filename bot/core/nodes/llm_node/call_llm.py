@@ -1,13 +1,9 @@
 import logging
 
 from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
-from bot.core.tools import (
-    TOOL_SCHEMA,
-    TOOL_SCHEMA_RECALL,
-    TOOL_SCHEMA_REMEMBER,
-)
 from bot.core.utils import build_system_messages
 from common import BotConfig, MEMORY_TOOL_HINT
 from object.bot.state import BotState
@@ -18,39 +14,32 @@ logger = logging.getLogger(__name__)
 async def call_llm_node(
     state: BotState,
     llm: ChatOpenAI,
-    rag_service=None,
-    memory_store=None,
+    tools: list[BaseTool] | None = None,
+    use_memory: bool = False,
     bot_config: BotConfig | None = None,
 ) -> dict:
     """调用 LLM 生成回复。
 
     SystemMessages 每次调用动态构建、不持久化，人设始终位于 messages[0]。
-    注入 rag_service / memory_store 时绑定对应工具：若 LLM 请求调用工具，
-    返回原始 AIMessage（带 tool_calls），由 tool_node 执行并回环重入本节点；
-    否则返回最终回复。轮次达到 rag_max_agent_rounds 上限后走无工具路径收尾。
+    tools 非空时绑定工具：若 LLM 请求调用工具，返回原始 AIMessage（带
+    tool_calls），由 ToolNode 执行并回环重入本节点；否则返回最终回复。
+    轮次达到 rag_max_agent_rounds 上限后走无工具路径收尾。
     """
     persona = state["persona"].format(bot_name=state.get("bot_name", ""))
     summary = state.get("conversation_summary", "").strip()
     system_msgs = build_system_messages(persona, summary)
-
-    use_rag = rag_service is not None and rag_service.enabled
-    use_memory = memory_store is not None
     if use_memory:
         system_msgs.append(SystemMessage(content=MEMORY_TOOL_HINT))
 
     messages = system_msgs + state["messages"]
 
-    schemas = []
-    if use_rag:
-        schemas.append(TOOL_SCHEMA)
-    if use_memory:
-        schemas += [TOOL_SCHEMA_REMEMBER, TOOL_SCHEMA_RECALL]
+    tools = tools or []
     max_rounds = bot_config.rag_max_agent_rounds if bot_config is not None else 3
     rounds = state.get("tool_rounds", 0)
 
-    if (use_rag or use_memory) and rounds < max_rounds:
+    if tools and rounds < max_rounds:
         try:
-            response = await llm.bind_tools(schemas).ainvoke(messages)
+            response = await llm.bind_tools(tools).ainvoke(messages)
         except Exception as exc:
             _log_llm_error(exc, state.get("thread_id", ""))
             return {
