@@ -9,6 +9,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt.tool_node import ToolInvocationError
 
 from bot.core.nodes import (
     call_llm_node,
@@ -31,7 +32,13 @@ def _tool_error_message(exc: Exception) -> str:
     只记 ``type(exc).__name__``、绝不记 repr/traceback——MCP 远程工具（如 Tavily）
     传输层异常（超时/5xx）的 repr 内嵌完整 URL（含 tavilyApiKey），泄漏即密钥泄漏。
     返回 ``工具执行失败。`` 让 LLM 继续，而不是让异常中断整轮对话。
+
+    例外：``ToolInvocationError``（langgraph 对工具参数校验失败的包装）直接返回
+    ``exc.message``——里面是逐字段校验反馈，LLM 靠它自我纠正畸形参数（如
+    ``hours="notanint"``），不应被降级成占位文案。
     """
+    if isinstance(exc, ToolInvocationError):
+        return exc.message
     logger.warning("Tool execution failed: %s", type(exc).__name__)
     return "工具执行失败。"
 

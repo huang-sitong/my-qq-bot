@@ -144,3 +144,19 @@ def test_handle_tool_errors_degrades_on_raising_tool():
     assert msg.status == "error"
     assert msg.content == "工具执行失败。"
     assert "LEAK" not in msg.content
+
+
+def test_handle_tool_errors_preserves_validation_feedback():
+    """畸形参数（ToolInvocationError）返回逐字段校验信息供 LLM 自我纠正，而非降级占位文案。"""
+    tools = build_tools(rag_service=StubRagService(), memory_store=StubMemoryStore())
+    node = ToolNode(tools, handle_tool_errors=_tool_error_message)
+    call = AIMessage(content="", tool_calls=[
+        {"name": "search_chat_history", "args": {"query": "x", "hours": "notanint"},
+         "id": "call_bad_hours", "type": "tool_call"},
+    ])
+    result = _invoke(node, {"messages": [call], **DEFAULT_STATE})
+    msg = result["messages"][0]
+    assert isinstance(msg, ToolMessage)
+    assert msg.status == "error"
+    assert msg.content != "工具执行失败。"
+    assert "hours" in msg.content and "valid integer" in msg.content
