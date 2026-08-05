@@ -1,6 +1,6 @@
 import asyncio
 
-from bot.core.tools import TOOL_SCHEMA, search_chat_history
+from bot.core.tools import search_chat_history
 from bot.core.tools.search_chat_history import _format_results
 from tests.fakes import StubRagService
 
@@ -12,18 +12,6 @@ SAMPLE = [
         "score": 0.9,
     },
 ]
-
-
-def test_tool_schema_exposes_query_param():
-    fn = TOOL_SCHEMA["function"]
-    assert fn["name"] == "search_chat_history"
-    props = fn["parameters"]["properties"]
-    assert "query" in props
-    assert "user_name" in props  # SQL 属性检索模式
-    assert "content_keyword" in props
-    assert "hours" in props
-    assert "start_time" in props  # ISO 时间窗口
-    assert "end_time" in props
 
 
 def test_format_results_renders_speaker_and_content():

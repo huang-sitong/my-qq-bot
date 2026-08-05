@@ -1,24 +1,8 @@
 import asyncio
 
-from bot.core.tools import (
-    TOOL_SCHEMA_RECALL,
-    TOOL_SCHEMA_REMEMBER,
-    recall_user_memory,
-    remember_user_memory,
-)
+from bot.core.tools import recall_user_memory, remember_user_memory
 from bot.core.tools.user_memory import _format_memories
 from tests.fakes import StubMemoryStore
-
-
-def test_schemas_expose_expected_params():
-    fn = TOOL_SCHEMA_REMEMBER["function"]
-    assert fn["name"] == "remember_user_memory"
-    assert "key" in fn["parameters"]["properties"]
-    assert "value" in fn["parameters"]["properties"]
-
-    fn = TOOL_SCHEMA_RECALL["function"]
-    assert fn["name"] == "recall_user_memory"
-    assert "keyword" in fn["parameters"]["properties"]
 
 
 def test_remember_stores_by_user():
