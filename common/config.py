@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 from dataclasses import dataclass, field
 
@@ -5,6 +7,19 @@ from dotenv import load_dotenv
 
 # 在读取任何 env 覆盖项之前加载 .env，保证 BotConfig 的 env 默认值生效
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+
+def _load_mcp_servers() -> dict:
+    """解析 BOT_MCP_SERVERS JSON；非法 JSON 或非 dict 降级为空。"""
+    raw = os.getenv("BOT_MCP_SERVERS", "{}")
+    try:
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        logger.warning("BOT_MCP_SERVERS 非法 JSON，忽略：%s", raw[:200])
+        return {}
 
 
 @dataclass
@@ -105,3 +120,26 @@ class BotConfig:
     vision_timeout: int = field(
         default_factory=lambda: int(os.getenv("BOT_VISION_TIMEOUT", "60")),
     )
+
+    # --- MCP (外部工具，经 langchain-mcp-adapters 接入) ---
+    mcp_enabled: bool = field(
+        default_factory=lambda: os.getenv("BOT_MCP_ENABLED", "0") not in ("0", "false", "False", ""),
+    )
+    mcp_servers: dict = field(default_factory=_load_mcp_servers)
+    mcp_tool_name_prefix: bool = field(
+        default_factory=lambda: os.getenv("BOT_MCP_TOOL_NAME_PREFIX", "0") not in ("0", "false", "False", ""),
+    )
+    tavily_api_key: str = field(
+        default_factory=lambda: os.getenv("TAVILY_API_KEY", ""),
+    )
+
+    def mcp_server_connections(self) -> dict:
+        """MCP server 连接配置：额外 server + Tavily 远程端点自动注册。"""
+        servers = dict(self.mcp_servers)
+        key = self.tavily_api_key.strip()
+        if key:
+            servers.setdefault("tavily", {
+                "transport": "streamable_http",
+                "url": f"https://mcp.tavily.com/mcp/?tavilyApiKey={key}",
+            })
+        return servers
