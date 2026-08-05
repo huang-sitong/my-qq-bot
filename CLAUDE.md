@@ -35,14 +35,16 @@ bot/
       context.py             #   token estimation + message formatting for summarization
       content_parser.py      #   Satori content 解析逻辑（媒体→占位符、@→@昵称(id)、链接→标题 (url)、其余全剥；类型见 object/bot/content.py）
       routing.py             #   确定性回复判定（decide_reply 按顶层提及集合 id+昵称混合 / keep_in_context / route_after_detect）
+    mcp/                     #  MCP 外部工具加载（langchain-mcp-adapters，远程/stdio 多 server）
+      client.py              #   load_mcp_tools — 逐 server 降级加载，返回 BaseTool 列表
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
       action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
-      tool_node/             #   tool_node — 执行 LLM 请求的工具调用（图级循环）
       subgraph/              #   nested subgraphs (future)
-    tools/                   # Tool definitions imported by graph / tool_node / subgraph
-      search_chat_history.py #   search_chat_history 工具（TOOL_SCHEMA + 纯函数）
-      user_memory.py         #   remember_user_memory / recall_user_memory 工具（TOOL_SCHEMA + 纯函数）
+    tools/                   # Tool definitions imported by graph / tools node
+      factory.py             #   build_tools — 内部纯函数包装为 BaseTool（InjectedState 注入 + 异常降级）
+      search_chat_history.py #   search_chat_history 纯函数（无 TOOL_SCHEMA，schema 由签名推断）
+      user_memory.py         #   remember/recall_user_memory 纯函数（无 TOOL_SCHEMA）
   handler.py                 # MessageHandler — ingress: validation → queue → graph → reply（RAG 索引在图内 index_turn）
 object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
@@ -61,7 +63,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
       → 条件边：should_respond → describe_image；非回复文本 → summarize；其余 → END
     → describe_image (action_node) ← 图片回复路径：下载→Ollama qwen3-vl 描述→[图片] 原位替换（vision_desc 供索引）；非图片/禁用 no-op
     → call_llm (llm_node)          ← dynamic SystemMessage injection
-      tool_node (tool_node)    ← call_llm 返回 tool_calls 时按工具名分发（search_chat_history / remember_user_memory / recall_user_memory），回环到 call_llm
+      tools (ToolNode)         ← call_llm 返回 tool_calls 时由 prebuilt ToolNode 统一执行（RAG/记忆/MCP 工具），回环到 call_llm
     → summarize (action_node)      ← token threshold check → progressive summary
     → index_turn (action_node)     ← 回复轮索引 2 条（用户+Bot）；群聊非@文本索引 1 条（仅用户）；纯媒体不索引
   → send reply via SatoriApiClient
@@ -93,13 +95,13 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not closures). In `graph.py`:
 - `call_llm_node` bound with `partial(call_llm_node, llm=llm, rag_service=rag_service, memory_store=memory_store, bot_config=config)`
 - `summarize_node` bound with `partial(summarize_node, llm=llm, bot_config=config)`
-- `tool_node` bound with `partial(tool_node, rag_service=rag_service, memory_store=memory_store)`
+- `tools` node = `ToolNode(build_tools(rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools))` — 内部工具闭包绑定服务 + `InjectedState` 注入 thread_id/user_id，MCP 工具直接并入
 
 Each node file is a standalone `async def(state, ...) -> dict`.
 
 ### `create_graph()` returns a tuple
 
-`create_graph(llm, config, db_dir="db", rag_service=None, memory_store=None)` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`. `rag_service` / `memory_store` are passed to `call_llm_node` (tool binding) and `tool_node` (tool execution) for the graph-level tool loop.
+`create_graph(llm, config, db_dir="db", rag_service=None, memory_store=None, vision_service=None, mcp_tools=None)` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`. `rag_service` / `memory_store` are passed to `call_llm_node` (tool binding) and `tools`（ToolNode，tool execution）for the graph-level tool loop。`mcp_tools` 为 `BaseTool` 列表，由 `bot/core/mcp/client.py::load_mcp_tools` 加载后传入 `call_llm`（绑定）与 `ToolNode`（执行）。
 
 ### SystemMessage injection
 
@@ -124,17 +126,18 @@ system_msgs = [SystemMessage(content=persona)]
 
 ### RAG（群聊历史检索）
 
-- **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm` 绑定 `search_chat_history` 工具（`memory_store` 注入时同时绑定 `remember_user_memory` / `recall_user_memory`），**LLM 自行决定何时检索**。若返回 `tool_calls`，条件边路由到 `tool_node` 执行，回边到 `call_llm` 继续；`tool_rounds`（总工具轮次计数）达到 `rag_max_agent_rounds` 后走无工具路径强制收尾。
+- **触发**：`rag_enabled`（默认开启）。注入 `RagService` 后，`call_llm` 绑定 `search_chat_history` 工具（`memory_store` 注入时同时绑定 `remember_user_memory` / `recall_user_memory`），**LLM 自行决定何时检索**。若返回 `tool_calls`，条件边路由到 `tools（ToolNode）` 执行，回边到 `call_llm` 继续；`tool_rounds`（总工具轮次计数）达到 `rag_max_agent_rounds` 后走无工具路径强制收尾。内部工具经 `build_tools` 包装为 `BaseTool`、schema 由签名推断。
 - **索引**：图内 `index_turn` 节点（action_node，位于 summarize 与 END 之间）对**回复轮**写入 2 条（用户消息 + Bot 回复）、对**群聊非@文本**只写入 1 条（仅用户消息，`bot_reply` 为空由 `RagService.index_turn` 配对过滤）；用户内容来自 handler 预计算的 `clean_text`（剥全部元素标签 + unescape，`parse_content` 产出），`index_turn` 直接消费、不再图内解析 raw_content；纯媒体消息跳过。**图片回复轮**（`content_kind=="image"` 且有 `vision_desc`）将描述并入用户消息（` [图片：{desc}]`）再入库；纯图片无描述不入库。索引失败仅降级（`RagService.index_turn` 内部吞异常）。**meta 表显式建模发送者/接收者**（`sender_id/name`、`receiver_id/name`，替代旧 `user_id/user_name/role`）：用户消息 sender=用户、receiver=bot（回复轮）或空（群广播）；bot 回复 sender=bot 名、receiver=用户。`bot_id/bot_name` 由 `index_turn` 从 state 注入，使"按 bot 名查 bot 发言"成为可能。`timestamp` 落库为 **ISO 字符串** `YYYY-MM-DD HH:MM:SS`（本地时区，定宽零填充 → 字典序==时间序，SQL 直接 `>= / <=` 比较），替代 epoch 整数；展示层 `_format_time` 截到分钟。
 - **嵌入**：Ollama `qwen3-embedding`（`embedder.py`）。Query 与 Document **共用** `Instruct: 检索群聊历史中与问题最相关的消息` 前缀以保持向量空间一致 —— qwen3 是对话模板模型，检索必须加 Instruct 前缀（见 `test/test_ollama_embedding.py` 项 5）。嵌入结果按 `(model, 任务前缀, 角色, 原始内容)` 哈希落盘缓存（`cache.py`，`db/embed_cache.sqlite`，key 覆盖 model/任务/角色 故换模型、改 RETRIEVAL_TASK 或 Query/Document 互换均自动失效；**text 列只存原始内容**，不带 Instruct 前缀），重复文本命中缓存不再调 Ollama。
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。另有**属性检索**（`store.query_meta` / `RagService.search_by_user`，纯 SQL 无 embedding）：`person` 模糊匹配 sender_name 或 receiver_name（查"某人说过什么 / bot 回了谁"）、`content_keyword` 匹配内容子串（查"谁说过 xx"）、ISO 时间窗口（`start_time`/`end_time`，BETWEEN 语义，字典序比较）；LIKE 通配符经 `_escape_like` 转义。**时间窗口在语义检索同样生效**（vec0 不支持 meta 过滤，`search` 检索后按 timestamp 剪枝）。
-- **工具闭环**：`search_chat_history(query, rag_service, thread_id, user_name, hours, content_keyword, start_time, end_time)` 是纯函数，**双模式**——指定 `user_name`/`content_keyword` 走 SQL 属性检索，否则走向量语义检索；`start_time`/`end_time` 为 ISO 时间窗口，**两种模式均生效**，入口经 `normalize_time` 规范化（`fromisoformat` 接受 `YYYY-MM-DD`/T 分隔，非法输入返回错误提示）；`hours` 相对窗口在 service 层换算为 ISO 起点。**LLM 计算相对时间/时间窗的基准来自 call_llm 注入的 `CURRENT_TIME_HINT` 当前时间提示**（LLM 不知道墙钟时间，没有该提示 `hours`/`start_time` 无从算起）。`tool_node` 从 state 注入 `thread_id`，`rag_service` 由 `functools.partial` 绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。结果渲染 `[时间] 发送者 → 接收者: 内容`（receiver 空时只显示发送者）。
+- **工具闭环**：`search_chat_history(query, rag_service, thread_id, user_name, hours, content_keyword, start_time, end_time)` 是纯函数，**双模式**——指定 `user_name`/`content_keyword` 走 SQL 属性检索，否则走向量语义检索；`start_time`/`end_time` 为 ISO 时间窗口，**两种模式均生效**，入口经 `normalize_time` 规范化（`fromisoformat` 接受 `YYYY-MM-DD`/T 分隔，非法输入返回错误提示）；`hours` 相对窗口在 service 层换算为 ISO 起点。**LLM 计算相对时间/时间窗的基准来自 call_llm 注入的 `CURRENT_TIME_HINT` 当前时间提示**（LLM 不知道墙钟时间，没有该提示 `hours`/`start_time` 无从算起）。`tools（ToolNode）` 经 `InjectedState` 注入 `thread_id`，`rag_service` 由 `build_tools` 闭包绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。结果渲染 `[时间] 发送者 → 接收者: 内容`（receiver 空时只显示发送者）。
 - **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_EMBED_CACHE_ENABLED` / `BOT_EMBED_CACHE_MAX_ENTRIES` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`；视觉复用 `OLLAMA_BASE_URL`，env `BOT_VISION_ENABLED` / `BOT_VISION_MODEL` / `BOT_VISION_MAX_IMAGES` / `BOT_VISION_TIMEOUT`）。
+- **MCP**（env `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS` / `BOT_MCP_TOOL_NAME_PREFIX` / `TAVILY_API_KEY`；Tavily 走官方远程 streamable_http 端点 `https://mcp.tavily.com/mcp/?tavilyApiKey=...`）
 
 ### 记忆工具（用户持久记忆）
 
-- **触发**：`main.py` 构建 `MemoryStore` 并注入 `create_graph(...)` 后，`call_llm` 额外绑定 `remember_user_memory` / `recall_user_memory` 工具，并注入 `MEMORY_TOOL_HINT` 提示层，**LLM 自行决定何时保存/检索**。工具定义在 `bot/core/tools/user_memory.py`，执行由通用 `tool_node` 按工具名分发。
-- **执行**：`tool_node` 从 state 注入 `user_id`（记忆按用户维度存取），`memory_store` 由 `functools.partial` 绑定注入；`remember_user_memory(key, value, ...)` / `recall_user_memory(keyword, ...)` 均为纯函数，同步 sqlite 操作经 `asyncio.to_thread` 异步化。
+- **触发**：`main.py` 构建 `MemoryStore` 并注入 `create_graph(...)` 后，`call_llm` 额外绑定 `remember_user_memory` / `recall_user_memory` 工具，并注入 `MEMORY_TOOL_HINT` 提示层，**LLM 自行决定何时保存/检索**。工具定义在 `bot/core/tools/user_memory.py`，执行由 prebuilt `ToolNode` 统一执行。
+- **执行**：`tools（ToolNode）` 经 `InjectedState("user_id")` 注入 `user_id`（记忆按用户维度存取），`memory_store` 由 `build_tools` 闭包绑定注入；`remember_user_memory(key, value, ...)` / `recall_user_memory(keyword, ...)` 均为纯函数，同步 sqlite 操作经 `asyncio.to_thread` 异步化。
 - **不再进图前全量注入 / 图外抽取**：旧方案在 `call_llm` 前将全部用户记忆拼入 SystemMessage，并在图外由 `_extract_memories` 抽取持久化 —— 均已移除。记忆完全由 LLM 通过工具主动读写，`user_id` 从 state 传入。
 
 ### Reply is sent outside the graph
@@ -146,7 +149,8 @@ system_msgs = [SystemMessage(content=persona)]
 When adding nodes, follow the classification in `bot/core/nodes/`:
 - **`llm_node/`** — nodes that call an LLM for reasoning/generation (fixed position in graph)
 - **`action_node/`** — deterministic, no-LLM logic nodes (fixed position in graph)
-- **`tool_node/`** — tools invoked by LLM via function calling（`tool_node` 按工具名分发的通用工具节点：RAG 检索 + 用户记忆存取，经条件边回环）
+- **`tools` node** — prebuilt `langgraph.prebuilt.ToolNode`，统一执行全部工具（RAG 检索、用户记忆、MCP 外部工具），经条件边回环；工具列表由 `build_tools` 组装
+- **`bot/core/mcp/`** — MCP 外部工具加载（`load_mcp_tools`），远程 streamable_http / stdio 多 server，单 server 失败降级跳过
 - **`subgraph/`** — nested CompiledStateGraph for complex multi-step sub-flows
 
 ## Gotchas
@@ -171,6 +175,6 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **sqlite-vec**: `rag.sqlite` 需要 `sqlite_vec.load()` 扩展；`chat_embeddings` 是 `vec0` 虚拟表（cosine 距离，维度 = `embed_dimensions`），元数据按 `rowid` 关联普通表 `chat_embedding_meta`（`sender_id/name`、`receiver_id/name`、`content`、`timestamp`）。`timestamp` 为 **TEXT ISO**（`YYYY-MM-DD HH:MM:SS`），淘汰按 `timestamp DESC`。每线程超过 `rag_retention_per_thread` 时按 `timestamp DESC` 淘汰最旧记录。**不兼容的旧 schema（`user_id/user_name/role` 时代列，或 `timestamp INTEGER` epoch 整数）启动时由 `_drop_legacy_schema` 检测并 DROP 两张表重建**（旧数据无法正确迁移，直接丢弃；vec0 与 meta 按 rowid 关联，须一起 DROP 防孤儿向量）。
 
-- **工具定位**: RAG 工具在 `bot/core/tools/search_chat_history.py`，记忆工具在 `bot/core/tools/user_memory.py`；执行节点为 `bot/core/nodes/tool_node/tool_node.py`，按工具名分发。`memory_store` 经 `functools.partial` 注入 `tool_node` 与 `call_llm`，`MemoryStore` 表仍为 `db/memory.sqlite`。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
+- **工具定位**: RAG 工具纯函数在 `bot/core/tools/search_chat_history.py`，记忆工具纯函数在 `bot/core/tools/user_memory.py`；`build_tools`（`bot/core/tools/factory.py`）把它们包装为 `BaseTool`（服务闭包绑定、`InjectedState` 注入 `thread_id`/`user_id`、异常降级为「工具执行失败。」）；执行节点为 prebuilt `ToolNode`。MCP 外部工具由 `bot/core/mcp/client.py::load_mcp_tools` 加载（每次调用自建 session，`handle_tool_errors=True` 把执行错误转 `status="error"` ToolMessage）。`MemoryStore` 表仍为 `db/memory.sqlite`。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
 
 - **Persona fallback**: `main.py` uses `config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT` — the `BotConfig.persona_prompt` default is a real prompt string, not empty. Set `BOT_PERSONA_PROMPT=""` to force fallback to `DEFAULT_PERSONA_PROMPT`. Both use `{bot_name}` placeholder, formatted at invocation time in `call_llm_node`.
