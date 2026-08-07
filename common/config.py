@@ -64,6 +64,13 @@ class BotConfig:
     llm_request_timeout: int = field(
         default_factory=lambda: int(os.getenv("BOT_LLM_REQUEST_TIMEOUT", "30")),
     )
+    # 主 LLM 是否多模态（env BOT_LLM_MULTIMODAL，默认 0）：
+    # 1 → 图片直接进主 LLM（describe_image 不预描述，本地视觉仅作 RAG 索引）；
+    # 0 → 图片走本地视觉描述（纯文本 LLM 兜底）。失败方向永远偏纯文本——
+    # 设错 0 只是退回现状；设错 1 会把图片块塞给不支持图片的 API。
+    llm_multimodal: bool = field(
+        default_factory=lambda: os.getenv("BOT_LLM_MULTIMODAL", "0") not in ("0", "false", "False", ""),
+    )
 
     # --- RAG (群聊历史向量检索) ---
     rag_enabled: bool = field(

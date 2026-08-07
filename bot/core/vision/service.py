@@ -1,8 +1,11 @@
-"""VisionService — 图片下载 + Ollama 视觉推理（qwen3-vl）。
+"""图片下载 + 本地 Ollama 视觉推理（qwen3-vl）。
 
 图片以公网 URL（如腾讯多媒体 CDN）到达，Ollama 的 images 参数只收 base64，
 因此先下载 → base64 → POST {base_url}/api/generate 生成描述。
 失败不抛出：describe 返回 ""（调用方降级为 [图片] 占位符）。
+
+模块级 ``download_images_as_data_urls`` 复用同一套 SSRF 防护/体积限制，
+把图片下载成 data URL 供**多模态主 LLM** 直接消费（describe_image 多模态分支）。
 """
 
 import asyncio
@@ -28,6 +31,74 @@ def _is_blocked_ip(ip) -> bool:
         ip.is_private or ip.is_loopback or ip.is_link_local
         or ip.is_multicast or ip.is_unspecified
     )
+
+
+async def _host_is_blocked(host: str) -> bool:
+    """解析 host 判断是否落在 SSRF 阻断地址段；解析失败按阻断处理。"""
+    try:
+        infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
+    except socket.gaierror:
+        return True
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if _is_blocked_ip(ip):
+            return True
+    return False
+
+
+async def _fetch_image_bytes(http: httpx.AsyncClient, src: str) -> tuple[bytes, str]:
+    """下载一张图片，返回 (原始字节, mime)；失败抛异常，由调用方降级。"""
+    parsed = urlparse(src)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"unsupported image src: {src}")
+    if await _host_is_blocked(parsed.hostname):
+        raise ValueError(f"blocked image host: {parsed.hostname}")
+    resp = await http.get(src)
+    resp.raise_for_status()
+    if len(resp.content) > _MAX_IMAGE_BYTES:
+        raise ValueError("image too large")
+    ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+    if ctype.startswith("text/"):
+        raise ValueError(f"not an image: {ctype}")
+    mime = ctype if ctype.startswith("image/") else "image/jpeg"
+    return resp.content, mime
+
+
+async def download_images_as_data_urls(
+    srcs: list[str],
+    *,
+    http: httpx.AsyncClient | None = None,
+    max_images: int = 3,
+    timeout: float = 60.0,
+) -> list[str]:
+    """下载图片为 data URL（主 LLM 多模态输入）。
+
+    单张失败返回空串、不抛出（调用方降级为 [图片] 占位符）；最多取
+    ``max_images`` 张。未传 ``http`` 时自建 client（连接超时 10s，防被
+    慢速连接卡死）。
+    """
+    srcs = srcs[:max_images]
+    if not srcs:
+        return []
+    owns = http is None
+    client = http or httpx.AsyncClient(timeout=httpx.Timeout(timeout, connect=10))
+
+    async def _one(src: str) -> str:
+        try:
+            data, mime = await _fetch_image_bytes(client, src)
+            return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
+        except Exception:
+            logger.warning("Image download failed for %s", src, exc_info=True)
+            return ""
+
+    try:
+        return list(await asyncio.gather(*(_one(s) for s in srcs)))
+    finally:
+        if owns:
+            await client.aclose()
 
 
 class VisionService:
@@ -69,35 +140,9 @@ class VisionService:
             return []
         return list(await asyncio.gather(*(self.describe(s) for s in srcs)))
 
-    async def _host_is_blocked(self, host: str) -> bool:
-        """解析 host 判断是否落在 SSRF 阻断地址段；解析失败按阻断处理。"""
-        try:
-            infos = await asyncio.to_thread(socket.getaddrinfo, host, None)
-        except socket.gaierror:
-            return True
-        for info in infos:
-            try:
-                ip = ipaddress.ip_address(info[4][0])
-            except ValueError:
-                continue
-            if _is_blocked_ip(ip):
-                return True
-        return False
-
     async def _download_base64(self, src: str) -> str:
-        parsed = urlparse(src)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
-            raise ValueError(f"unsupported image src: {src}")
-        if await self._host_is_blocked(parsed.hostname):
-            raise ValueError(f"blocked image host: {parsed.hostname}")
-        resp = await self._http.get(src)
-        resp.raise_for_status()
-        if len(resp.content) > _MAX_IMAGE_BYTES:
-            raise ValueError("image too large")
-        ctype = resp.headers.get("content-type", "").split(";")[0].strip().lower()
-        if ctype.startswith("text/"):
-            raise ValueError(f"not an image: {ctype}")
-        return base64.b64encode(resp.content).decode("ascii")
+        data, _ = await _fetch_image_bytes(self._http, src)
+        return base64.b64encode(data).decode("ascii")
 
     async def _ollama_generate(self, image_b64: str) -> str:
         payload = {

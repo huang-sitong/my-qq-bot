@@ -96,7 +96,13 @@ async def create_graph(
     )
     builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
     builder.add_node("index_turn", partial(index_turn_node, rag_service=rag_service))
-    builder.add_node("describe_image", partial(describe_image_node, vision_service=vision_service))
+    builder.add_node("describe_image", partial(
+        describe_image_node,
+        vision_service=vision_service,
+        llm_multimodal=config.llm_multimodal,
+        max_images=config.vision_max_images,
+        timeout=config.vision_timeout,
+    ))
     builder.add_node("tools", ToolNode(tools, handle_tool_errors=_tool_error_message))
 
     builder.add_edge(START, "detect_intent")

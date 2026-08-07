@@ -10,6 +10,7 @@ import logging
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
+from bot.core.utils.content_parser import IMAGE_PLACEHOLDER
 from common import CURRENT_TIME_HINT
 
 logger = logging.getLogger(__name__)
@@ -73,16 +74,39 @@ def estimate_context_tokens(
     )
 
 
+def _content_to_text(content) -> str:
+    """消息 content 转纯文本：字符串原样；多模态 content 数组只取 text 块。
+
+    image_url 块归一为 ``[图片]`` 占位符——摘要/检索不需要 base64 原始字节，
+    只关心"这里有一张图"。非 text/image 块按 str() 兜底。
+    """
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    parts.append(str(block.get("text", "")))
+                elif block.get("type") == "image_url":
+                    parts.append(IMAGE_PLACEHOLDER)
+            else:
+                parts.append(str(block))
+        return "".join(parts)
+    return str(content)
+
+
 def format_messages_for_summary(messages: list[BaseMessage]) -> str:
     """Convert a list of messages to a readable text block for summarization.
 
     Each message is formatted as ``[Role | name]: content`` or
-    ``[Role]: content``, one per line.
+    ``[Role]: content``, one per line. Multimodal messages render as text
+    blocks only (images → ``[图片]``), never the raw base64.
     """
     lines: list[str] = []
     for m in messages:
         role = type(m).__name__.replace("Message", "")
-        content = getattr(m, "content", str(m))
+        content = _content_to_text(getattr(m, "content", str(m)))
         name = getattr(m, "name", "") or ""
         if name:
             lines.append(f"[{role} | {name}]: {content}")

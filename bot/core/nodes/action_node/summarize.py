@@ -12,6 +12,7 @@ from langchain_core.messages import (
     RemoveMessage,
     trim_messages,
 )
+from langchain_core.messages.utils import count_tokens_approximately
 from langchain_openai import ChatOpenAI
 
 from bot.core.utils import estimate_context_tokens, format_messages_for_summary
@@ -19,6 +20,15 @@ from common import BotConfig, SUMMARY_PROMPT
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
+
+
+def _approx_token_counter(messages) -> int:
+    """trim_messages 的 approximate token 计数器（中文 1.5 字符/token）。
+
+    langgraph/langchain 新版 trim_messages 不再接受 ``chars_per_token`` 关键字，
+    改为传 callable；这里与 ``estimate_context_tokens`` 保持一致避免估算偏离。
+    """
+    return count_tokens_approximately(messages, chars_per_token=1.5)
 
 
 async def summarize_node(
@@ -78,9 +88,8 @@ async def summarize_node(
         trimmed_input = trim_messages(
             [HumanMessage(content=formatted_messages)],
             max_tokens=bot_config.summary_max_input_tokens,
-            token_counter="approximate",
+            token_counter=_approx_token_counter,
             strategy="last",
-            chars_per_token=1.5,
         )
         formatted_messages = (
             trimmed_input[0].content if trimmed_input else formatted_messages

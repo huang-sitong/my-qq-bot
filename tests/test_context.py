@@ -50,3 +50,34 @@ def test_estimate_builds_same_layers_as_builder():
     # 显式构造（固定 now）与内部构造（动态 now，定宽格式字符数相同）→ 估算永不偏离注入
     assert estimate_context_tokens(msgs, "你是助手", "摘要") == count_tokens_approximately(
         expected, chars_per_token=1.5)
+
+
+def test_format_messages_for_summary_extracts_text_from_multimodal():
+    """多模态 content 数组 → 摘要只取文本块，图片归一为 [图片]，绝不带 base64。"""
+    from langchain_core.messages import HumanMessage
+
+    from bot.core.utils import format_messages_for_summary
+
+    msg = HumanMessage(content=[
+        {"type": "text", "text": "看图 "},
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AAA"}},
+    ])
+    out = format_messages_for_summary([msg])
+    assert "[Human]: 看图 [图片]" in out
+    assert "base64" not in out
+
+
+def test_summary_trim_accepts_callable_counter():
+    """回归：trim_messages 新版不接受 chars_per_token 关键字，须走 callable 计数器。"""
+    from langchain_core.messages import HumanMessage
+    from langchain_core.messages.utils import count_tokens_approximately, trim_messages
+
+    from bot.core.nodes.action_node.summarize import _approx_token_counter
+
+    msgs = [HumanMessage(content="hello world hello world")]
+    # 计数器与 estimate_context_tokens 的 1.5 字符/token 语义一致
+    assert _approx_token_counter(msgs) == count_tokens_approximately(msgs, chars_per_token=1.5)
+    trimmed = trim_messages(
+        msgs, max_tokens=1000, token_counter=_approx_token_counter, strategy="last",
+    )
+    assert len(trimmed) == 1
