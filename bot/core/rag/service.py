@@ -140,7 +140,7 @@ class RagService:
 
     async def search_by_user(
         self,
-        thread_id: str,
+        thread_id: str | None = None,
         person: str = "",
         content_keyword: str = "",
         hours: int = 0,
@@ -150,6 +150,7 @@ class RagService:
     ) -> list[dict]:
         """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无 embedding）。
 
+        ``thread_id`` 为 None 时检索**全部群**（属性检索跨群），否则限定该群。
         ``person`` 匹配发言者或接收者——回答"张三近期说了什么"、"bot 回复过张三什么"；
         ``content_keyword`` 匹配内容子串——回答"谁说过 xx"。时间窗口二选一：
         ``hours`` 相对最近 N 小时；``start_time``/``end_time`` 绝对边界

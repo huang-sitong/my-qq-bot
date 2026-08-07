@@ -148,6 +148,15 @@ def test_search_by_user_hours_sets_iso_since():
     assert 23 * 3600 < elapsed < 25 * 3600  # ≈ 24h 前，ISO 规范格式
 
 
+def test_search_by_user_none_thread_scans_all_groups():
+    store = RecordingStore()
+    svc = _svc(FakeEmbedder(), store)
+    asyncio.run(svc.search_by_user(None, person="张三"))
+
+    assert len(store.query_calls) == 1
+    assert store.query_calls[0]["thread_id"] is None  # 跨群：不设 thread 过滤
+
+
 def test_search_by_user_explicit_window_wins_over_hours():
     store = RecordingStore()
     svc = _svc(FakeEmbedder(), store)

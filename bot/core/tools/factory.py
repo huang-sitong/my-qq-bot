@@ -26,7 +26,7 @@ SEARCH_TOOL_DESCRIPTION = (
     "（1）语义检索——当用户询问之前讨论过的话题、事实、决定、约定时用 query 检索最相关内容；"
     "（2）按人/按内容/按时间属性检索——当用户问『某人说过什么』『谁说过xx』『bot 回复过谁』"
     "或『最近一段时间内』时，用 user_name / content_keyword / start_time / end_time / hours"
-    "精确过滤（更快更准）。"
+    "精确过滤（更快更准；不受当前群限制，跨全部群返回，来源群标注在结果里）。"
 )
 
 REMEMBER_TOOL_DESCRIPTION = (

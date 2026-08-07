@@ -16,15 +16,27 @@ def _format_time(ts: str) -> str:
     return ts[:16]
 
 
+def _thread_label(thread_id: str) -> str:
+    """thread_id = platform:guild:channel → 来源群短标签（guild 段）。
+
+    属性检索跨群后，跨群结果靠它标注来源，避免同昵称不同群混淆。
+    """
+    parts = thread_id.split(":")
+    return parts[1] if len(parts) >= 2 else thread_id
+
+
 def _format_results(results: list[dict]) -> str:
     if not results:
         return "没有找到相关的历史消息。"
+    # 结果跨多个群时才标来源群；单群保持旧格式（无群标签，不产生噪音）
+    multi = len({r.get("thread_id") for r in results}) > 1
     lines = []
     for r in results:
         speaker = r.get("sender_name") or "?"
         receiver = r.get("receiver_name") or ""
         prefix = f"{speaker} → {receiver}" if receiver else speaker
-        lines.append(f"[{_format_time(r['timestamp'])}] {prefix}: {r['content']}")
+        src = f"[{_thread_label(r['thread_id'])}] " if multi else ""
+        lines.append(f"[{_format_time(r['timestamp'])}] {src}{prefix}: {r['content']}")
     return "\n".join(lines)
 
 
@@ -40,9 +52,10 @@ async def search_chat_history(
 ) -> str:
     """检索并格式化群聊历史，返回适合作为 ToolMessage 的文本。
 
-    指定了 user_name 或 content_keyword 时走 SQL 属性检索（无 embedding）；
-    否则走向量语义检索。start_time/end_time 是 ISO 风格字符串，入库前经
-    normalize_time 规范为固定格式（非法输入返回错误提示，不抛异常）。
+    指定了 user_name 或 content_keyword 时走 SQL 属性检索（无 embedding），
+    **跨全部群**（thread_id 置 None，结果标注来源群）；否则走向量语义检索
+    （当前群优先，不足时跨群补齐）。start_time/end_time 是 ISO 风格字符串，
+    入库前经 normalize_time 规范为固定格式（非法输入返回错误提示，不抛异常）。
     """
     start, end = "", ""
     if start_time.strip() or end_time.strip():
@@ -54,7 +67,7 @@ async def search_chat_history(
 
     if user_name.strip() or content_keyword.strip():
         results = await rag_service.search_by_user(
-            thread_id,
+            None,  # 属性检索跨全部群，取消群聊限制
             person=user_name.strip(),
             content_keyword=content_keyword.strip(),
             hours=hours or 0,

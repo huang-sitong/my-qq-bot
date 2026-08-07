@@ -34,6 +34,23 @@ def test_format_results_empty():
     assert _format_results([]) == "没有找到相关的历史消息。"
 
 
+def test_format_results_single_thread_no_group_label():
+    text = _format_results(SAMPLE)
+    assert "张三 → 小助手" in text
+    assert "[g] " not in text  # 单群结果不加来源群标签（thread_id="g"）
+
+
+def test_format_results_cross_thread_renders_source_group():
+    results = [
+        dict(SAMPLE[0], thread_id="llonebot:群A:0", content="来自A群"),
+        dict(SAMPLE[0], thread_id="llonebot:群B:0", content="来自B群"),
+    ]
+    text = _format_results(results)
+    assert "来自A群" in text and "来自B群" in text
+    assert "[群A] " in text
+    assert "[群B] " in text
+
+
 def test_search_chat_history_returns_formatted_text():
     rag = StubRagService(search_results=SAMPLE)
     text = asyncio.run(search_chat_history("嵌入模型", rag, "test:thread"))
@@ -48,7 +65,7 @@ def test_search_chat_history_sql_mode_with_user_name():
         "", rag, "test:thread", user_name="张三", hours=24))
     assert "之前决定用 qwen3-embedding 做嵌入" in text
     assert rag.last_person == "张三"
-    assert rag.last_thread_id == "test:thread"
+    assert rag.last_thread_id is None  # 属性检索跨全部群（取消群聊限制）
 
 
 def test_search_chat_history_sql_mode_with_content_keyword():
@@ -56,6 +73,7 @@ def test_search_chat_history_sql_mode_with_content_keyword():
     text = asyncio.run(search_chat_history(
         "", rag, "test:thread", content_keyword="qwen3"))
     assert rag.last_content_keyword == "qwen3"
+    assert rag.last_thread_id is None  # 属性检索跨全部群
     assert "之前决定用 qwen3-embedding 做嵌入" in text
 
 

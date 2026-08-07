@@ -75,7 +75,7 @@ def test_executes_search_by_user_sql_mode():
                      {"messages": [RAG_CALL_USER], **DEFAULT_STATE})
     assert "之前聊了 RAG" in result["messages"][0].content
     assert rag.last_person == "张三"
-    assert rag.last_thread_id == "test:thread"
+    assert rag.last_thread_id is None  # 属性检索跨全部群（取消群聊限制）
 
 
 def test_executes_search_by_time_window():

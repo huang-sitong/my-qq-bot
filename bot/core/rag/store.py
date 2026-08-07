@@ -187,9 +187,20 @@ class RagVectorStore:
             if not rows:
                 return []
 
+            # 一次 JOIN 批量取回全部候选的元数据（避免逐行单查的 N+1 查询）
+            rowids = [rowid for rowid, _ in rows]
+            placeholders = ",".join("?" * len(rowids))
+            meta_rows = self.conn.execute(
+                "SELECT rowid, thread_id, sender_id, sender_name, receiver_id,"
+                " receiver_name, content, timestamp FROM chat_embedding_meta"
+                f" WHERE rowid IN ({placeholders})",
+                rowids,
+            ).fetchall()
+            meta_by_rowid = {m[0]: dict(zip(META_COLUMNS, m[1:])) for m in meta_rows}
+
             candidates = []
             for rowid, distance in rows:
-                meta = self._fetch_meta(rowid)
+                meta = meta_by_rowid.get(rowid)
                 if meta is None:
                     continue
                 if since_iso or until_iso:
@@ -210,23 +221,13 @@ class RagVectorStore:
         result = same + cross[: max(0, top_k - len(same))]
         return result[:top_k]
 
-    def _fetch_meta(self, rowid: int) -> dict | None:
-        row = self.conn.execute(
-            "SELECT thread_id, sender_id, sender_name, receiver_id, receiver_name, content, timestamp"
-            " FROM chat_embedding_meta WHERE rowid = ?",
-            (rowid,),
-        ).fetchone()
-        if row is None:
-            return None
-        return dict(zip(META_COLUMNS, row))
-
     # ------------------------------------------------------------------
     # 属性检索（无 embedding）
     # ------------------------------------------------------------------
 
     def query_meta(
         self,
-        thread_id: str,
+        thread_id: str | None = None,
         person: str = "",
         content_keyword: str = "",
         since_iso: str = "",
@@ -235,14 +236,20 @@ class RagVectorStore:
     ) -> list[dict]:
         """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无向量）。
 
+        ``thread_id`` 为 None（或空）时检索**全部群**——属性检索取消群聊限制，
+        查"某人说过什么 / bot 回了谁"跨所有频道；给定群 id 时限定该群。
         ``person`` 模糊匹配 sender_name 或 receiver_name（OR）——回答"张三说了
         什么 / bot 回了张三什么"。``content_keyword`` 匹配内容子串——回答"谁说过 xx"。
         时间窗口是 ``YYYY-MM-DD HH:MM:SS`` 字符串（定宽零填充，字典序==时间序，
         可直接 >= / <= 比较）；``since_iso``/``until_iso`` 可单独给，留空即不设该边界。
-        均用 LIKE + ESCAPE 转义通配符。
+        均用 LIKE + ESCAPE 转义通配符。跨群结果按时间倒序返回，来源群由
+        ``thread_id`` 字段携带，展示层据此标注。
         """
         with self._lock:
-            conds, args = ["thread_id = ?"], [thread_id]
+            conds, args = [], []
+            if thread_id:
+                conds.append("thread_id = ?")
+                args.append(thread_id)
             if since_iso:
                 conds.append("timestamp >= ?")
                 args.append(since_iso)
@@ -259,10 +266,11 @@ class RagVectorStore:
                 esc = _escape_like(content_keyword)
                 conds.append("content LIKE ? ESCAPE '\\'")
                 args.append(f"%{esc}%")
+            where = f" WHERE {' AND '.join(conds)}" if conds else ""
             rows = self.conn.execute(
                 "SELECT thread_id, sender_id, sender_name, receiver_id, receiver_name, content, timestamp"
                 " FROM chat_embedding_meta"
-                f" WHERE {' AND '.join(conds)} ORDER BY timestamp DESC LIMIT ?",
+                f"{where} ORDER BY timestamp DESC LIMIT ?",
                 args + [limit],
             ).fetchall()
             return [dict(zip(META_COLUMNS, row)) for row in rows]

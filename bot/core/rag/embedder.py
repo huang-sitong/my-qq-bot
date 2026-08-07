@@ -1,7 +1,7 @@
 """Embedding 服务：封装 OllamaEmbeddings（原生 API），qwen3-embedding Instruct 格式。
 
 qwen3-embedding 是对话模板模型，检索时需加 Instruct 前缀才能达到最佳区分度
-（验证见 test/test_ollama_embedding.py 测试项 5）。
+（当前无实机验证测试；缓存侧 text 列不带前缀见 tests/test_embed_cache.py）。
 嵌入结果按 (model, 任务前缀, 角色, 原始内容) 哈希写入磁盘缓存（EmbeddingCache），
 重复文本直接命中，不再重复调 Ollama；缓存 text 列只存原始内容（不带 Instruct 前缀）。
 """
