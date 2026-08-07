@@ -1,4 +1,4 @@
-"""index_turn_node：RAG 索引图节点（消费 handler 预计算的 clean_text；纯媒体跳过、vision 描述并入）。"""
+"""index_turn_node：RAG 索引图节点（消费 handler 预计算的 clean_text；纯媒体无回复跳过、回复轮入库、vision 描述并入）。"""
 
 import asyncio
 
@@ -22,9 +22,19 @@ def test_index_turn_indexes_user_message_without_reply():
     assert rag.last_indexed["bot_reply"] == ""  # service 层过滤 → 只索引 1 条
 
 
-def test_index_turn_skips_media_only():
+def test_index_turn_media_only_with_reply_indexes_reply():
+    """纯媒体无描述但有回复：reply 作为 assistant 记录入库（多模态 (1,0) 图片轮）。"""
     rag = StubRagService()
     _run(rag, clean_text="", reply_text="收到", content_kind="image")
+    assert rag.last_indexed is not None
+    assert rag.last_indexed["user_message"] == ""
+    assert rag.last_indexed["bot_reply"] == "收到"
+
+
+def test_index_turn_media_only_without_reply_skips():
+    """纯媒体无描述且无回复 → 无可索引内容，整轮跳过。"""
+    rag = StubRagService()
+    _run(rag, clean_text="", reply_text="", content_kind="image")
     assert rag.last_indexed is None
 
 
@@ -56,11 +66,11 @@ def test_index_turn_appends_vision_desc_for_image():
     assert rag.last_indexed["user_message"] == "[图片：一只猫]"
 
 
-def test_index_turn_image_without_vision_skips():
+def test_index_turn_image_without_vision_indexes_reply():
     rag = StubRagService()
-    _run(rag, clean_text="", reply_text="收到",
-         content_kind="image")
-    assert rag.last_indexed is None
+    _run(rag, clean_text="", reply_text="收到", content_kind="image")
+    assert rag.last_indexed is not None
+    assert rag.last_indexed["bot_reply"] == "收到"
 
 
 def test_index_turn_text_ignores_stale_vision_desc():

@@ -198,4 +198,7 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
     assert result["reply_text"] == "我看不到图"
     humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
     assert humans and humans[0].content == "[图片]"  # 占位符保留
-    assert rag.last_indexed is None  # 纯图片无描述 → 不入库
+    # 纯图片无描述：user 侧不入库，但 bot 回复（承载主 LLM 理解）作为 assistant 记录入库
+    assert rag.last_indexed is not None
+    assert rag.last_indexed["user_message"] == ""
+    assert rag.last_indexed["bot_reply"] == "我看不到图"
