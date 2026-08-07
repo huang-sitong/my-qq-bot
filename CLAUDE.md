@@ -16,6 +16,7 @@ uv run python -c "..."   # quick import / logic check
 main.py                      # entrypoint — wires BotConfig, LLM, Graph, Handler, RagService, MemoryStore
 common/                      # shared config + prompts (single source of truth)
   config.py                  #   BotConfig dataclass (env-var overrides)
+  mcp.py                     #   load_mcp_servers_from_env — BOT_MCP_SERVERS JSON 解析（mcp_servers 字段工厂）
   prompts.py                 #   DEFAULT_PERSONA_PROMPT, ROUTER_PROMPT, SUMMARY_PROMPT, MEMORY_TOOL_HINT, MCP_TOOL_HINT, CURRENT_TIME_HINT, VISION_PROMPT, RETRIEVAL_TASK
 bot/
   transport/websocket/       # Satori WS events: connect, identify, reconnect
@@ -37,6 +38,7 @@ bot/
       routing.py             #   确定性回复判定（decide_reply 按顶层提及集合 id+昵称混合 / keep_in_context / route_after_detect）
     mcp/                     #  MCP 外部工具加载（langchain-mcp-adapters，远程/stdio 多 server）
       client.py              #   load_mcp_tools — 逐 server 降级加载，返回 BaseTool 列表
+      config.py              #   build_mcp_connections — 额外 server + Tavily 远程端点合并（纯函数）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
       action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
@@ -133,7 +135,7 @@ system_msgs = [SystemMessage(content=persona)]
 - **检索策略**（`store.search`）：取 `candidate_k=50` 候选 → 过滤 `score = 1 - cosine_distance ≥ score_threshold` → **当前群聊优先，本群命中不足时用跨群结果补齐**。另有**属性检索**（`store.query_meta` / `RagService.search_by_user`，纯 SQL 无 embedding）：`person` 模糊匹配 sender_name 或 receiver_name（查"某人说过什么 / bot 回了谁"）、`content_keyword` 匹配内容子串（查"谁说过 xx"）、ISO 时间窗口（`start_time`/`end_time`，BETWEEN 语义，字典序比较）；LIKE 通配符经 `_escape_like` 转义。**时间窗口在语义检索同样生效**（vec0 不支持 meta 过滤，`search` 检索后按 timestamp 剪枝）。
 - **工具闭环**：`search_chat_history(query, rag_service, thread_id, user_name, hours, content_keyword, start_time, end_time)` 是纯函数，**双模式**——指定 `user_name`/`content_keyword` 走 SQL 属性检索，否则走向量语义检索；`start_time`/`end_time` 为 ISO 时间窗口，**两种模式均生效**，入口经 `normalize_time` 规范化（`fromisoformat` 接受 `YYYY-MM-DD`/T 分隔，非法输入返回错误提示）；`hours` 相对窗口在 service 层换算为 ISO 起点。**LLM 计算相对时间/时间窗的基准来自 call_llm 注入的 `CURRENT_TIME_HINT` 当前时间提示**（LLM 不知道墙钟时间，没有该提示 `hours`/`start_time` 无从算起）。`tools（ToolNode）` 经 `InjectedState` 注入 `thread_id`，`rag_service` 由 `build_tools` 闭包绑定注入；工具调用消息（AIMessage + ToolMessage）持久化到 checkpoint。结果渲染 `[时间] 发送者 → 接收者: 内容`（receiver 空时只显示发送者）。
 - **配置**（env `BOT_RAG_ENABLED` / `BOT_EMBED_MODEL` / `OLLAMA_BASE_URL` / `BOT_EMBED_DIMENSIONS` / `BOT_EMBED_CACHE_ENABLED` / `BOT_EMBED_CACHE_MAX_ENTRIES` / `BOT_RAG_TOP_K` / `BOT_RAG_SCORE_THRESHOLD` / `BOT_RAG_RETENTION_PER_THREAD` / `BOT_RAG_MAX_AGENT_ROUNDS`；视觉复用 `OLLAMA_BASE_URL`，env `BOT_VISION_ENABLED` / `BOT_VISION_MODEL` / `BOT_VISION_MAX_IMAGES` / `BOT_VISION_TIMEOUT`）。
-- **MCP**（env `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS` / `BOT_MCP_TOOL_NAME_PREFIX` / `TAVILY_API_KEY`；Tavily 走官方远程 streamable_http 端点 `https://mcp.tavily.com/mcp/?tavilyApiKey=...`）。加载到工具后 `call_llm` 按 `use_mcp`（`bool(mcp_tools)`）注入 `MCP_TOOL_HINT` 提示层，引导 LLM 在时效性/超知识范围问题上主动调用外部工具。
+- **MCP**（env `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS` / `BOT_MCP_TOOL_NAME_PREFIX` / `TAVILY_API_KEY`；Tavily 走官方远程 streamable_http 端点 `https://mcp.tavily.com/mcp/?tavilyApiKey=...`）。env 解析在 `common/mcp.py::load_mcp_servers_from_env`（`mcp_servers` 字段工厂），连接合并（额外 server + Tavily 自动注册）在 `bot/core/mcp/config.py::build_mcp_connections`，`main.py` 调用后交给 `load_mcp_tools`。加载到工具后 `call_llm` 按 `use_mcp`（`bool(mcp_tools)`）注入 `MCP_TOOL_HINT` 提示层，引导 LLM 在时效性/超知识范围问题上主动调用外部工具。
 
 ### 记忆工具（用户持久记忆）
 

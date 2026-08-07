@@ -1,5 +1,6 @@
-"""BotConfig MCP 配置字段测试。"""
+"""BotConfig MCP 配置字段 + build_mcp_connections 测试。"""
 
+from bot.core.mcp import build_mcp_connections
 from common import BotConfig
 
 
@@ -28,8 +29,7 @@ def test_mcp_tool_name_prefix_flag(monkeypatch):
 
 
 def test_tavily_connection_auto_registered_when_key_set():
-    cfg = BotConfig(tavily_api_key="sk-test")
-    servers = cfg.mcp_server_connections()
+    servers = build_mcp_connections({}, "sk-test")
     assert "tavily" in servers
     assert servers["tavily"]["transport"] == "streamable_http"
     assert servers["tavily"]["url"].startswith("https://mcp.tavily.com/mcp/?")
@@ -37,8 +37,7 @@ def test_tavily_connection_auto_registered_when_key_set():
 
 
 def test_no_tavily_without_key():
-    cfg = BotConfig(tavily_api_key="  ")
-    servers = cfg.mcp_server_connections()
+    servers = build_mcp_connections({}, "  ")
     assert "tavily" not in servers
 
 
@@ -58,11 +57,9 @@ def test_invalid_mcp_servers_json_degrades(monkeypatch):
 
 
 def test_extra_servers_merge_with_tavily():
-    cfg = BotConfig(
-        mcp_servers={
-            "weather": {"transport": "streamable_http", "url": "http://localhost:8000/mcp"},
-        },
-        tavily_api_key="sk-test",
+    servers = build_mcp_connections(
+        {"weather": {"transport": "streamable_http", "url": "http://localhost:8000/mcp"}},
+        "sk-test",
     )
-    servers = cfg.mcp_server_connections()
     assert set(servers) == {"weather", "tavily"}
+    assert "sk-test" in servers["tavily"]["url"]

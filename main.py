@@ -16,7 +16,7 @@ from common import (
     BotConfig,
     DEFAULT_PERSONA_PROMPT,
 )
-from bot.core.mcp import load_mcp_tools
+from bot.core.mcp import build_mcp_connections, load_mcp_tools
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,7 +59,7 @@ async def main():
     mcp_tools = []
     if config.mcp_enabled:
         mcp_tools = await load_mcp_tools(
-            config.mcp_server_connections(),
+            build_mcp_connections(config.mcp_servers, config.tavily_api_key),
             tool_name_prefix=config.mcp_tool_name_prefix,
         )
         logger.info("Loaded %d MCP tools", len(mcp_tools))
