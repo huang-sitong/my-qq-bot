@@ -49,7 +49,7 @@ class BotConfig:
     llm_context_window: int = 200_000
     # Maximum context window in tokens for the LLM model.
 
-    summary_trigger_ratio: float = 0.6
+    summary_trigger_ratio: float = 0.8
     # Fraction of context_window at which summarization triggers.
     # e.g. 0.6 x 200K = 120K tokens.
 
@@ -104,7 +104,7 @@ class BotConfig:
         default_factory=lambda: int(os.getenv("BOT_RAG_RETENTION_PER_THREAD", "2000")),
     )
     rag_max_agent_rounds: int = field(
-        default_factory=lambda: int(os.getenv("BOT_RAG_MAX_AGENT_ROUNDS", "3")),
+        default_factory=lambda: int(os.getenv("BOT_RAG_MAX_AGENT_ROUNDS", "7")),
     )
 
     # --- Vision (本地 Ollama 视觉模型，图片描述) ---

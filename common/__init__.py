@@ -8,6 +8,7 @@ from .config import BotConfig
 from .prompts import (
     CURRENT_TIME_HINT,
     DEFAULT_PERSONA_PROMPT,
+    MCP_TOOL_HINT,
     MEMORY_TOOL_HINT,
     RETRIEVAL_TASK,
     ROUTER_PROMPT,
@@ -19,6 +20,7 @@ __all__ = [
     "BotConfig",
     "CURRENT_TIME_HINT",
     "DEFAULT_PERSONA_PROMPT",
+    "MCP_TOOL_HINT",
     "MEMORY_TOOL_HINT",
     "RETRIEVAL_TASK",
     "ROUTER_PROMPT",

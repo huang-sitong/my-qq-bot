@@ -84,3 +84,29 @@ def test_memory_hint_injected_when_use_memory():
         "recall_user_memory" in getattr(m, "content", "")
         for m in llm.last_messages
     )
+
+
+def test_mcp_hint_injected_when_use_mcp():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_full_tools(), use_memory=False, use_mcp=True,
+        bot_config=CONFIG_ON,
+    ))
+    assert any(
+        "外部工具" in getattr(m, "content", "")
+        for m in llm.last_messages
+    )
+
+
+def test_mcp_hint_not_injected_when_disabled():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_full_tools(), use_memory=True, use_mcp=False,
+        bot_config=CONFIG_ON,
+    ))
+    assert not any(
+        "外部工具" in getattr(m, "content", "")
+        for m in llm.last_messages
+    )

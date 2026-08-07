@@ -80,6 +80,7 @@ async def create_graph(
         rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools,
     )
     use_memory = memory_store is not None
+    use_mcp = bool(mcp_tools)
 
     builder = StateGraph(BotState)
     builder.add_node("detect_intent", detect_intent)
@@ -89,6 +90,7 @@ async def create_graph(
             llm=llm,
             tools=tools,
             use_memory=use_memory,
+            use_mcp=use_mcp,
             bot_config=config,
         )
     )

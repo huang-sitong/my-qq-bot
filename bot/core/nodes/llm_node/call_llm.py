@@ -5,7 +5,7 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
 from bot.core.utils import build_system_messages
-from common import BotConfig, MEMORY_TOOL_HINT
+from common import BotConfig, MCP_TOOL_HINT, MEMORY_TOOL_HINT
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -16,6 +16,7 @@ async def call_llm_node(
     llm: ChatOpenAI,
     tools: list[BaseTool] | None = None,
     use_memory: bool = False,
+    use_mcp: bool = False,
     bot_config: BotConfig | None = None,
 ) -> dict:
     """调用 LLM 生成回复。
@@ -30,6 +31,8 @@ async def call_llm_node(
     system_msgs = build_system_messages(persona, summary)
     if use_memory:
         system_msgs.append(SystemMessage(content=MEMORY_TOOL_HINT))
+    if use_mcp:
+        system_msgs.append(SystemMessage(content=MCP_TOOL_HINT))
 
     messages = system_msgs + state["messages"]
 
