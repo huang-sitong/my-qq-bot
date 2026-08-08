@@ -29,7 +29,7 @@ bot/
       embedder.py            #   EmbeddingService — Ollama qwen3-embedding，Instruct 前缀
       cache.py               #   EmbeddingCache — content 哈希 → 向量磁盘缓存 (embed_cache.sqlite)
       service.py             #   RagService — index_turn / search / hybrid_search 组合接口
-      milvus.py              #   MilvusStore — milvus-lite dense+sparse 混合检索 (milvus.db)
+      milvus.py              #   MilvusStore — milvus-lite dense+sparse 混合检索 (db/milvus.db)
     vision/                  # Ollama 视觉模型（图片描述）
       service.py             #   VisionService — 下载→base64→Ollama /api/generate；模块级 download_images_as_data_urls（多模态主 LLM 用）
     utils/                   # Pure utility functions (no state)
@@ -52,7 +52,7 @@ object/                      # protocol data-objects (lazy-load via __getattr__)
   bot/state.py               #   BotState TypedDict (graph state schema)
   bot/content.py             #   MessageKind/Attachment/ParsedContent（消息分类领域类型）
   satori/                    #   Satori protocol: enums, models, events, API endpoints
-db/                          # runtime databases (checkpoint.sqlite, memory.sqlite, embed_cache.sqlite) + 根目录 milvus.db
+db/                          # runtime databases (checkpoint.sqlite, memory.sqlite, embed_cache.sqlite) + db/milvus.db
 ```
 
 ### Data flow
@@ -77,7 +77,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 |---|---|---|
 | `db/checkpoint.sqlite` | LangGraph `AsyncSqliteSaver` | Conversation state checkpoints (tables: `checkpoint`, `writes`, `user_memory`) |
 | `db/memory.sqlite` | `MemoryStore` | Long-term user facts written by LLM via remember/recall tools (table: `user_memories`) |
-| `./milvus.db` | `MilvusStore` | 群聊历史向量（dense+sparse，milvus-lite 单文件） |
+| `db/milvus.db` | `MilvusStore` | 群聊历史向量（dense+sparse，milvus-lite 单文件） |
 | `db/embed_cache.sqlite` | `EmbeddingCache` | 嵌入向量磁盘缓存（表 `embed_cache`，key=sha256(model+任务前缀+角色+原始内容)，text 列只存原始内容） |
 
 ### Session vs Thread
@@ -174,9 +174,9 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **`.env` secrets**: `BASE_URL` + `API_KEY` (not `GO_BASE_URL`/`GO_API_KEY`). `.env-template` is the documented schema.
 
-- **`db/` directory**: auto-created on startup（`main.py` `os.makedirs`）；sqlite 库文件全部惰性重建——`checkpoint.sqlite`（AsyncSqliteSaver 初始化建表）、`memory.sqlite`（`CREATE TABLE IF NOT EXISTS`）、`embed_cache.sqlite`（`CREATE TABLE IF NOT EXISTS`）；`milvus.db`（milvus-lite 单文件，位于项目根 `./milvus.db`，`MilvusStore` 首次启动自动建集合 `chat`）。删除任意库 → 下次启动重建；`checkpoint.sqlite` 含会话状态、`memory.sqlite` 含用户记忆，是真数据。`BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
+- **`db/` directory**: auto-created on startup（`main.py` `os.makedirs`）；sqlite 库文件全部惰性重建——`checkpoint.sqlite`（AsyncSqliteSaver 初始化建表）、`memory.sqlite`（`CREATE TABLE IF NOT EXISTS`）、`embed_cache.sqlite`（`CREATE TABLE IF NOT EXISTS`）；`milvus.db`（milvus-lite 单文件，位于 `db/milvus.db`，`MilvusStore` 首次启动自动建集合 `chat`）。删除任意库 → 下次启动重建；`checkpoint.sqlite` 含会话状态、`memory.sqlite` 含用户记忆，是真数据。`BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
 
-- **milvus-lite**: 群聊历史向量存 `./milvus.db`（milvus-lite 单文件，raw pymilvus 直连）。集合 `chat` 双向量字段：`vector`（FLOAT_VECTOR，HNSW/COSINE，维度 = `embed_dimensions`）+ `sparse`（SPARSE_FLOAT_VECTOR，BM25）+ `text`（VARCHAR，jieba 分词 analyzer）+ `thread_id`（VARCHAR，partition key）；`BM25` 函数声明在 text 字段上（`input_field_names=["text"]`），sparse 输出字段须先声明再建 Function。`timestamp` 为 **TEXT ISO**（`YYYY-MM-DD HH:MM:SS`），淘汰按 `timestamp DESC`。每线程超过 `rag_retention_per_thread` 时由 `_prune_thread` 淘汰最旧记录（milvus-lite query 不支持 order_by → Python 侧排序切片删除；字符串/动态字段懒加载须先 `list()` 物化）。集合已存在则复用（`has_collection` 检查），全新库自动建集合；全部操作由 RagService try/except 包裹降级，失败不崩图。
+- **milvus-lite**: 群聊历史向量存 `db/milvus.db`（milvus-lite 单文件，raw pymilvus 直连）。集合 `chat` 双向量字段：`vector`（FLOAT_VECTOR，HNSW/COSINE，维度 = `embed_dimensions`）+ `sparse`（SPARSE_FLOAT_VECTOR，BM25）+ `text`（VARCHAR，jieba 分词 analyzer）+ `thread_id`（VARCHAR，partition key）；`BM25` 函数声明在 text 字段上（`input_field_names=["text"]`），sparse 输出字段须先声明再建 Function。`timestamp` 为 **TEXT ISO**（`YYYY-MM-DD HH:MM:SS`），淘汰按 `timestamp DESC`。每线程超过 `rag_retention_per_thread` 时由 `_prune_thread` 淘汰最旧记录（milvus-lite query 不支持 order_by → Python 侧排序切片删除；字符串/动态字段懒加载须先 `list()` 物化）。集合已存在时 `_ensure_collection` 先 `describe_collection` 校验 `vector` 字段 `params.dim`，与 `config.embed_dimensions` 不符则记 error 日志后 DROP 重建（对齐旧 sqlite-vec `_drop_legacy_schema` 先例：维度漂移的向量 insert 必失败，是可重建缓存直接丢弃）；全新库自动建集合；全部操作由 RagService try/except 包裹降级，失败不崩图。
 
 - **工具定位**: RAG 工具纯函数在 `bot/core/tools/search_chat_history.py`，记忆工具纯函数在 `bot/core/tools/user_memory.py`；`build_tools`（`bot/core/tools/factory.py`）把它们包装为 `BaseTool`（服务闭包绑定、`InjectedState` 注入 `thread_id`/`user_id`、异常降级为「工具执行失败。」）；执行节点为 prebuilt `ToolNode`。MCP 外部工具由 `bot/core/mcp/client.py::load_mcp_tools` 加载（每次调用自建 session）。`ToolNode` 绑定 `handle_tool_errors=_tool_error_message` 回调：只按类名记日志（防 Tavily URL 泄漏）、把执行/传输层异常统一降级为「工具执行失败。」不让异常中断整轮；**唯一例外**是 `ToolInvocationError`（参数校验失败）——原样返回 `exc.message` 逐字段校验信息供 LLM 自我纠正畸形参数。`MemoryStore` 表仍为 `db/memory.sqlite`。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
 

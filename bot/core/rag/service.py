@@ -7,7 +7,6 @@
 - hybrid_search:  dense + sparse 候选，RRF k=60 融合，当前群优先跨群补齐
 """
 
-import asyncio
 import logging
 from datetime import datetime, timedelta
 
@@ -184,7 +183,8 @@ class RagService:
                 sparse = await self._store.search_sparse(sparse_kw, expr, thread_id, CANDIDATE_K)
 
             # 当前群候选不足 → 跨群补齐（thread_id=None，expr 仍生效）
-            if thread_id and len({h["id"] for h in dense + sparse}) < limit:
+            # query 非空才补齐：属性路径（query=""，如 search_by_user 限定单群）不跨群
+            if query.strip() and thread_id and len({h["id"] for h in dense + sparse}) < limit:
                 if query.strip():
                     dense_x = await self._store.search_dense(query, expr, None, CANDIDATE_K)
                     dense += [h for h in dense_x if h.get("score", 0.0) >= self.config.rag_score_threshold]

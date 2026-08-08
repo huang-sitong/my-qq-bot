@@ -20,4 +20,4 @@ db/*.sqlite*
 # Captured Satori wire-format samples (diagnostic output)
 docs/captured_messages.jsonl
 # milvus-lite embedded db
-milvus.db
+db/milvus.db

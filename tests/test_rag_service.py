@@ -200,3 +200,24 @@ def test_search_failure_returns_empty():
     svc = _svc(Boom())
     hits = asyncio.run(svc.search("嵌入模型", "t"))
     assert hits == []
+
+
+def test_index_turn_empty_user_but_reply_sender_is_bot():
+    store = FakeMilvusStore()
+    svc = _svc(store)
+    asyncio.run(svc.index_turn("t", "u1", "张三", "bot1", "小助手", "", "这是回复"))
+
+    assert len(store.added) == 1
+    texts, metas = store.added[0]
+    assert texts == ["这是回复"]
+    assert metas[0]["sender_name"] == "小助手"  # bot 回复，sender 是 bot
+    assert metas[0]["receiver_name"] == "张三"
+
+
+def test_search_by_user_explicit_thread_does_not_cross_guild():
+    store = FakeMilvusStore(sparse_hits=[])
+    svc = _svc(store)
+    asyncio.run(svc.search_by_user("g1", content_keyword="x"))
+    # query 空 → 不触发跨群补齐（限定单群契约）
+    assert len(store.sparse_calls) == 1
+    assert store.sparse_calls[0]["thread_id"] == "g1"

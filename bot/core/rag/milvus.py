@@ -10,6 +10,7 @@ dense（语义）+ sparse（BM25）双字段集合，thread_id 为 partition key
 
 import asyncio
 import logging
+import os
 
 from pymilvus import DataType, Function, FunctionType, MilvusClient
 
@@ -63,13 +64,15 @@ class MilvusStore:
     def __init__(
         self,
         config,
-        uri: str = "./milvus.db",
+        uri: str | None = None,
         collection: str = "chat",
         embedder=None,
     ) -> None:
         self._config = config
         self._collection = collection
         self._embedder = embedder or EmbeddingService(config)
+        # 默认落盘到 db_dir/milvus.db，避免从任意目录启动在 CWD 下静默新建空库
+        uri = uri or os.path.join(config.db_dir, "milvus.db")
         self._client = MilvusClient(uri=uri)
         self._ensure_collection()
         logger.info("MilvusStore ready (uri=%s, collection=%s)", uri, collection)
@@ -79,9 +82,35 @@ class MilvusStore:
     # ------------------------------------------------------------------
 
     def _ensure_collection(self) -> None:
-        """集合不存在才建：双向量字段 + BM25 函数 + thread_id partition key。"""
-        if self._client.has_collection(self._collection):
+        """集合不存在则建；已存在则校验 vector 维度，不匹配直接丢弃重建。
+
+        对齐旧 sqlite-vec ``_drop_legacy_schema`` 先例：群聊历史是可重建缓存，
+        BOT_EMBED_DIMENSIONS 变更后旧向量维度与当前配置不兼容（insert 必失败），
+        继续复用只会让 RAG 每轮静默失败，故 DROP 重建。
+        """
+        if not self._client.has_collection(self._collection):
+            self._create_collection()
             return
+        dim = None
+        for f in self._client.describe_collection(self._collection).get("fields", []):
+            if f.get("name") == "vector":
+                dim = f.get("params", {}).get("dim")
+                break
+        if dim is not None and int(dim) != int(self._config.embed_dimensions):
+            logger.error(
+                "collection dim %s != configured dim %s, dropping and recreating",
+                dim, self._config.embed_dimensions,
+            )
+            self._client.drop_collection(self._collection)
+            self._create_collection()
+            return
+        logger.debug(
+            "collection '%s' exists (dim=%s matches config), reusing",
+            self._collection, dim,
+        )
+
+    def _create_collection(self) -> None:
+        """建集合：双向量字段 + BM25 函数 + thread_id partition key。"""
         schema = self._client.create_schema(auto_id=True, enable_dynamic_field=True)
         schema.add_field("pk", DataType.INT64, is_primary=True)
         schema.add_field("vector", DataType.FLOAT_VECTOR, dim=self._config.embed_dimensions)
