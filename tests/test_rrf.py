@@ -20,8 +20,8 @@ def test_rrf_merges_two_lists_rank_order():
     a = [_h(1), _h(2)]
     b = [_h(3), _h(4)]
     merged = rrf_merge([a, b])
-    # a 列表 rank 更高（更靠前），RRF 分更高 → 1,2 在 3,4 前
-    assert [h["id"] for h in merged] == [1, 2, 3, 4]
+    # RRF 按分数分档：1/61 档(1,3) → 1/62 档(2,4)；同分按插入序（dense 在前）稳定排序
+    assert [h["id"] for h in merged] == [1, 3, 2, 4]
 
 
 def test_rrf_cross_signal_overlap_gets_higher_score():
