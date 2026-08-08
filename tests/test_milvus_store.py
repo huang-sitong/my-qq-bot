@@ -150,3 +150,57 @@ def test_prune_keeps_newest(tmp_path):
     store.prune("g1", 2)
     hits = asyncio.run(store.search_dense("m", "", "g1", k=10))
     assert {h["content"] for h in hits} == {"m2", "m3"}
+
+
+def _build_db_in_subprocess(uri: str) -> None:
+    """跨进程建带索引集合 + insert 后退出，模拟 bot 上次运行留下的库。
+
+    milvus-lite 的 server 是进程内单例：带索引集合在**新进程**打开时默认
+    ``released``（load 状态不持久化），query/search 前必须 ``load_collection``。
+    """
+    import subprocess
+    import sys
+    import textwrap
+
+    script = textwrap.dedent(f"""
+        from pymilvus import DataType, Function, FunctionType, MilvusClient
+        c = MilvusClient({uri!r})
+        schema = c.create_schema(auto_id=True, enable_dynamic_field=True)
+        schema.add_field("pk", DataType.INT64, is_primary=True)
+        schema.add_field("vector", DataType.FLOAT_VECTOR, dim=4)
+        schema.add_field("sparse", DataType.SPARSE_FLOAT_VECTOR)
+        schema.add_field("text", DataType.VARCHAR, max_length=65535,
+                         enable_analyzer=True, analyzer_params={{"tokenizer": "jieba"}})
+        schema.add_field("thread_id", DataType.VARCHAR, max_length=128, is_partition_key=True)
+        schema.add_function(Function(name="bm25_fn", function_type=FunctionType.BM25,
+                                     input_field_names=["text"], output_field_names=["sparse"]))
+        ip = c.prepare_index_params()
+        ip.add_index("vector", index_type="HNSW", metric_type="COSINE",
+                     params={{"M": 8, "efConstruction": 64}})
+        ip.add_index("sparse", index_type="SPARSE_INVERTED_INDEX", metric_type="BM25")
+        c.create_collection("chat", schema=schema, index_params=ip)
+        c.insert("chat", [{{"vector": [0.1] * 4, "text": "跨进程遗留的消息", "thread_id": "g1",
+                            "sender_id": "张三", "sender_name": "张三",
+                            "receiver_id": "", "receiver_name": "",
+                            "content": "跨进程遗留的消息", "timestamp": "2026-08-01 10:00:00"}}])
+        c.close()
+    """)
+    subprocess.run([sys.executable, "-c", script], timeout=120, check=True)
+
+
+def test_reopen_collection_after_restart(tmp_path):
+    """跨进程重启：新进程复用已存在的带索引集合，必须 load 才能 search。
+
+    进程 A（subprocess）建库后退出 → 本进程（新进程）打开复用集合。若无
+    ``_ensure_collection`` 里的 ``load_collection``，search 会抛 released 被
+    RagService 降级为空 → hits 为空断言失败。
+    """
+    uri = str(tmp_path / "milvus.db")
+    _build_db_in_subprocess(uri)
+    store = MilvusStore(
+        BotConfig(embed_dimensions=4, rag_retention_per_thread=100),
+        uri=uri, embedder=FakeEmbedder(),
+    )
+    hits = asyncio.run(store.search_dense("遗留", "", "g1", k=5))
+    assert hits and hits[0]["content"] == "跨进程遗留的消息"
+    store.close()

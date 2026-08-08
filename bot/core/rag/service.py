@@ -86,7 +86,7 @@ class RagService:
             now = datetime.now().strftime(TS_FMT)
             texts = [c for c, _ in kept]
             metadatas = []
-            for _, role in kept:
+            for content, role in kept:
                 is_user = role == "user"
                 metadatas.append(
                     {
@@ -96,6 +96,9 @@ class RagService:
                         "receiver_id": (bot_id if replied else "") if is_user else user_id,
                         "receiver_name": (bot_name if replied else "") if is_user else user_name,
                         "timestamp": now,
+                        # content 是动态字段，供 search 输出（text 仅作 BM25 输入，
+                        # _OUTPUT_FIELDS 与工具渲染都依赖 content，缺则 KeyError 降级）
+                        "content": content,
                     }
                 )
             await self._store.add_texts(texts, metadatas)

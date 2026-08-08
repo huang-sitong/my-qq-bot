@@ -71,6 +71,9 @@ def test_index_turn_with_reply_indexes_two():
     assert metas[1]["sender_name"] == "小助手"
     assert metas[1]["receiver_id"] == "u1"
     assert metas[1]["receiver_name"] == "张三"
+    # content 动态字段与文本一致（search 输出与工具渲染依赖它）
+    assert metas[0]["content"] == "晚上吃什么"
+    assert metas[1]["content"] == "去吃火锅"
 
 
 def test_index_turn_without_reply_indexes_only_user():
@@ -221,3 +224,44 @@ def test_search_by_user_explicit_thread_does_not_cross_guild():
     # query 空 → 不触发跨群补齐（限定单群契约）
     assert len(store.sparse_calls) == 1
     assert store.sparse_calls[0]["thread_id"] == "g1"
+
+
+# --- 端到端：真实 MilvusStore 的 index_turn → search 闭环 -------------------
+
+def test_index_turn_then_search_returns_content(tmp_path):
+    """回归测试：index_turn 写入的动态 content 字段在检索命中里可读。
+
+    若 metadata 缺 content，search 返回的 hit 无该键，工具渲染会 KeyError
+    降级为「工具执行失败。」（库行里 text 仅作 BM25 输入，不带出检索结果）。
+    """
+    from bot.core.rag.milvus import MilvusStore
+
+    class FE:
+        """确定性假嵌入器（dim=4），query 向量指向含"嵌入"的文档。"""
+
+        async def embed_query(self, query):
+            return [1.0, 0.0, 0.0, 0.0]
+
+        async def embed_documents(self, contents):
+            return [
+                [0.9, 0.1, 0.0, 0.0] if "嵌入" in c else [0.1, 0.1, 0.0, 0.0]
+                for c in contents
+            ]
+
+        def close(self):
+            pass
+
+    store = MilvusStore(
+        BotConfig(embed_dimensions=4, rag_retention_per_thread=100),
+        uri=str(tmp_path / "milvus.db"), embedder=FE(),
+    )
+    svc = RagService(
+        BotConfig(rag_enabled=True, rag_top_k=5, rag_score_threshold=0.35),
+        store=store,
+    )
+    asyncio.run(svc.index_turn(
+        "g1", "u1", "张三", "bot1", "小助手", "关于嵌入模型的讨论", "这是回复",
+    ))
+    hits = asyncio.run(svc.search("嵌入", "g1"))
+    assert any(h["content"] == "关于嵌入模型的讨论" for h in hits)
+    store.close()

@@ -35,7 +35,12 @@ COLLECTION = "chat"
 
 
 def get_client(uri: str) -> MilvusClient:
-    return MilvusClient(uri=uri)
+    client = MilvusClient(uri=uri)
+    # 带索引集合（sparse + BM25 + 双索引）在新进程打开时默认 released，
+    # query/search 前必须 load_collection（幂等）；本脚本是独立进程，须显式 load。
+    if client.has_collection(COLLECTION):
+        client.load_collection(COLLECTION)
+    return client
 
 
 def show_schema(client: MilvusClient) -> None:

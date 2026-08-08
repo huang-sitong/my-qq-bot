@@ -87,27 +87,32 @@ class MilvusStore:
         对齐旧 sqlite-vec ``_drop_legacy_schema`` 先例：群聊历史是可重建缓存，
         BOT_EMBED_DIMENSIONS 变更后旧向量维度与当前配置不兼容（insert 必失败），
         继续复用只会让 RAG 每轮静默失败，故 DROP 重建。
+
+        无论新建/重建/复用，末尾统一 ``load_collection``：带索引集合（本集合含
+        sparse + BM25 + 双索引）在新进程/重启后默认 ``released``，query/search
+        前必须 load（幂等，仅启动时执行一次）。
         """
         if not self._client.has_collection(self._collection):
             self._create_collection()
-            return
-        dim = None
-        for f in self._client.describe_collection(self._collection).get("fields", []):
-            if f.get("name") == "vector":
-                dim = f.get("params", {}).get("dim")
-                break
-        if dim is not None and int(dim) != int(self._config.embed_dimensions):
-            logger.error(
-                "collection dim %s != configured dim %s, dropping and recreating",
-                dim, self._config.embed_dimensions,
-            )
-            self._client.drop_collection(self._collection)
-            self._create_collection()
-            return
-        logger.debug(
-            "collection '%s' exists (dim=%s matches config), reusing",
-            self._collection, dim,
-        )
+        else:
+            dim = None
+            for f in self._client.describe_collection(self._collection).get("fields", []):
+                if f.get("name") == "vector":
+                    dim = f.get("params", {}).get("dim")
+                    break
+            if dim is not None and int(dim) != int(self._config.embed_dimensions):
+                logger.error(
+                    "collection dim %s != configured dim %s, dropping and recreating",
+                    dim, self._config.embed_dimensions,
+                )
+                self._client.drop_collection(self._collection)
+                self._create_collection()
+            else:
+                logger.debug(
+                    "collection '%s' exists (dim=%s matches config), reusing",
+                    self._collection, dim,
+                )
+        self._client.load_collection(self._collection)
 
     def _create_collection(self) -> None:
         """建集合：双向量字段 + BM25 函数 + thread_id partition key。"""
