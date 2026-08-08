@@ -46,7 +46,13 @@ async def main():
         max_retries=config.llm_max_retries,
         request_timeout=config.llm_request_timeout,
     )
-    rag_service = RagService(config) if config.rag_enabled else None
+    rag_service = None
+    if config.rag_enabled:
+        try:
+            rag_service = RagService(config)
+        except Exception:
+            logger.exception("RAG init failed; falling back to rag disabled")
+            rag_service = None
     memory_store = MemoryStore(db_dir=config.db_dir)
     vision_service = None
     if config.vision_enabled:
