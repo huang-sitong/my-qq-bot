@@ -89,7 +89,7 @@ def test_executes_search_by_time_window():
 
 def test_executes_recall_to_memory():
     store = StubMemoryStore()
-    store.store_memory("u1", "喜欢的食物", "火锅")
+    asyncio.run(store.store_memory("u1", "喜欢的食物", "火锅"))
     result = _invoke(_node(store=store), {"messages": [RECALL_CALL], **DEFAULT_STATE})
     assert "火锅" in result["messages"][0].content
 
@@ -98,7 +98,7 @@ def test_executes_remember_to_memory():
     store = StubMemoryStore()
     result = _invoke(_node(store=store), {"messages": [REMEMBER_CALL], **DEFAULT_STATE})
     assert "已记住" in result["messages"][0].content
-    assert store.load_memories("u1") == [{"key": "喜欢的食物", "value": "火锅"}]
+    assert asyncio.run(store.load_memories("u1")) == [{"key": "喜欢的食物", "value": "火锅"}]
 
 
 def test_unknown_tool_returns_error_message():

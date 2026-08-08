@@ -24,7 +24,7 @@ bot/
   core/
     graph.py                 # LangGraph assembly: creates (graph, checkpointer)
     llm.py                   # ChatOpenAI factory (reads BASE_URL / API_KEY from .env)
-    memory.py                # MemoryStore — SQLite kv per user (memory.sqlite)
+    memory.py                # MemoryStore — langgraph AsyncSqliteStore 封装的按用户 kv 记忆 (memory.sqlite)
     rag/                     # 群聊历史 RAG（向量检索）
       embedder.py            #   EmbeddingService — Ollama qwen3-embedding，Instruct 前缀
       cache.py               #   EmbeddingCache — content 哈希 → 向量磁盘缓存 (embed_cache.sqlite)
@@ -76,7 +76,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 | File | Managed by | Purpose |
 |---|---|---|
 | `db/checkpoint.sqlite` | LangGraph `AsyncSqliteSaver` | Conversation state checkpoints (tables: `checkpoint`, `writes`, `user_memory`) |
-| `db/memory.sqlite` | `MemoryStore` | Long-term user facts written by LLM via remember/recall tools (table: `user_memories`) |
+| `db/memory.sqlite` | `MemoryStore`（langgraph `AsyncSqliteStore`） | Long-term user facts written by LLM via remember/recall tools（表 `store`，namespace `("user", user_id)`，value 存 `{"value": str}`） |
 | `db/milvus.db` | `MilvusStore` | 群聊历史向量（dense+sparse，milvus-lite 单文件） |
 | `db/embed_cache.sqlite` | `EmbeddingCache` | 嵌入向量磁盘缓存（表 `embed_cache`，key=sha256(model+任务前缀+角色+原始内容)，text 列只存原始内容） |
 
@@ -140,7 +140,7 @@ system_msgs = [SystemMessage(content=persona)]
 ### 记忆工具（用户持久记忆）
 
 - **触发**：`main.py` 构建 `MemoryStore` 并注入 `create_graph(...)` 后，`call_llm` 额外绑定 `remember_user_memory` / `recall_user_memory` 工具，并注入 `MEMORY_TOOL_HINT` 提示层，**LLM 自行决定何时保存/检索**。工具定义在 `bot/core/tools/user_memory.py`，执行由 prebuilt `ToolNode` 统一执行。
-- **执行**：`tools（ToolNode）` 经 `InjectedState("user_id")` 注入 `user_id`（记忆按用户维度存取），`memory_store` 由 `build_tools` 闭包绑定注入；`remember_user_memory(key, value, ...)` / `recall_user_memory(keyword, ...)` 均为纯函数，同步 sqlite 操作经 `asyncio.to_thread` 异步化。
+- **执行**：`tools（ToolNode）` 经 `InjectedState("user_id")` 注入 `user_id`（记忆按用户维度存取），`memory_store` 由 `build_tools` 闭包绑定注入；`remember_user_memory(key, value, ...)` / `recall_user_memory(keyword, ...)` 均为纯函数，底层经官方 `AsyncSqliteStore`（全 async）直接 `await`，无需 `to_thread` 包装。
 - **不再进图前全量注入 / 图外抽取**：旧方案在 `call_llm` 前将全部用户记忆拼入 SystemMessage，并在图外由 `_extract_memories` 抽取持久化 —— 均已移除。记忆完全由 LLM 通过工具主动读写，`user_id` 从 state 传入。
 
 ### Reply is sent outside the graph
@@ -174,10 +174,10 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **`.env` secrets**: `BASE_URL` + `API_KEY` (not `GO_BASE_URL`/`GO_API_KEY`). `.env-template` is the documented schema.
 
-- **`db/` directory**: auto-created on startup（`main.py` `os.makedirs`）；sqlite 库文件全部惰性重建——`checkpoint.sqlite`（AsyncSqliteSaver 初始化建表）、`memory.sqlite`（`CREATE TABLE IF NOT EXISTS`）、`embed_cache.sqlite`（`CREATE TABLE IF NOT EXISTS`）；`milvus.db`（milvus-lite 单文件，位于 `db/milvus.db`，`MilvusStore` 首次启动自动建集合 `chat`）。删除任意库 → 下次启动重建；`checkpoint.sqlite` 含会话状态、`memory.sqlite` 含用户记忆，是真数据。`BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
+- **`db/` directory**: auto-created on startup（`main.py` `os.makedirs`）；sqlite 库文件全部惰性重建——`checkpoint.sqlite`（AsyncSqliteSaver 初始化建表）、`memory.sqlite`（`MemoryStore` 惰性建连，官方 `AsyncSqliteStore` `setup()` 建 `store` 表 + 自动迁移旧 `user_memories` 表）、`embed_cache.sqlite`（`CREATE TABLE IF NOT EXISTS`）；`milvus.db`（milvus-lite 单文件，位于 `db/milvus.db`，`MilvusStore` 首次启动自动建集合 `chat`）。删除任意库 → 下次启动重建；`checkpoint.sqlite` 含会话状态、`memory.sqlite` 含用户记忆，是真数据。`BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
 
 - **milvus-lite**: 群聊历史向量存 `db/milvus.db`（milvus-lite 单文件，raw pymilvus 直连）。集合 `chat` 双向量字段：`vector`（FLOAT_VECTOR，HNSW/COSINE，维度 = `embed_dimensions`）+ `sparse`（SPARSE_FLOAT_VECTOR，BM25）+ `text`（VARCHAR，jieba 分词 analyzer）+ `thread_id`（VARCHAR，partition key）；`BM25` 函数声明在 text 字段上（`input_field_names=["text"]`），sparse 输出字段须先声明再建 Function。`timestamp` 为 **TEXT ISO**（`YYYY-MM-DD HH:MM:SS`），淘汰按 `timestamp DESC`。每线程超过 `rag_retention_per_thread` 时由 `_prune_thread` 淘汰最旧记录（milvus-lite query 不支持 order_by → Python 侧排序切片删除；字符串/动态字段懒加载须先 `list()` 物化）。集合已存在时 `_ensure_collection` 先 `describe_collection` 校验 `vector` 字段 `params.dim`，与 `config.embed_dimensions` 不符则记 error 日志后 DROP 重建（对齐旧 sqlite-vec `_drop_legacy_schema` 先例：维度漂移的向量 insert 必失败，是可重建缓存直接丢弃）；全新库自动建集合；全部操作由 RagService try/except 包裹降级，失败不崩图。
 
-- **工具定位**: RAG 工具纯函数在 `bot/core/tools/search_chat_history.py`，记忆工具纯函数在 `bot/core/tools/user_memory.py`；`build_tools`（`bot/core/tools/factory.py`）把它们包装为 `BaseTool`（服务闭包绑定、`InjectedState` 注入 `thread_id`/`user_id`、异常降级为「工具执行失败。」）；执行节点为 prebuilt `ToolNode`。MCP 外部工具由 `bot/core/mcp/client.py::load_mcp_tools` 加载（每次调用自建 session）。`ToolNode` 绑定 `handle_tool_errors=_tool_error_message` 回调：只按类名记日志（防 Tavily URL 泄漏）、把执行/传输层异常统一降级为「工具执行失败。」不让异常中断整轮；**唯一例外**是 `ToolInvocationError`（参数校验失败）——原样返回 `exc.message` 逐字段校验信息供 LLM 自我纠正畸形参数。`MemoryStore` 表仍为 `db/memory.sqlite`。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
+- **工具定位**: RAG 工具纯函数在 `bot/core/tools/search_chat_history.py`，记忆工具纯函数在 `bot/core/tools/user_memory.py`；`build_tools`（`bot/core/tools/factory.py`）把它们包装为 `BaseTool`（服务闭包绑定、`InjectedState` 注入 `thread_id`/`user_id`、异常降级为「工具执行失败。」）；执行节点为 prebuilt `ToolNode`。MCP 外部工具由 `bot/core/mcp/client.py::load_mcp_tools` 加载（每次调用自建 session）。`ToolNode` 绑定 `handle_tool_errors=_tool_error_message` 回调：只按类名记日志（防 Tavily URL 泄漏）、把执行/传输层异常统一降级为「工具执行失败。」不让异常中断整轮；**唯一例外**是 `ToolInvocationError`（参数校验失败）——原样返回 `exc.message` 逐字段校验信息供 LLM 自我纠正畸形参数。`MemoryStore` 数据文件仍为 `db/memory.sqlite`（官方 `store` 表，namespace `("user", user_id)`；首次启动自动把旧 `user_memories` 表迁移进 `store` 后 DROP）。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
 
 - **Persona fallback**: `main.py` uses `config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT` — the `BotConfig.persona_prompt` default is a real prompt string, not empty. Set `BOT_PERSONA_PROMPT=""` to force fallback to `DEFAULT_PERSONA_PROMPT`. Both use `{bot_name}` placeholder, formatted at invocation time in `call_llm_node`.

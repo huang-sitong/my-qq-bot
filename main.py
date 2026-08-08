@@ -99,7 +99,7 @@ async def main():
             rag_service.close()
         if vision_service is not None:
             await vision_service.close()
-        memory_store.close()
+        await memory_store.close()
         logger.info("Bye.")
 
 

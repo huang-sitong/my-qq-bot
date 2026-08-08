@@ -2,9 +2,8 @@
 
 保存/检索当前用户的持久记忆并格式化为文本。
 memory_store 与 user_id 由 factory 包装层在调用时注入，LLM 无需知道内部标识。
+memory_store 基于 langgraph AsyncSqliteStore（方法全 async），直接 await。
 """
-
-import asyncio
 
 
 def _format_memories(memories: list[dict]) -> str:
@@ -15,13 +14,13 @@ def _format_memories(memories: list[dict]) -> str:
 
 async def remember_user_memory(key: str, value: str, memory_store, user_id: str) -> str:
     """保存一条用户记忆并返回确认文案。"""
-    await asyncio.to_thread(memory_store.store_memory, user_id, key, value)
+    await memory_store.store_memory(user_id, key, value)
     return f"已记住：{key} = {value}"
 
 
 async def recall_user_memory(keyword: str, memory_store, user_id: str) -> str:
     """检索用户记忆；keyword 为空返回全部，否则按 key/value 子串匹配。"""
-    memories = await asyncio.to_thread(memory_store.load_memories, user_id)
+    memories = await memory_store.load_memories(user_id)
     keyword = (keyword or "").strip().lower()
     if keyword:
         memories = [

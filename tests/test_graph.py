@@ -72,7 +72,7 @@ def test_graph_injects_current_time_hint(tmp_path):
 
 def test_graph_memory_tool_roundtrip(tmp_path):
     store = StubMemoryStore()
-    store.store_memory("u1", "名字", "张三")
+    asyncio.run(store.store_memory("u1", "名字", "张三"))
     llm = ScriptedLLM([
         # 第一次 call_llm：请求调用 recall 工具
         AIMessage(content="", tool_calls=[
