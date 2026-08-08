@@ -1,9 +1,10 @@
-"""RagService — 组合 EmbeddingService 与 RagVectorStore。
+"""RagService — 组合 EmbeddingService 与 MilvusStore（dense + sparse 混合检索）。
 
-对外提供两个异步接口：
-- index_turn: 将一轮对话（用户消息 + Bot 回复）嵌入并入库；bot_reply 为空时
-  只入库用户消息 1 条（群聊非@文本的被动索引）
-- search:    按查询词检索历史，返回格式化上下文
+对外提供异步接口：
+- index_turn:     一轮对话（用户消息 + Bot 回复）嵌入并入库
+- search:         语义检索 → hybrid_search（dense+sparse，RRF 融合）
+- search_by_user: 属性检索（person/content_keyword/时间窗）→ hybrid_search
+- hybrid_search:  dense + sparse 候选，RRF k=60 融合，当前群优先跨群补齐
 """
 
 import asyncio
@@ -11,14 +12,15 @@ import logging
 from datetime import datetime, timedelta
 
 from common import BotConfig
-from bot.core.rag.embedder import EmbeddingService
-from bot.core.rag.store import RagVectorStore
+from bot.core.rag.milvus import MilvusStore, _esc
+from bot.core.rag.rrf import rrf_merge
 
 logger = logging.getLogger(__name__)
 
-# 时间戳存储格式（TEXT，定宽零填充）：字典序 == 时间序，SQL 直接 >= / <= 比较。
-# 展示层（search_chat_history._format_time）截到分钟，库里保留秒。
+# 时间戳存储格式（TEXT，定宽零填充）：字典序 == 时间序，表达式直接 >= / <= 比较。
 TS_FMT = "%Y-%m-%d %H:%M:%S"
+# 每信号检索候选数（对齐旧 candidate_k=50）
+CANDIDATE_K = 50
 
 
 def normalize_time(text: str) -> str:
@@ -29,22 +31,25 @@ def normalize_time(text: str) -> str:
     return datetime.fromisoformat(text.strip()).strftime(TS_FMT)
 
 
-class RagService:
-    """群聊历史 RAG：索引一轮对话，按需检索相关历史。"""
+def _build_expr(person: str, start_time: str, end_time: str) -> str:
+    """组装 milvus 过滤表达式：时间窗 + 人名前缀（空段省略，以 ' && ' 连接）。"""
+    conds = []
+    if start_time:
+        conds.append(f"timestamp >= '{start_time}'")
+    if end_time:
+        conds.append(f"timestamp <= '{end_time}'")
+    if person:
+        p = _esc(person)
+        conds.append(f"(sender_name like '{p}%' || receiver_name like '{p}%')")
+    return " && ".join(conds)
 
-    def __init__(
-        self,
-        config: BotConfig,
-        embedder: EmbeddingService | None = None,
-        store: RagVectorStore | None = None,
-    ) -> None:
+
+class RagService:
+    """群聊历史 RAG：索引一轮对话，混合检索相关历史。"""
+
+    def __init__(self, config: BotConfig, store: MilvusStore | None = None) -> None:
         self.config = config
-        self._embedder = embedder or EmbeddingService(config)
-        self._store = store or RagVectorStore(
-            db_dir=config.db_dir,
-            dimensions=config.embed_dimensions,
-            retention_per_thread=config.rag_retention_per_thread,
-        )
+        self._store = store or MilvusStore(config)
 
     @property
     def enabled(self) -> bool:
@@ -66,8 +71,8 @@ class RagService:
     ) -> None:
         """嵌入并存储一轮对话（用户消息 + Bot 回复）。失败不抛出，仅降级。
 
-        ``bot_reply`` 可为空（非回复轮）：此时只入库用户消息 1 条，
-        避免写入空的 assistant 记录。每条记录显式建模 sender/receiver：
+        ``bot_reply`` 可为空（非回复轮）：此时只入库用户消息 1 条。
+        每条记录显式建模 sender/receiver：
         - 用户消息：sender=用户(id/昵称)，receiver=bot（回复轮）或空（群广播）
         - bot 回复：sender=bot，receiver=用户
         """
@@ -80,23 +85,21 @@ class RagService:
                 return
             replied = bool(bot_reply.strip())
             now = datetime.now().strftime(TS_FMT)
-            vectors = await self._embedder.embed_documents([c for c, _ in kept])
-            records = []
-            for (content, role), vec in zip(kept, vectors):
+            texts = [c for c, _ in kept]
+            metadatas = []
+            for _, role in kept:
                 is_user = role == "user"
-                records.append(
+                metadatas.append(
                     {
                         "thread_id": thread_id,
                         "sender_id": user_id if is_user else bot_id,
                         "sender_name": user_name if is_user else (bot_name or "bot"),
                         "receiver_id": (bot_id if replied else "") if is_user else user_id,
                         "receiver_name": (bot_name if replied else "") if is_user else user_name,
-                        "content": content,
                         "timestamp": now,
-                        "embedding": vec,
                     }
                 )
-            await asyncio.to_thread(self._store.add, records)
+            await self._store.add_texts(texts, metadatas)
         except Exception:
             logger.exception("RAG index_turn failed for thread %s", thread_id)
 
@@ -109,34 +112,16 @@ class RagService:
         query: str,
         thread_id: str,
         top_k: int | None = None,
-        score_threshold: float | None = None,
         hours: int = 0,
         start_time: str = "",
         end_time: str = "",
     ) -> list[dict]:
-        """检索相关历史。失败时返回空列表（不阻塞对话）。
-
-        ``hours``/``start_time``/``end_time`` 与 search_by_user 同语义——
-        时间窗口在语义检索同样生效（检索后剪枝）。
-        """
-        if not self.enabled:
-            return []
-        try:
-            if hours > 0 and not start_time:
-                start_time = (datetime.now() - timedelta(hours=hours)).strftime(TS_FMT)
-            vec = await self._embedder.embed_query(query)
-            return await asyncio.to_thread(
-                self._store.search,
-                vec,
-                thread_id,
-                top_k or self.config.rag_top_k,
-                score_threshold or self.config.rag_score_threshold,
-                start_time,
-                end_time,
-            )
-        except Exception:
-            logger.exception("RAG search failed for thread %s", thread_id)
-            return []
+        """语义检索（query 兼作 dense+sparse 信号）。失败返回空列表。"""
+        return await self.hybrid_search(
+            query=query, thread_id=thread_id,
+            hours=hours, start_time=start_time, end_time=end_time,
+            top_k=top_k,
+        )
 
     async def search_by_user(
         self,
@@ -148,32 +133,68 @@ class RagService:
         end_time: str = "",
         limit: int = 10,
     ) -> list[dict]:
-        """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索（纯 SQL，无 embedding）。
+        """按发送者/接收者昵称 + 内容关键词 + 时间窗口检索。
 
         ``thread_id`` 为 None 时检索**全部群**（属性检索跨群），否则限定该群。
-        ``person`` 匹配发言者或接收者——回答"张三近期说了什么"、"bot 回复过张三什么"；
-        ``content_keyword`` 匹配内容子串——回答"谁说过 xx"。时间窗口二选一：
-        ``hours`` 相对最近 N 小时；``start_time``/``end_time`` 绝对边界
-        （ISO 风格字符串，由调用方 normalize_time 规范化）。失败返回空列表。
+        ``person`` 进 expr 前缀匹配发言者/接收者；``content_keyword`` 作 sparse
+        信号（查"谁说过 xx"）。时间窗口二选一：``hours`` 相对窗口 /
+        ``start_time``/``end_time`` 绝对边界。失败返回空列表。
+        """
+        return await self.hybrid_search(
+            query="", thread_id=thread_id, person=person,
+            content_keyword=content_keyword,
+            hours=hours, start_time=start_time, end_time=end_time,
+            top_k=limit,
+        )
+
+    async def hybrid_search(
+        self,
+        query: str,
+        thread_id: str,
+        person: str = "",
+        content_keyword: str = "",
+        hours: int = 0,
+        start_time: str = "",
+        end_time: str = "",
+        top_k: int | None = None,
+    ) -> list[dict]:
+        """dense + sparse 双信号候选，RRF 融合；当前群优先，不足跨群补齐。
+
+        - dense：query 非空才跑，候选按 ``rag_score_threshold`` 过滤；
+        - sparse：``content_keyword or query`` 非空才跑，无阈值；
+        - 本群融合结果不足 top_k 且 thread_id 非空 → 跨群补齐（expr 仍生效）；
+        - 最终 RRF 融合后截断到 top_k。
+        person-only（无 content/query）→ 返回空。
         """
         if not self.enabled:
             return []
         try:
             if hours > 0 and not start_time:
                 start_time = (datetime.now() - timedelta(hours=hours)).strftime(TS_FMT)
-            return await asyncio.to_thread(
-                self._store.query_meta,
-                thread_id=thread_id,
-                person=person,
-                content_keyword=content_keyword,
-                since_iso=start_time,
-                until_iso=end_time,
-                limit=limit,
-            )
+            expr = _build_expr(person, start_time, end_time)
+            limit = top_k or self.config.rag_top_k
+
+            dense: list[dict] = []
+            if query.strip():
+                dense = await self._store.search_dense(query, expr, thread_id, CANDIDATE_K)
+                dense = [h for h in dense if h.get("score", 0.0) >= self.config.rag_score_threshold]
+            sparse_kw = content_keyword.strip() or query.strip()
+            sparse: list[dict] = []
+            if sparse_kw:
+                sparse = await self._store.search_sparse(sparse_kw, expr, thread_id, CANDIDATE_K)
+
+            # 当前群候选不足 → 跨群补齐（thread_id=None，expr 仍生效）
+            if thread_id and len({h["id"] for h in dense + sparse}) < limit:
+                if query.strip():
+                    dense_x = await self._store.search_dense(query, expr, None, CANDIDATE_K)
+                    dense += [h for h in dense_x if h.get("score", 0.0) >= self.config.rag_score_threshold]
+                if sparse_kw:
+                    sparse += await self._store.search_sparse(sparse_kw, expr, None, CANDIDATE_K)
+
+            return rrf_merge([dense, sparse])[:limit]
         except Exception:
-            logger.exception("RAG search_by_user failed for thread %s", thread_id)
+            logger.exception("RAG hybrid_search failed for thread %s", thread_id)
             return []
 
     def close(self) -> None:
-        self._embedder.close()
         self._store.close()

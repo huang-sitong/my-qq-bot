@@ -42,8 +42,7 @@ class StubRagService:
         self.last_end_time = None
         self.last_indexed = None
 
-    async def search(self, query, thread_id, top_k=None, score_threshold=None,
-                     hours=0, start_time="", end_time=""):
+    async def search(self, query, thread_id, top_k=None, hours=0, start_time="", end_time=""):
         self.last_query = query
         self.last_thread_id = thread_id
         self.last_start_time = start_time

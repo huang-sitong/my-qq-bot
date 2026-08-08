@@ -52,7 +52,7 @@ async def search_chat_history(
 ) -> str:
     """检索并格式化群聊历史，返回适合作为 ToolMessage 的文本。
 
-    指定了 user_name 或 content_keyword 时走 SQL 属性检索（无 embedding），
+    指定了 user_name 或 content_keyword 时走属性检索（sparse BM25 信号，无 dense embedding），
     **跨全部群**（thread_id 置 None，结果标注来源群）；否则走向量语义检索
     （当前群优先，不足时跨群补齐）。start_time/end_time 是 ISO 风格字符串，
     入库前经 normalize_time 规范为固定格式（非法输入返回错误提示，不抛异常）。
