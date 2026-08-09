@@ -16,6 +16,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
+from bot.core.skills.tools import load_skill, unload_skill
 from bot.core.tools.search_chat_history import search_chat_history
 from bot.core.tools.user_memory import recall_user_memory, remember_user_memory
 
@@ -38,6 +39,16 @@ RECALL_TOOL_DESCRIPTION = (
     "检索当前用户的持久记忆（名字、偏好、习惯、背景等）。"
     "当需要用户的个人信息、或回想之前提到过的用户事实时使用。"
     "keyword 留空返回全部记忆，否则按 key/value 模糊匹配。"
+)
+
+LOAD_SKILL_TOOL_DESCRIPTION = (
+    "加载一个技能，返回其完整使用说明/规则正文。"
+    "当用户需求匹配系统提示里某个技能描述（触发信号）时，先调用本工具取回正文再按其执行。"
+    "技能加载后持续生效，直到调用 unload_skill 释放。"
+)
+
+UNLOAD_SKILL_TOOL_DESCRIPTION = (
+    "释放一个已加载的技能，停止遵循其规则。技能不再需要（任务完成/话题偏离）时调用。幂等。"
 )
 
 
@@ -120,11 +131,42 @@ def _make_memory_tools(memory_store) -> list[BaseTool]:
     ]
 
 
-def build_tools(rag_service=None, memory_store=None, mcp_tools=None) -> list[BaseTool]:
+def _make_skill_tools(skill_registry) -> list[BaseTool]:
+    async def _load(
+        skill_name: Annotated[str, Field(description="技能名（见系统提示的技能索引）")],
+    ) -> str:
+        try:
+            return await load_skill(skill_name, skill_registry)
+        except Exception:
+            logger.exception("load_skill failed")
+            return "工具执行失败。"
+
+    async def _unload(
+        skill_name: Annotated[str, Field(description="技能名")],
+    ) -> str:
+        try:
+            return await unload_skill(skill_name)
+        except Exception:
+            logger.exception("unload_skill failed")
+            return "工具执行失败。"
+
+    return [
+        StructuredTool.from_function(
+            coroutine=_load, name="load_skill", description=LOAD_SKILL_TOOL_DESCRIPTION,
+        ),
+        StructuredTool.from_function(
+            coroutine=_unload, name="unload_skill", description=UNLOAD_SKILL_TOOL_DESCRIPTION,
+        ),
+    ]
+
+
+def build_tools(rag_service=None, memory_store=None, mcp_tools=None,
+                skill_registry=None) -> list[BaseTool]:
     """组装当前可用工具列表（BaseTool）。
 
     - rag_service 存在且启用 → search_chat_history
     - memory_store 存在 → remember/recall_user_memory
+    - skill_registry 非空 → load_skill/unload_skill
     - mcp_tools（BaseTool 列表）→ 直接并入
     """
     tools: list[BaseTool] = []
@@ -132,5 +174,7 @@ def build_tools(rag_service=None, memory_store=None, mcp_tools=None) -> list[Bas
         tools.append(_make_search_tool(rag_service))
     if memory_store is not None:
         tools += _make_memory_tools(memory_store)
+    if skill_registry is not None and skill_registry.names():
+        tools += _make_skill_tools(skill_registry)
     tools += list(mcp_tools or [])
     return tools

@@ -1,5 +1,6 @@
 """build_tools 工具统一层测试：组装、schema 排除注入参数。"""
 
+from bot.core.skills import Skill, SkillRegistry
 from bot.core.tools import build_tools
 from tests.fakes import StubMemoryStore, StubRagService
 
@@ -63,3 +64,30 @@ def test_llm_schema_has_param_descriptions():
     recall = by_name["recall_user_memory"]
     recall_props = recall.tool_call_schema.model_json_schema()["properties"]
     assert "模糊匹配" in recall_props["keyword"]["description"]
+
+
+"""技能工具：registry 非空才注入；schema 无注入参数。"""
+
+
+def test_skill_tools_present_when_registry_injected():
+    registry = SkillRegistry({"translate": Skill(name="translate", description="中英互译", body="正文")})
+    tools = build_tools(rag_service=None, memory_store=None, skill_registry=registry)
+    assert {"load_skill", "unload_skill"} <= _names(tools)
+
+
+def test_no_skill_tools_without_registry():
+    tools = build_tools(rag_service=None, memory_store=None)
+    assert "load_skill" not in _names(tools)
+
+
+def test_no_skill_tools_when_empty_registry():
+    tools = build_tools(rag_service=None, memory_store=None, skill_registry=SkillRegistry())
+    assert "load_skill" not in _names(tools)
+
+
+def test_load_skill_schema_only_has_skill_name():
+    registry = SkillRegistry({"translate": Skill(name="translate", description="中英互译", body="正文")})
+    tools = build_tools(rag_service=None, memory_store=None, skill_registry=registry)
+    by_name = {t.name: t for t in tools}
+    props = by_name["load_skill"].tool_call_schema.model_json_schema()["properties"]
+    assert set(props) == {"skill_name"}
