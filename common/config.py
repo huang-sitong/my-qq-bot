@@ -129,3 +129,14 @@ class BotConfig:
     tavily_api_key: str = field(
         default_factory=lambda: os.getenv("TAVILY_API_KEY", ""),
     )
+
+    # --- Skills（提示词包技能，按需加载正文） ---
+    skills_enabled: bool = field(
+        default_factory=lambda: os.getenv("BOT_SKILLS_ENABLED", "1") not in ("0", "false", "False", ""),
+    )
+    skills_dir: str = field(
+        default_factory=lambda: os.getenv("BOT_SKILLS_DIR", "skills"),
+    )
+    skills_index_max: int = field(
+        default_factory=lambda: int(os.getenv("BOT_SKILLS_INDEX_MAX", "50")),
+    )

@@ -12,6 +12,8 @@ from .prompts import (
     MEMORY_TOOL_HINT,
     RETRIEVAL_TASK,
     ROUTER_PROMPT,
+    SKILL_ACTIVE_HINT,
+    SKILL_INDEX_HINT,
     SUMMARY_PROMPT,
     VISION_PROMPT,
 )
@@ -23,6 +25,8 @@ __all__ = [
     "MEMORY_TOOL_HINT",
     "RETRIEVAL_TASK",
     "ROUTER_PROMPT",
+    "SKILL_ACTIVE_HINT",
+    "SKILL_INDEX_HINT",
     "SUMMARY_PROMPT",
     "VISION_PROMPT",
     "BotConfig",

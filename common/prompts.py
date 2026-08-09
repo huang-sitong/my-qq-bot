@@ -57,3 +57,7 @@ VISION_PROMPT = "请用中文简要描述这张图片的内容。"
 
 # 嵌入检索任务前缀（EmbeddingService 用，Query 与 Document 共用保持向量空间一致）
 RETRIEVAL_TASK = "检索群聊历史中与问题最相关的消息"
+
+# 技能模块提示词（call_llm 经 build_system_messages 动态注入）
+SKILL_INDEX_HINT = "可用技能（按需用 load_skill 加载正文）："
+SKILL_ACTIVE_HINT = "当前已激活技能（遵循其规则）："
