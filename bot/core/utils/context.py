@@ -11,7 +11,7 @@ from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
 from bot.core.utils.content_parser import IMAGE_PLACEHOLDER
-from common import CURRENT_TIME_HINT
+from common import CURRENT_TIME_HINT, SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +30,34 @@ def _current_time_hint(now: datetime.datetime) -> SystemMessage:
     ))
 
 
+def _skill_index_message(skill_registry) -> SystemMessage | None:
+    """技能索引层：无注册表或空 → None。"""
+    if skill_registry is None or skill_registry.total == 0:
+        return None
+    return SystemMessage(content=f"{SKILL_INDEX_HINT}\n{skill_registry.index_text()}")
+
+
+def _active_skills_message(skill_registry, active_skills: list[str]) -> SystemMessage | None:
+    """已激活技能正文层：无激活或全部读取失败 → None。"""
+    if not active_skills or skill_registry is None:
+        return None
+    sections: list[str] = []
+    for name in active_skills:
+        body = skill_registry.get_body(name)
+        if body is None:
+            continue  # 技能已激活但文件被删 → 静默跳过
+        sections.append(f"===== 技能：{name} =====\n{body}")
+    if not sections:
+        return None
+    return SystemMessage(content=f"{SKILL_ACTIVE_HINT}\n\n" + "\n\n".join(sections))
+
+
 def build_system_messages(
     persona: str,
     summary: str = "",
     now: datetime.datetime | None = None,
+    skill_registry=None,
+    active_skills: list[str] | None = None,
 ) -> list[SystemMessage]:
     """构建 call_llm 的 SystemMessage 层；estimate_context_tokens 复用保证估算一致。
 
@@ -41,6 +65,8 @@ def build_system_messages(
     - persona（恒为 messages[0]）
     - 当前时间提示（CURRENT_TIME_HINT，动态注入；``now`` 仅供测试注入固定时刻）
     - 对话摘要（来自 summarize_node）
+    - 技能索引（SKILL_INDEX_HINT + SkillRegistry.index_text，空注册表跳过）
+    - 已激活技能正文（SKILL_ACTIVE_HINT + 各技能 body，缺失/无激活跳过）
     """
     if now is None:
         now = datetime.datetime.now()
@@ -50,6 +76,12 @@ def build_system_messages(
     msgs.append(_current_time_hint(now))
     if summary_text.strip():
         msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary_text}"))
+    index_msg = _skill_index_message(skill_registry)
+    if index_msg is not None:
+        msgs.append(index_msg)
+    active_msg = _active_skills_message(skill_registry, active_skills or [])
+    if active_msg is not None:
+        msgs.append(active_msg)
     return msgs
 
 
@@ -57,6 +89,8 @@ def estimate_context_tokens(
     messages: list[BaseMessage],
     persona: str,
     summary: str,
+    skill_registry=None,
+    active_skills: list[str] | None = None,
 ) -> int:
     """Estimate total tokens for the full context sent to the LLM.
 
@@ -64,10 +98,12 @@ def estimate_context_tokens(
     and passes it through ``count_tokens_approximately`` for a single
     consistent token count.
     """
-    # Layer 0 + 1: persona + conversation summary（构造与 call_llm 共用 build_system_messages）
-    all_msgs = build_system_messages(persona, summary)
+    # Layer 0..N: persona + time + summary + skill layers（构造与 call_llm 共用 build_system_messages）
+    all_msgs = build_system_messages(
+        persona, summary, skill_registry=skill_registry, active_skills=active_skills,
+    )
 
-    # Layer 2..N: recent messages
+    # Trailing: recent messages
     all_msgs.extend(messages)
 
     return count_tokens_approximately(

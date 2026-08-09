@@ -87,3 +87,73 @@ def test_summary_trim_accepts_callable_counter():
         msgs, max_tokens=1000, token_counter=_approx_token_counter, strategy="last",
     )
     assert len(trimmed) == 1
+
+
+"""技能层：索引 + 激活正文注入；估算与实际注入一致。"""
+
+from bot.core.skills import Skill, SkillRegistry
+
+
+def test_skill_index_and_active_layers_injected():
+    registry = SkillRegistry({
+        "translate": Skill(name="translate", description="中英互译", body="## 规则\n保留语气"),
+        "weather": Skill(name="weather", description="播报天气", body="## 规则\n查天气"),
+    })
+    msgs = build_system_messages(
+        "你是助手", "摘要", now=FIXED_NOW,
+        skill_registry=registry, active_skills=["translate"],
+    )
+    assert [m.content for m in msgs] == [
+        "你是助手", TIME_HINT, "之前的对话摘要：\n摘要",
+        "可用技能（按需用 load_skill 加载正文）：\n- translate: 中英互译\n- weather: 播报天气",
+        "当前已激活技能（遵循其规则）：\n\n===== 技能：translate =====\n## 规则\n保留语气",
+    ]
+
+
+def test_skill_layers_skipped_when_no_registry():
+    msgs = build_system_messages("你是助手", "摘要", now=FIXED_NOW)
+    assert [m.content for m in msgs] == ["你是助手", TIME_HINT, "之前的对话摘要：\n摘要"]
+
+
+def test_skill_index_truncated_when_exceeds_max():
+    registry = SkillRegistry(
+        {f"s{i}": Skill(name=f"s{i}", description=f"d{i}", body="b") for i in range(5)},
+        index_max=3,
+    )
+    msgs = build_system_messages("你是助手", "", now=FIXED_NOW, skill_registry=registry)
+    index_msg = [m for m in msgs if "可用技能" in m.content]
+    assert index_msg and "…共 5 个技能，仅显示前 3 个" in index_msg[0].content
+
+
+def test_active_skill_missing_body_skipped_keeps_others():
+    registry = SkillRegistry({"a": Skill(name="a", description="d", body="正文A")})
+    msgs = build_system_messages(
+        "你是助手", "", now=FIXED_NOW,
+        skill_registry=registry, active_skills=["a", "ghost"],
+    )
+    active_msg = [m for m in msgs if "已激活技能" in m.content]
+    assert len(active_msg) == 1
+    assert "ghost" not in active_msg[0].content
+    assert "正文A" in active_msg[0].content
+
+
+def test_no_active_layer_when_empty_active_skills():
+    registry = SkillRegistry({"a": Skill(name="a", description="d", body="正文A")})
+    msgs = build_system_messages("你是助手", "", now=FIXED_NOW, skill_registry=registry, active_skills=[])
+    assert not any("已激活技能" in m.content for m in msgs)
+
+
+def test_estimate_includes_skill_layers():
+    from langchain_core.messages import HumanMessage
+    from langchain_core.messages.utils import count_tokens_approximately
+
+    from bot.core.utils import estimate_context_tokens
+
+    registry = SkillRegistry({"translate": Skill(name="translate", description="中英互译", body="## 规则")})
+    msgs = [HumanMessage(content="你好")]
+    expected = build_system_messages(
+        "你是助手", "摘要", now=FIXED_NOW, skill_registry=registry, active_skills=["translate"],
+    ) + msgs
+    assert estimate_context_tokens(
+        msgs, "你是助手", "摘要", skill_registry=registry, active_skills=["translate"],
+    ) == count_tokens_approximately(expected, chars_per_token=1.5)
