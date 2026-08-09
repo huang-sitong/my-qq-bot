@@ -202,3 +202,77 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
     assert rag.last_indexed is not None
     assert rag.last_indexed["user_message"] == ""
     assert rag.last_indexed["bot_reply"] == "我看不到图"
+
+
+# ----------------------------------------------------------------------
+# 技能模块集成：加载持久化 + 线程隔离 + 注入可见。
+# ----------------------------------------------------------------------
+# 注意：AsyncSqliteSaver 的 asyncio.Lock 绑定首个事件循环（同 test_memory_store
+# 约定），跨轮/跨线程 ainvoke 必须放在单个 asyncio.run 内——与真实 bot 单 loop 一致。
+
+from bot.core.skills import Skill, SkillRegistry
+
+SKILL_LOAD_CALLS = [
+    {"name": "load_skill", "args": {"skill_name": "translate"},
+     "id": "call_skill_1", "type": "tool_call"},
+]
+
+
+def _skill_registry():
+    return SkillRegistry({
+        "translate": Skill(name="translate", description="中英互译", body="翻译规则：保留语气"),
+    })
+
+
+def test_graph_skill_persists_across_turns(tmp_path):
+    async def run():
+        llm = ScriptedLLM([
+            # 第 1 轮：加载技能
+            AIMessage(content="", tool_calls=SKILL_LOAD_CALLS),
+            AIMessage(content="已启用翻译技能"),
+            # 第 2 轮（同 thread）：直接翻译
+            AIMessage(content="翻译：你好 → Hello"),
+        ])
+        graph, checkpointer = await create_graph(
+            llm, BotConfig(skills_enabled=True), db_dir=str(tmp_path),
+            skill_registry=_skill_registry(),
+        )
+        try:
+            state1 = {**_initial_state(), "llm_text": "用翻译技能", "clean_text": "用翻译技能"}
+            r1 = await graph.ainvoke(state1, {"configurable": {"thread_id": "test:thread"}})
+            assert r1["active_skills"] == ["translate"]
+
+            # 第 2 轮不带 active_skills（输入覆盖 checkpoint 会导致清零——这是设计约束）
+            state2 = {**_initial_state(), "llm_text": "翻译 how are you", "clean_text": "翻译 how are you"}
+            r2 = await graph.ainvoke(state2, {"configurable": {"thread_id": "test:thread"}})
+            assert r2["active_skills"] == ["translate"]  # checkpoint 恢复
+            sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
+            assert any("翻译规则：保留语气" in m.content for m in sys_msgs)  # 正文注入可见
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())
+
+
+def test_graph_skill_isolated_per_thread(tmp_path):
+    async def run():
+        llm = ScriptedLLM([
+            AIMessage(content="", tool_calls=SKILL_LOAD_CALLS),
+            AIMessage(content="已启用"),
+            AIMessage(content="普通回复"),  # 线程 B
+        ])
+        graph, checkpointer = await create_graph(
+            llm, BotConfig(skills_enabled=True), db_dir=str(tmp_path),
+            skill_registry=_skill_registry(),
+        )
+        try:
+            a = {**_initial_state(), "llm_text": "翻译", "clean_text": "翻译"}
+            await graph.ainvoke(a, {"configurable": {"thread_id": "thread:A"}})
+
+            b = {**_initial_state(), "llm_text": "你好", "clean_text": "你好"}
+            rb = await graph.ainvoke(b, {"configurable": {"thread_id": "thread:B"}})
+            assert rb.get("active_skills", []) == []  # 新线程不串技能
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())

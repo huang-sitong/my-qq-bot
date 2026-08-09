@@ -40,9 +40,12 @@ bot/
     mcp/                     #  MCP 外部工具加载（langchain-mcp-adapters，远程/stdio 多 server）
       client.py              #   load_mcp_tools — 逐 server 降级加载，返回 BaseTool 列表
       config.py              #   build_mcp_connections — 额外 server + Tavily 远程端点合并（纯函数）
+    skills/                  #  技能模块（提示词包）：SkillRegistry 扫描加载 + load/unload 工具
+      loader.py              #   Skill/SkillRegistry — 解析 skills/<name>/SKILL.md 的 frontmatter + 正文
+      tools.py               #   load_skill / unload_skill 纯函数（只返回正文/确认，状态由 skill_manager 写回）
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
-      action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库)
+      action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库), skill_manager (技能激活写回)
       subgraph/              #   nested subgraphs (future)
     tools/                   # Tool definitions imported by graph / tools node
       factory.py             #   build_tools — 内部纯函数包装为 BaseTool（InjectedState 注入 + 异常降级）
@@ -66,7 +69,7 @@ WebSocket event → SatoriClient → MessageHandler.handle()
       → 条件边：should_respond → describe_image；非回复文本 → summarize；其余 → END
     → describe_image (action_node) ← 图片回复路径：下载→Ollama qwen3-vl 描述→[图片] 原位替换（vision_desc 供索引）；非图片/禁用 no-op
     → call_llm (llm_node)          ← dynamic SystemMessage injection
-      tools (ToolNode)         ← call_llm 返回 tool_calls 时由 prebuilt ToolNode 统一执行（RAG/记忆/MCP 工具），回环到 call_llm
+      tools (ToolNode) → skill_manager (action_node) ← call_llm 返回 tool_calls 时由 prebuilt ToolNode 统一执行（RAG/记忆/MCP/技能工具），skill_manager 把 load/unload 调用写回 active_skills，逐轮回环到 call_llm
     → summarize (action_node)      ← token threshold check → progressive summary
     → index_turn (action_node)     ← 回复轮索引 2 条（用户+Bot）；群聊非@文本索引 1 条（仅用户）；纯媒体不索引
   → send reply via SatoriApiClient
@@ -96,29 +99,36 @@ WebSocket event → SatoriClient → MessageHandler.handle()
 ### Node dependency injection
 
 Graph nodes in `bot/core/nodes/` use `functools.partial` for injection (not closures). In `graph.py`:
-- `call_llm_node` bound with `partial(call_llm_node, llm=llm, rag_service=rag_service, memory_store=memory_store, bot_config=config)`
-- `summarize_node` bound with `partial(summarize_node, llm=llm, bot_config=config)`
-- `tools` node = `ToolNode(build_tools(rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools))` — 内部工具闭包绑定服务 + `InjectedState` 注入 thread_id/user_id，MCP 工具直接并入
+- `call_llm_node` bound with `partial(call_llm_node, llm=llm, tools=tools, use_memory=use_memory, use_mcp=use_mcp, bot_config=config, skill_registry=skill_registry)`
+- `summarize_node` bound with `partial(summarize_node, llm=llm, bot_config=config, skill_registry=skill_registry)`
+- `skill_manager_node` bound with `partial(skill_manager_node, skill_registry=skill_registry)`
+- `tools` node = `ToolNode(build_tools(rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools, skill_registry=skill_registry))` — 内部工具闭包绑定服务 + `InjectedState` 注入 thread_id/user_id，MCP 工具直接并入
 
 Each node file is a standalone `async def(state, ...) -> dict`.
 
 ### `create_graph()` returns a tuple
 
-`create_graph(llm, config, db_dir="db", rag_service=None, memory_store=None, vision_service=None, mcp_tools=None)` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`. `rag_service` / `memory_store` are passed to `call_llm_node` (tool binding) and `tools`（ToolNode，tool execution）for the graph-level tool loop。`mcp_tools` 为 `BaseTool` 列表，由 `bot/core/mcp/client.py::load_mcp_tools` 加载后传入 `call_llm`（绑定）与 `ToolNode`（执行）。
+`create_graph(llm, config, db_dir="db", rag_service=None, memory_store=None, vision_service=None, mcp_tools=None, skill_registry=None)` returns `(graph: CompiledStateGraph, checkpointer: AsyncSqliteSaver)`. The `main.py` caller manages the checkpointer lifecycle — do not close it inside `create_graph`. `rag_service` / `memory_store` 与 `skill_registry` 传入 `call_llm_node`（工具绑定 + 技能注入层）与 `tools`（ToolNode，tool execution）参与图级工具回环；`skill_registry` 同时传给 `summarize_node`（token 估算一致）与 `skill_manager_node`（激活写回）。`mcp_tools` 为 `BaseTool` 列表，由 `bot/core/mcp/client.py::load_mcp_tools` 加载后传入 `call_llm`（绑定）与 `ToolNode`（执行）。
 
 ### SystemMessage injection
 
-`call_llm_node` builds a **four-layer** SystemMessage list **dynamically each invocation**, prepends it to `state["messages"]`, and returns only the `AIMessage` to state:
+`call_llm_node` builds a **multi-layer** SystemMessage list **dynamically each invocation**, prepends it to `state["messages"]`, and returns only the `AIMessage` to state:
 
 ```python
 # Persona is formatted with bot_name for self-awareness
 persona = state["persona"].format(bot_name=state.get("bot_name", ""))
-system_msgs = [SystemMessage(content=persona)]
+system_msgs = build_system_messages(
+    persona, summary,
+    skill_registry=skill_registry,
+    active_skills=state.get("active_skills", []),
+)
 # Layer 1: current time hint（CURRENT_TIME_HINT，动态注入当前时间+星期，供 LLM 算
 #          相对时间/hours/start_time/end_time 的基准；LLM 不知道墙钟时间）
 # Layer 2: conversation_summary (from summarize_node)
-# Layer 3: memory tools usage hint (MEMORY_TOOL_HINT, 仅注入 memory_store 时)
-# Layer 4: MCP external tools hint (MCP_TOOL_HINT, 仅注入 mcp_tools 非空时)
+# Layer 3: skill index（SKILL_INDEX_HINT + SkillRegistry.index_text，仅 skill_registry 非空时）
+# Layer 4: active skills bodies（SKILL_ACTIVE_HINT + 各技能正文，仅 active_skills 非空时）
+# Layer 5: memory tools usage hint (MEMORY_TOOL_HINT, 仅注入 memory_store 时)
+# Layer 6: MCP external tools hint (MCP_TOOL_HINT, 仅注入 mcp_tools 非空时)
 ```
 
 - SystemMessages are **local variables** — never persisted to checkpoint
@@ -144,6 +154,14 @@ system_msgs = [SystemMessage(content=persona)]
 - **执行**：`tools（ToolNode）` 经 `InjectedState("user_id")` 注入 `user_id`（记忆按用户维度存取），`memory_store` 由 `build_tools` 闭包绑定注入；`remember_user_memory(key, value, ...)` / `recall_user_memory(keyword, ...)` 均为纯函数，底层经官方 `AsyncSqliteStore`（全 async）直接 `await`，无需 `to_thread` 包装。
 - **不再进图前全量注入 / 图外抽取**：旧方案在 `call_llm` 前将全部用户记忆拼入 SystemMessage，并在图外由 `_extract_memories` 抽取持久化 —— 均已移除。记忆完全由 LLM 通过工具主动读写，`user_id` 从 state 传入。
 
+### 技能模块（提示词包）
+
+- **加载**：`main.py` 在 `config.skills_enabled`（默认开启，env `BOT_SKILLS_ENABLED`）时用 `SkillRegistry.from_directory(config.skills_dir, index_max=config.skills_index_max)` 扫描 `skills/<name>/SKILL.md`（env `BOT_SKILLS_DIR` 默认 `"skills"`、`BOT_SKILLS_INDEX_MAX` 默认 50），解析 frontmatter 的 `name`/`description` + 正文；目录不存在 → 空注册表，绝不崩 bot。注册表注入 `create_graph(skill_registry=...)`。
+- **触发**：`build_tools` 在 `skill_registry` 非空时把 `load_skill` / `unload_skill` 包装为 `BaseTool`（纯函数在 `bot/core/skills/tools.py`，只返回正文/确认，不写任何状态）。`call_llm` 经 `build_system_messages` 注入**技能索引层**（`SKILL_INDEX_HINT` + `index_text()`）引导 LLM 按需 `load_skill` 取回正文。
+- **激活写回**：工具执行由 prebuilt `ToolNode` 完成后，图边 `tools → skill_manager → call_llm` **逐轮**触发 `skill_manager` 节点（`bot/core/nodes/action_node/skill_manager.py`）——扫描最近带 tool_calls 的 AIMessage，把 `load_skill` 的 `skill_name` 追加进 `BotState.active_skills`（`unload_skill` 移除；**只增不改、不设 reducer**，last-write-wins）。必须逐轮接线而非图末一次：否则早期轮次的 load 调用会被后置轮次覆盖漏掉。
+- **注入层**：激活后 `build_system_messages` 注入**激活正文层**（`SKILL_ACTIVE_HINT` + 各技能 body；技能被删则静默跳过）；`estimate_context_tokens` 复用同一函数保证 token 估算一致。`active_skills` 经 checkpoint 跨轮持久化、按 thread 隔离（跨线程不串技能）。
+- **关键约束**：`active_skills` 是图状态通道，但 `bot/handler.py` **绝不注入**它——LangGraph 输入状态覆盖 checkpoint，每轮注入 `[]` 会清零已持久化的技能激活。节点一律用 `state.get("active_skills", [])` 读取。
+
 ### Reply is sent outside the graph
 
 `MessageHandler.handle()` calls `SatoriApiClient.send_message()` after `graph.ainvoke()` returns. There is no `send_reply` node in the graph — the `reply_text` field flows through state and is consumed by the handler.
@@ -152,8 +170,8 @@ system_msgs = [SystemMessage(content=persona)]
 
 When adding nodes, follow the classification in `bot/core/nodes/`:
 - **`llm_node/`** — nodes that call an LLM for reasoning/generation (fixed position in graph)
-- **`action_node/`** — deterministic, no-LLM logic nodes (fixed position in graph)
-- **`tools` node** — prebuilt `langgraph.prebuilt.ToolNode`，统一执行全部工具（RAG 检索、用户记忆、MCP 外部工具），经条件边回环；工具列表由 `build_tools` 组装
+- **`action_node/`** — deterministic, no-LLM logic nodes (fixed position in graph)；含 `skill_manager`（技能激活写回，挂在 tools 与 call_llm 之间的回环路径）
+- **`tools` node** — prebuilt `langgraph.prebuilt.ToolNode`，统一执行全部工具（RAG 检索、用户记忆、技能 load/unload、MCP 外部工具），经条件边回环；工具列表由 `build_tools` 组装
 - **`bot/core/mcp/`** — MCP 外部工具加载（`load_mcp_tools`），远程 streamable_http / stdio 多 server，单 server 失败降级跳过
 - **`subgraph/`** — nested CompiledStateGraph for complex multi-step sub-flows
 
@@ -179,6 +197,6 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 
 - **milvus-lite**: 群聊历史向量存 `db/milvus.db`（milvus-lite 单文件，raw pymilvus 直连）。集合 `chat` 双向量字段：`vector`（FLOAT_VECTOR，HNSW/COSINE，维度 = `embed_dimensions`）+ `sparse`（SPARSE_FLOAT_VECTOR，BM25）+ `text`（VARCHAR，jieba 分词 analyzer）+ `thread_id`（VARCHAR，partition key）；`BM25` 函数声明在 text 字段上（`input_field_names=["text"]`），sparse 输出字段须先声明再建 Function。`timestamp` 为 **TEXT ISO**（`YYYY-MM-DD HH:MM:SS`），淘汰按 `timestamp DESC`。每线程超过 `rag_retention_per_thread` 时由 `_prune_thread` 淘汰最旧记录（milvus-lite query 不支持 order_by → Python 侧排序切片删除；字符串/动态字段懒加载须先 `list()` 物化）。集合已存在时 `_ensure_collection` 先 `describe_collection` 校验 `vector` 字段 `params.dim`，与 `config.embed_dimensions` 不符则记 error 日志后 DROP 重建（对齐旧 sqlite-vec `_drop_legacy_schema` 先例：维度漂移的向量 insert 必失败，是可重建缓存直接丢弃）；**无论新建/复用，`_ensure_collection` 末尾统一 `load_collection`**——带索引集合（含 sparse/BM25/双索引）在新进程/重启后默认 `released`（load 状态是进程内 server 内存态，不持久化），query/search 前必须 load；跨进程打开 `db/milvus.db` 的独立脚本（如 `scripts/inspect_milvus.py`）也须显式 load 才能查询。搜索 hit 的动态字段（content/timestamp/sender 等）在新进程场景返回在 `entity` 子字典里（同进程为扁平 dict），`_dense_hit`/`_sparse_hit` 统一展平兼容。全新库自动建集合；全部操作由 RagService try/except 包裹降级，失败不崩图。
 
-- **工具定位**: RAG 工具纯函数在 `bot/core/tools/search_chat_history.py`，记忆工具纯函数在 `bot/core/tools/user_memory.py`；`build_tools`（`bot/core/tools/factory.py`）把它们包装为 `BaseTool`（服务闭包绑定、`InjectedState` 注入 `thread_id`/`user_id`、异常降级为「工具执行失败。」）；执行节点为 prebuilt `ToolNode`。MCP 外部工具由 `bot/core/mcp/client.py::load_mcp_tools` 加载（每次调用自建 session）。`ToolNode` 绑定 `handle_tool_errors=_tool_error_message` 回调：只按类名记日志（防 Tavily URL 泄漏）、把执行/传输层异常统一降级为「工具执行失败。」不让异常中断整轮；**唯一例外**是 `ToolInvocationError`（参数校验失败）——原样返回 `exc.message` 逐字段校验信息供 LLM 自我纠正畸形参数。`MemoryStore` 数据文件仍为 `db/memory.sqlite`（官方 `store` 表，namespace `("user", user_id)`；首次启动自动把旧 `user_memories` 表迁移进 `store` 后 DROP）。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
+- **工具定位**: RAG 工具纯函数在 `bot/core/tools/search_chat_history.py`，记忆工具纯函数在 `bot/core/tools/user_memory.py`，技能工具纯函数在 `bot/core/skills/tools.py`；`build_tools`（`bot/core/tools/factory.py`）把它们包装为 `BaseTool`（服务闭包绑定、`InjectedState` 注入 `thread_id`/`user_id`、异常降级为「工具执行失败。」）；执行节点为 prebuilt `ToolNode`。MCP 外部工具由 `bot/core/mcp/client.py::load_mcp_tools` 加载（每次调用自建 session）。`ToolNode` 绑定 `handle_tool_errors=_tool_error_message` 回调：只按类名记日志（防 Tavily URL 泄漏）、把执行/传输层异常统一降级为「工具执行失败。」不让异常中断整轮；**唯一例外**是 `ToolInvocationError`（参数校验失败）——原样返回 `exc.message` 逐字段校验信息供 LLM 自我纠正畸形参数。`MemoryStore` 数据文件仍为 `db/memory.sqlite`（官方 `store` 表，namespace `("user", user_id)`；首次启动自动把旧 `user_memories` 表迁移进 `store` 后 DROP）。工具调用消息会持久化到 checkpoint（不同于 SystemMessage）。
 
 - **Persona fallback**: `main.py` uses `config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT` — the `BotConfig.persona_prompt` default is a real prompt string, not empty. Set `BOT_PERSONA_PROMPT=""` to force fallback to `DEFAULT_PERSONA_PROMPT`. Both use `{bot_name}` placeholder, formatted at invocation time in `call_llm_node`.

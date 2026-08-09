@@ -13,6 +13,7 @@ from bot import (
     setup_llm,
 )
 from bot.core.mcp import build_mcp_connections, load_mcp_tools
+from bot.core.skills import SkillRegistry
 from common import (
     DEFAULT_PERSONA_PROMPT,
     BotConfig,
@@ -69,10 +70,16 @@ async def main():
             tool_name_prefix=config.mcp_tool_name_prefix,
         )
         logger.info("Loaded %d MCP tools", len(mcp_tools))
+    skill_registry = None
+    if config.skills_enabled:
+        skill_registry = SkillRegistry.from_directory(
+            config.skills_dir, index_max=config.skills_index_max,
+        )
+        logger.info("Loaded %d skills from %s", skill_registry.total, config.skills_dir)
     # checkpointer 由 graph 内部持有引用，生命周期随进程，main.py 无需单独管理
     graph, _ = await create_graph(
         llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
-        vision_service=vision_service, mcp_tools=mcp_tools,
+        vision_service=vision_service, mcp_tools=mcp_tools, skill_registry=skill_registry,
     )
 
     handler = MessageHandler(

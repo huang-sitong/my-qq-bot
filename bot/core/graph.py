@@ -15,6 +15,7 @@ from bot.core.nodes import (
     describe_image_node,
     detect_intent,
     index_turn_node,
+    skill_manager_node,
     summarize_node,
 )
 from bot.core.tools import build_tools
@@ -69,6 +70,7 @@ async def create_graph(
     memory_store=None,
     vision_service=None,
     mcp_tools=None,
+    skill_registry=None,
 ) -> tuple[CompiledStateGraph, AsyncSqliteSaver]:
     """Build and compile the conversation graph.
 
@@ -77,6 +79,7 @@ async def create_graph(
     """
     tools = build_tools(
         rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools,
+        skill_registry=skill_registry,
     )
     use_memory = memory_store is not None
     use_mcp = bool(mcp_tools)
@@ -91,9 +94,13 @@ async def create_graph(
             use_memory=use_memory,
             use_mcp=use_mcp,
             bot_config=config,
+            skill_registry=skill_registry,
         )
     )
-    builder.add_node("summarize", partial(summarize_node, llm=llm, bot_config=config))
+    builder.add_node("summarize", partial(
+        summarize_node, llm=llm, bot_config=config, skill_registry=skill_registry,
+    ))
+    builder.add_node("skill_manager", partial(skill_manager_node, skill_registry=skill_registry))
     builder.add_node("index_turn", partial(index_turn_node, rag_service=rag_service))
     builder.add_node("describe_image", partial(
         describe_image_node,
@@ -107,7 +114,11 @@ async def create_graph(
     builder.add_edge(START, "detect_intent")
     builder.add_conditional_edges("detect_intent", _route_after_detect)
     builder.add_conditional_edges("call_llm", _route_after_llm)
-    builder.add_edge("tools", "call_llm")
+    # 工具回环：每轮工具执行后先经 skill_manager 写回 active_skills，再重入 call_llm。
+    # 逐轮接线（而非图末一次）保证每一轮 load_skill/unload_skill 调用都被处理——
+    # 若只在整轮结束时处理一次，早期轮次的技能调用会被漏掉。
+    builder.add_edge("tools", "skill_manager")
+    builder.add_edge("skill_manager", "call_llm")
     builder.add_edge("describe_image", "call_llm")
     builder.add_edge("summarize", "index_turn")
     builder.add_edge("index_turn", END)

@@ -29,6 +29,7 @@ class BotState(TypedDict):
     should_respond: bool
     bot_name: str
     tool_rounds: int       # 工具调用轮次计数（call_llm 递增，工具回环上限）
+    active_skills: list[str]  # 已激活技能名（skill_manager 写、build_system_messages 注入正文；handler 绝不注入）
     # --- Fields for detect_intent node ---
     channel_type: int       # ChannelType enum value (0=TEXT, 1=DIRECT)
     bot_id: str             # bot's own user ID for @-mention detection

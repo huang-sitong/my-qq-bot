@@ -18,6 +18,7 @@ async def call_llm_node(
     use_memory: bool = False,
     use_mcp: bool = False,
     bot_config: BotConfig | None = None,
+    skill_registry=None,
 ) -> dict:
     """调用 LLM 生成回复。
 
@@ -28,7 +29,11 @@ async def call_llm_node(
     """
     persona = state["persona"].format(bot_name=state.get("bot_name", ""))
     summary = state.get("conversation_summary", "").strip()
-    system_msgs = build_system_messages(persona, summary)
+    system_msgs = build_system_messages(
+        persona, summary,
+        skill_registry=skill_registry,
+        active_skills=state.get("active_skills", []),
+    )
     if use_memory:
         system_msgs.append(SystemMessage(content=MEMORY_TOOL_HINT))
     if use_mcp:

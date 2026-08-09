@@ -35,6 +35,7 @@ async def summarize_node(
     state: BotState,
     llm: ChatOpenAI,
     bot_config: BotConfig,
+    skill_registry=None,
 ) -> dict:
     """Check context size; if over threshold, summarize old messages.
 
@@ -49,6 +50,8 @@ async def summarize_node(
         state["messages"],
         state.get("persona", ""),
         state.get("conversation_summary", ""),
+        skill_registry=skill_registry,
+        active_skills=state.get("active_skills", []),
     )
     logger.debug(
         "summarize check: total=%d trigger=%d thread=%s",
