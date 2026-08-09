@@ -1,5 +1,6 @@
 from bot.core.utils.context import (
     build_system_messages,
+    content_to_text,
     estimate_context_tokens,
     format_messages_for_summary,
 )
@@ -22,6 +23,7 @@ __all__ = [
     "ParsedContent",
     "classify_content",
     "clean_text",
+    "content_to_text",
     "estimate_context_tokens",
     "format_messages_for_summary",
     "parse_attachments",

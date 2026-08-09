@@ -55,3 +55,10 @@ def test_pure_image_no_desc_but_reply_indexes_reply_only():
     indexed = _run(_img_state(reply_text="图里是一只橘猫在晒太阳"), rag)
     assert indexed["user_message"] == ""
     assert indexed["bot_reply"] == "图里是一只橘猫在晒太阳"
+
+
+def test_image_turn_with_multimodal_list_reply_indexes_text():
+    """多模态主 LLM 直接回图：reply_text 为 content 块列表时不崩，文本并入 bot 记录入库。"""
+    rag = StubRagService()
+    indexed = _run(_img_state(reply_text=[{"type": "text", "text": "这是一只橘猫"}]), rag)
+    assert indexed["bot_reply"] == "这是一只橘猫"

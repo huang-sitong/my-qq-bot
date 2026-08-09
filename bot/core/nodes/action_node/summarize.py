@@ -15,7 +15,7 @@ from langchain_core.messages import (
 from langchain_core.messages.utils import count_tokens_approximately
 from langchain_openai import ChatOpenAI
 
-from bot.core.utils import estimate_context_tokens, format_messages_for_summary
+from bot.core.utils import content_to_text, estimate_context_tokens, format_messages_for_summary
 from common import BotConfig, SUMMARY_PROMPT
 from object.bot.state import BotState
 
@@ -63,10 +63,9 @@ async def summarize_node(
     keep_messages = trim_messages(
         state["messages"],
         max_tokens=keep_tokens,
-        token_counter="approximate",
+        token_counter=_approx_token_counter,
         strategy="last",
         start_on="human",
-        chars_per_token=1.5,
     )
     keep_ids = {m.id for m in keep_messages if getattr(m, "id", None)}
     to_summarize = [m for m in state["messages"] if m.id not in keep_ids]
@@ -102,7 +101,10 @@ async def summarize_node(
 
     try:
         response = await llm.ainvoke([HumanMessage(content=summary_prompt)])
-        new_summary = response.content if hasattr(response, "content") else str(response)
+        if hasattr(response, "content"):
+            new_summary = content_to_text(response.content)
+        else:
+            new_summary = str(response)
     except Exception:
         logger.exception("Summary generation failed for thread %s", state.get("thread_id", ""))
         return {}  # Non-critical — skip summarization on failure

@@ -12,7 +12,7 @@ bot reply, 2 records) and non-replied group text (user only, 1 record —
 import logging
 
 from bot.core.rag.service import RagService
-from bot.core.utils import MessageKind
+from bot.core.utils import MessageKind, content_to_text
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,8 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
     # vision_desc 经 checkpoint 跨轮持久，仅 image 轮才并入索引内容
     if state.get("content_kind") == MessageKind.IMAGE.value and vision_desc:
         content = f"{content} [图片：{vision_desc}]".strip()
-    reply_text = state.get("reply_text", "").strip()
+    # reply_text 可能是旧 checkpoint 残留的多模态 content 块列表 → 先归一化再 strip
+    reply_text = content_to_text(state.get("reply_text", "")).strip()
     # 纯媒体且无描述、也无回复 → 无可索引内容。
     # 否则即使 user 侧为空（如多模态 vision 关闭的图片轮），reply_text 仍承载
     # 主 LLM 对图的理解，作为 assistant 记录入库（RagService.index_turn 过滤空对）。

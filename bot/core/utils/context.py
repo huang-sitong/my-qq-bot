@@ -44,10 +44,12 @@ def build_system_messages(
     """
     if now is None:
         now = datetime.datetime.now()
+    # 摘要可能残留旧 checkpoint 的多模态 content 列表 → 归一化为纯文本
+    summary_text = content_to_text(summary)
     msgs = [SystemMessage(content=persona)] if persona.strip() else []
     msgs.append(_current_time_hint(now))
-    if summary.strip():
-        msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary}"))
+    if summary_text.strip():
+        msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary_text}"))
     return msgs
 
 
@@ -74,12 +76,16 @@ def estimate_context_tokens(
     )
 
 
-def _content_to_text(content) -> str:
+def content_to_text(content) -> str:
     """消息 content 转纯文本：字符串原样；多模态 content 数组只取 text 块。
 
     image_url 块归一为 ``[图片]`` 占位符——摘要/检索不需要 base64 原始字节，
-    只关心"这里有一张图"。非 text/image 块按 str() 兜底。
+    只关心"这里有一张图"。非 text/image 块按 str() 兜底。None 返回 ""。
+    下游把 reply_text/conversation_summary 落库或 `.strip()` 前都必须经它
+    归一化（多模态主 LLM 的 content 是块列表，直接当字符串会崩）。
     """
+    if content is None:
+        return ""
     if isinstance(content, str):
         return content
     if isinstance(content, list):
@@ -106,7 +112,7 @@ def format_messages_for_summary(messages: list[BaseMessage]) -> str:
     lines: list[str] = []
     for m in messages:
         role = type(m).__name__.replace("Message", "")
-        content = _content_to_text(getattr(m, "content", str(m)))
+        content = content_to_text(getattr(m, "content", str(m)))
         name = getattr(m, "name", "") or ""
         if name:
             lines.append(f"[{role} | {name}]: {content}")

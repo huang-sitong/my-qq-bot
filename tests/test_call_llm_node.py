@@ -63,6 +63,25 @@ def test_plain_path_when_no_tools():
     assert result["reply_text"] == "普通"
 
 
+def test_multimodal_list_reply_normalized_to_text():
+    """多模态主 LLM 返回 content 块列表时，reply_text 归一化为纯文本字符串（防下游 .strip() 崩溃）。"""
+    llm = ScriptedLLM([AIMessage(content=[{"type": "text", "text": "这是一只猫"}])])
+    state = BASE | {"tool_rounds": 0}
+    result = asyncio.run(call_llm_node(
+        state, llm=llm, tools=_full_tools(), use_memory=True, bot_config=CONFIG_ON,
+    ))
+    assert result["reply_text"] == "这是一只猫"
+    assert isinstance(result["reply_text"], str)
+
+
+def test_plain_path_normalizes_multimodal_list_content():
+    """无工具路径同样归一化：多模态 content 块列表 → 纯文本 reply_text。"""
+    llm = ScriptedLLM([AIMessage(content=[{"type": "text", "text": "纯文本回复"}])])
+    result = asyncio.run(call_llm_node(BASE, llm=llm, tools=None, bot_config=CONFIG_ON))
+    assert result["reply_text"] == "纯文本回复"
+    assert isinstance(result["reply_text"], str)
+
+
 def test_plain_path_when_rounds_exhausted():
     llm = ScriptedLLM([AIMessage(content="耗尽后收尾")])
     state = BASE | {"tool_rounds": 1}

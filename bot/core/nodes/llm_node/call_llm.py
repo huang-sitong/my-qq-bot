@@ -4,7 +4,7 @@ from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
-from bot.core.utils import build_system_messages
+from bot.core.utils import build_system_messages, content_to_text
 from common import BotConfig, MCP_TOOL_HINT, MEMORY_TOOL_HINT
 from object.bot.state import BotState
 
@@ -55,9 +55,11 @@ async def call_llm_node(
                 "tool_rounds": rounds + 1,
                 "reply_text": "",
             }
+        # reply_text 必须归一化为字符串：多模态主 LLM 的 content 是块列表，
+        # 直接透传给 index_turn/.strip() 或 send_message 会崩。
         return {
             "messages": [AIMessage(content=response.content)],
-            "reply_text": response.content,
+            "reply_text": content_to_text(response.content),
         }
 
     reply = await _invoke_plain(messages, llm, state)
@@ -68,7 +70,9 @@ async def _invoke_plain(messages: list, llm: ChatOpenAI, state: BotState) -> str
     """无工具路径：一次 LLM 调用。"""
     try:
         response = await llm.ainvoke(messages)
-        return response.content if hasattr(response, "content") else str(response)
+        if hasattr(response, "content"):
+            return content_to_text(response.content)
+        return str(response)
     except Exception as exc:
         _log_llm_error(exc, state.get("thread_id", ""))
         return "我暂时无法思考，请稍后再试"

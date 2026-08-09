@@ -123,8 +123,6 @@ class MessageHandler:
     async def _process(self, item: dict) -> None:
         """Process a single message: extract data → graph → reply → memory."""
         event: EventBody = item["event"]
-        platform: str = item["platform"]
-        guild_id: str = item["guild_id"]
         channel_id: str = item["channel_id"]
         user_id: str = item["user_id"]
         thread_id: str = item["thread_id"]

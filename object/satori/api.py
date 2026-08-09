@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 from .enums import Direction, Order
 from .models import Channel, GuildRole

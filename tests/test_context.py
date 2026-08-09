@@ -33,6 +33,12 @@ def test_skips_empty_persona_keeps_summary():
     assert [m.content for m in msgs] == [TIME_HINT, "之前的对话摘要：\n摘要"]
 
 
+def test_build_system_messages_normalizes_multimodal_list_summary():
+    """回归：多模态 content 块列表作摘要（旧 checkpoint 可能残留）不崩，归一化为纯文本层。"""
+    msgs = build_system_messages("你是助手", [{"type": "text", "text": "聊过猫"}], now=FIXED_NOW)
+    assert [m.content for m in msgs] == ["你是助手", TIME_HINT, "之前的对话摘要：\n聊过猫"]
+
+
 def test_time_hint_shows_current_local_time():
     msgs = build_system_messages("   ", "", now=FIXED_NOW)
     assert [m.content for m in msgs] == [TIME_HINT]  # 时间层无条件注入
