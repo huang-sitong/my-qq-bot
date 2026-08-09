@@ -6,14 +6,19 @@
 """
 
 async def load_skill(skill_name: str, skill_registry) -> str:
-    """返回技能正文；不存在/未启用给出可纠正提示。"""
+    """返回技能正文（带 ``data:`` 数据文件的技能追加一条随机抽取记录）；不存在/未启用给出可纠正提示。"""
     if skill_registry is None:
         return "技能功能未启用。"
     body = skill_registry.get_body(skill_name)
     if body is None:
         available = ", ".join(skill_registry.names())
         return f"技能 '{skill_name}' 不存在。可用技能：{available or '（无）'}"
-    return f"已加载技能 '{skill_name}'，正文：\n{body}"
+    text = f"已加载技能 '{skill_name}'，正文：\n{body}"
+    data = skill_registry.random_data_entry(skill_name)
+    if data:
+        lines = "\n".join(f"{k}: {v}" for k, v in data.items())
+        text += f"\n\n附带数据：\n{lines}"
+    return text
 
 
 async def unload_skill(skill_name: str) -> str:
