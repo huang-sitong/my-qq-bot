@@ -13,7 +13,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _NAME_RE = re.compile(r"[a-z0-9_-]+")
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|\Z)", re.DOTALL)
 
 
 @dataclass
@@ -27,7 +27,7 @@ def _parse_skill_md(path: Path) -> tuple[str, str, str] | None:
     """解析 SKILL.md → (name, description, body)；非法返回 None。"""
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeDecodeError):  # 非 UTF-8（GBK/ANSI）解码失败也跳过，绝不崩 bot
         logger.warning("skill file unreadable: %s", path)
         return None
     m = _FRONTMATTER_RE.match(text)
@@ -42,10 +42,7 @@ def _parse_skill_md(path: Path) -> tuple[str, str, str] | None:
     description = meta.get("description", "").strip()
     if not name or not description:
         return None
-    body = text[m.end():].strip()
-    if not body:
-        return None
-    return name, description, body
+    return name, description, text[m.end():].strip()
 
 
 class SkillRegistry:
@@ -62,7 +59,12 @@ class SkillRegistry:
         base = Path(skills_dir)
         if not base.is_dir():
             return cls(skills, index_max)
-        for skill_dir in sorted(base.iterdir()):
+        try:
+            entries = sorted(base.iterdir())
+        except OSError:  # 目录不可读（权限等）→ 空注册表，绝不崩 bot
+            logger.warning("skill dir unreadable: %s", base)
+            return cls(skills, index_max)
+        for skill_dir in entries:
             if not skill_dir.is_dir():
                 continue
             md = skill_dir / "SKILL.md"

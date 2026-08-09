@@ -83,3 +83,23 @@ def test_in_memory_construction_for_tests():
     assert reg.has("x")
     assert reg.get_body("x") == "b"
     assert reg.get_body("ghost") is None
+
+
+def test_skips_non_utf8_skill_without_crash(tmp_path):
+    """GBK 编码的 SKILL.md 解码失败应跳过并告警，绝不崩 from_directory。"""
+    d = tmp_path / "gbk"
+    d.mkdir()
+    (d / "SKILL.md").write_bytes(
+        "---\nname: gbk\ndescription: 中文技能\n---\n正文\n".encode("gbk")
+    )
+    reg = SkillRegistry.from_directory(str(tmp_path))
+    assert reg.total == 0
+    assert reg.names() == []
+
+
+def test_parses_frontmatter_without_trailing_newline(tmp_path):
+    """关闭 ``---`` 后无尾换行（文件以 ``---`` 结尾）也应解析。"""
+    _write_skill(tmp_path, "ok", "---\nname: ok\ndescription: fine\n---")
+    reg = SkillRegistry.from_directory(str(tmp_path))
+    assert reg.names() == ["ok"]
+    assert reg.get_body("ok") == ""
