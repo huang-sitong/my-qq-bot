@@ -14,7 +14,7 @@ import os
 from langchain_ollama import OllamaEmbeddings
 
 from bot.core.rag.cache import EmbeddingCache
-from common import BotConfig, RETRIEVAL_TASK
+from common import RETRIEVAL_TASK, BotConfig
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +60,7 @@ class EmbeddingService:
         Query/Document 角色互换都互不串用）；text 列只存原始内容，前缀不进缓存。
         """
         return hashlib.sha256(
-            f"{self._config.embed_model}\x00{RETRIEVAL_TASK}\x00{role}\x00{raw}".encode("utf-8")
+            f"{self._config.embed_model}\x00{RETRIEVAL_TASK}\x00{role}\x00{raw}".encode()
         ).hexdigest()
 
     async def embed_query(self, query: str) -> list[float]:

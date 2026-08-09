@@ -7,6 +7,7 @@
 import asyncio
 import logging
 import sys
+from typing import ClassVar
 
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
@@ -101,7 +102,7 @@ def test_mcp_load_failure_logs_class_name_only(monkeypatch, caplog):
     from bot.core.mcp import client as client_mod
 
     class FakeClient:
-        connections = {"tavily": {"transport": "streamable_http"}}
+        connections: ClassVar[dict] = {"tavily": {"transport": "streamable_http"}}
 
         async def get_tools(self, server_name=None):
             raise RuntimeError("https://mcp.tavily.com/mcp/?tavilyApiKey=SECRETLEAK")

@@ -1,7 +1,7 @@
 """锁定领域类型经 object 包 lazy-loading 导出，且为 object.bot.content 的真实类。"""
 
-from object import Attachment, MessageKind, ParsedContent
 import object.bot.content as content_module
+from object import Attachment, MessageKind, ParsedContent
 
 
 def test_message_kind_values():

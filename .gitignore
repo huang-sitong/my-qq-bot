@@ -2,6 +2,7 @@
 .others
 .superpowers
 .pytest_cache
+.ruff_cache
 docs/superpowers
 # Python-generated files
 __pycache__/

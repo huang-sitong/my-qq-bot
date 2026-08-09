@@ -50,7 +50,7 @@ async def _recv_loop(ws) -> None:
     while loop.time() < deadline:
         try:
             raw = await asyncio.wait_for(ws.recv(), timeout=CAPTURE_SECONDS)
-        except (asyncio.TimeoutError, websockets.ConnectionClosed):
+        except (TimeoutError, websockets.ConnectionClosed):
             break
         try:
             data = json.loads(raw)

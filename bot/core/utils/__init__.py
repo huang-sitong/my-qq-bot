@@ -1,9 +1,3 @@
-from bot.core.utils.context import (
-    build_system_messages,
-    content_to_text,
-    estimate_context_tokens,
-    format_messages_for_summary,
-)
 from bot.core.utils.content_parser import (
     IMAGE_PLACEHOLDER,
     classify_content,
@@ -13,14 +7,20 @@ from bot.core.utils.content_parser import (
     parse_mentions,
     to_llm_text,
 )
+from bot.core.utils.context import (
+    build_system_messages,
+    content_to_text,
+    estimate_context_tokens,
+    format_messages_for_summary,
+)
 from object.bot.content import Attachment, MessageKind, ParsedContent
 
 __all__ = [
-    "Attachment",
     "IMAGE_PLACEHOLDER",
-    "build_system_messages",
+    "Attachment",
     "MessageKind",
     "ParsedContent",
+    "build_system_messages",
     "classify_content",
     "clean_text",
     "content_to_text",

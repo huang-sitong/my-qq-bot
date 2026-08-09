@@ -27,7 +27,7 @@ def test_parse_attachments_unescapes_src():
 
 
 def test_parse_attachments_mixed_media():
-    content = f'<img src="a.png"/>文字<file name="报告.pdf" src="b.pdf"/>'
+    content = '<img src="a.png"/>文字<file name="报告.pdf" src="b.pdf"/>'
     attachments = parse_attachments(content)
     assert [a.type for a in attachments] == ["img", "file"]
     assert attachments[1].name == "报告.pdf"

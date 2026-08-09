@@ -13,6 +13,7 @@ LLOneBot 只发送 ``content`` 字符串（无结构化 ``elements`` 数组）�
 
 import html
 import re
+
 from object.bot.content import Attachment, MessageKind, ParsedContent
 
 _MEDIA_TAG_RE = re.compile(r"<(img|file|audio|video)\b([^>]*?)/?>", re.IGNORECASE)

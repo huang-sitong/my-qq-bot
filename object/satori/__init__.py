@@ -1,4 +1,5 @@
-__all__ = [
+# 分组注释是刻意结构（与下方 _module_map 平行同步），按 RUF022 全量字母序会打散分组
+__all__ = [  # noqa: RUF022
     # enums
     "ChannelType", "Direction", "LoginStatus", "Order",
     # models

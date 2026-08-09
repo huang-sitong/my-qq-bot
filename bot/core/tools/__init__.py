@@ -4,6 +4,7 @@ from .user_memory import recall_user_memory, remember_user_memory
 
 __all__ = [
     "build_tools",
+    "recall_user_memory",
+    "remember_user_memory",
     "search_chat_history",
-    "recall_user_memory", "remember_user_memory",
 ]

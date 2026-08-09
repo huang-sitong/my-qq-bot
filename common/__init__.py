@@ -17,7 +17,6 @@ from .prompts import (
 )
 
 __all__ = [
-    "BotConfig",
     "CURRENT_TIME_HINT",
     "DEFAULT_PERSONA_PROMPT",
     "MCP_TOOL_HINT",
@@ -26,4 +25,5 @@ __all__ = [
     "ROUTER_PROMPT",
     "SUMMARY_PROMPT",
     "VISION_PROMPT",
+    "BotConfig",
 ]

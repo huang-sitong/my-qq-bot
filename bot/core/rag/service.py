@@ -10,9 +10,9 @@
 import logging
 from datetime import datetime, timedelta
 
-from common import BotConfig
 from bot.core.rag.milvus import MilvusStore, _esc
 from bot.core.rag.rrf import rrf_merge
+from common import BotConfig
 
 logger = logging.getLogger(__name__)
 

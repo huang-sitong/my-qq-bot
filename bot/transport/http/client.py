@@ -1,10 +1,10 @@
 import logging
 
 import httpx
+from pydantic import BaseModel
 
 from common import BotConfig
-from object.satori.api import Endpoint, MESSAGE_CREATE, MessageCreateParams
-from pydantic import BaseModel
+from object.satori.api import MESSAGE_CREATE, Endpoint, MessageCreateParams
 
 logger = logging.getLogger(__name__)
 

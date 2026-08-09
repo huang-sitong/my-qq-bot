@@ -61,8 +61,8 @@ class SatoriClient:
                 break
             except OSError as exc:
                 logger.warning("Connection failed: %s", exc)
-            except Exception as exc:
-                logger.exception("Unexpected error: %s", exc)
+            except Exception:
+                logger.exception("Unexpected error")
 
             if not self._running or not self.config.reconnect:
                 break
@@ -111,8 +111,8 @@ class SatoriClient:
         for handler in handlers:
             try:
                 await handler(event)
-            except Exception as exc:
-                logger.exception("Handler %s failed: %s", handler.__name__, exc)
+            except Exception:
+                logger.exception("Handler %s failed", handler.__name__)
 
     async def _dispatch_login(self, body: dict):
         try:
@@ -124,8 +124,8 @@ class SatoriClient:
         for handler in self._handlers.get("login", []):
             try:
                 await handler(login_list)
-            except Exception as exc:
-                logger.exception("Login handler %s failed: %s", handler.__name__, exc)
+            except Exception:
+                logger.exception("Login handler %s failed", handler.__name__)
 
     async def _send_raw(self, data: dict):
         if self._ws is not None and not self._ws.closed:

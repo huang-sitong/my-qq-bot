@@ -7,8 +7,6 @@ expr 过滤（人名 / 时间窗）、prune 淘汰、dense score 语义。
 
 import asyncio
 
-import pytest
-
 from bot.core.rag.milvus import MilvusStore
 from common import BotConfig
 

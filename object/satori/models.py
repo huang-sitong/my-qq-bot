@@ -1,4 +1,4 @@
-from typing import Generic, TypeVar
+from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
@@ -104,14 +104,14 @@ class Button(BaseModel):
     id: str
 
 
-class PageList(BaseModel, Generic[T]):
+class PageList[T](BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     data: list[T]
     next: str | None = None
 
 
-class BidiList(BaseModel, Generic[T]):
+class BidiList[T](BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     data: list[T]

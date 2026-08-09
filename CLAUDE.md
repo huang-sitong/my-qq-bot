@@ -8,6 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 uv sync                  # install dependencies
 uv run python main.py    # run the bot
 uv run python -c "..."   # quick import / logic check
+uv run ruff check        # lint（[tool.ruff] 见 pyproject.toml；BLE001/DTZ 忽略项是刻意设计）
 ```
 
 ## Architecture

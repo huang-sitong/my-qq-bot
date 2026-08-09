@@ -4,7 +4,8 @@ Uses the same lazy-loading ``__getattr__`` pattern as the sub-packages so
 that imports only load the modules they actually use.
 """
 
-__all__ = [
+# 分组注释是刻意结构（与下方 _module_map 平行同步），按 RUF022 全量字母序会打散分组
+__all__ = [  # noqa: RUF022
     # bot
     "BotState",
     "Attachment",

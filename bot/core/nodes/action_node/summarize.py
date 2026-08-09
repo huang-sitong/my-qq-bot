@@ -16,7 +16,7 @@ from langchain_core.messages.utils import count_tokens_approximately
 from langchain_openai import ChatOpenAI
 
 from bot.core.utils import content_to_text, estimate_context_tokens, format_messages_for_summary
-from common import BotConfig, SUMMARY_PROMPT
+from common import SUMMARY_PROMPT, BotConfig
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)

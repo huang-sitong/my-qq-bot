@@ -9,7 +9,6 @@ import pytest
 from bot.core.utils.routing import decide_reply, keep_in_context, route_after_detect
 from object.satori import ChannelType
 
-
 # --- decide_reply ---
 
 @pytest.mark.parametrize("kind", ["file", "audio", "video"])

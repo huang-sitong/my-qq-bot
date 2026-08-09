@@ -6,7 +6,7 @@
 import asyncio
 from datetime import datetime
 
-from bot.core.rag.service import RagService, TS_FMT
+from bot.core.rag.service import TS_FMT, RagService
 from common import BotConfig
 
 

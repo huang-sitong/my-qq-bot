@@ -5,7 +5,7 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
 from bot.core.utils import build_system_messages, content_to_text
-from common import BotConfig, MCP_TOOL_HINT, MEMORY_TOOL_HINT
+from common import MCP_TOOL_HINT, MEMORY_TOOL_HINT, BotConfig
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)

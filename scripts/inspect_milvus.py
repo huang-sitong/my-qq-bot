@@ -148,6 +148,6 @@ if __name__ == "__main__":
     # Windows PowerShell 中文输出兜底
     try:
         sys.stdout.reconfigure(encoding="utf-8")
-    except Exception:
+    except Exception:  # noqa: S110 — 控制台不支持 reconfigure 时静默降级
         pass
     main()

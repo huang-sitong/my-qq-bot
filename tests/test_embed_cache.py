@@ -104,7 +104,7 @@ def test_embed_query_no_cache_when_disabled():
 
 
 def test_model_change_invalidates_key(tmp_path):
-    svc, fake = _svc(tmp_path)
+    svc, _ = _svc(tmp_path)
     key_a = svc._cache_key("query", "你好")
     svc._config.embed_model = "model-b"
     key_b = svc._cache_key("query", "你好")
@@ -122,7 +122,7 @@ def test_query_document_same_content_no_cross_hit(tmp_path):
 
 def test_cache_text_stores_raw_content(tmp_path):
     """text 列只存原始内容，不带 Instruct 前缀。"""
-    svc, fake = _svc(tmp_path)
+    svc, _ = _svc(tmp_path)
     asyncio.run(svc.embed_query("你好"))
     asyncio.run(svc.embed_documents(["再见"]))
     cache = svc._cache

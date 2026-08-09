@@ -12,11 +12,11 @@ from bot import (
     create_graph,
     setup_llm,
 )
-from common import (
-    BotConfig,
-    DEFAULT_PERSONA_PROMPT,
-)
 from bot.core.mcp import build_mcp_connections, load_mcp_tools
+from common import (
+    DEFAULT_PERSONA_PROMPT,
+    BotConfig,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,7 +69,8 @@ async def main():
             tool_name_prefix=config.mcp_tool_name_prefix,
         )
         logger.info("Loaded %d MCP tools", len(mcp_tools))
-    graph, checkpointer = await create_graph(
+    # checkpointer 由 graph 内部持有引用，生命周期随进程，main.py 无需单独管理
+    graph, _ = await create_graph(
         llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
         vision_service=vision_service, mcp_tools=mcp_tools,
     )
