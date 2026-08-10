@@ -1,0 +1,34 @@
+"""斜杠指令纯解析器：prefix + 命令名 + 位置参数。"""
+
+import re
+import shlex
+from dataclasses import dataclass
+
+_NAME_RE = re.compile(r"[a-z0-9_-]+")
+
+
+@dataclass(frozen=True)
+class ParsedCommand:
+    name: str
+    args: tuple[str, ...] = ()
+    error: str | None = None
+
+
+def parse_command(text: str, prefix: str = "/") -> ParsedCommand | None:
+    """解析 ``prefix + name + args``；未命中或不合法命令名返回 None。"""
+    if not prefix or not text.startswith(prefix):
+        return None
+    remainder = text[len(prefix):].strip()
+    if not remainder:
+        return None
+    name = remainder.split(None, 1)[0].lower()
+    if not _NAME_RE.fullmatch(name):
+        return None
+    raw_args = remainder[len(name):].strip()
+    if not raw_args:
+        return ParsedCommand(name=name)
+    try:
+        args = tuple(shlex.split(raw_args))
+    except ValueError as exc:
+        return ParsedCommand(name=name, error=str(exc))
+    return ParsedCommand(name=name, args=args)
