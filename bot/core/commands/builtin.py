@@ -44,7 +44,7 @@ async def _skill(ctx: CommandContext) -> CommandResult:
         return CommandResult(text="技能功能未启用。")
     skill = registry.get_skill(ctx.args[0].lower())
     if skill is None:
-        return CommandResult(text=f"技能不存在：{ctx.args[0]}")
+        return CommandResult(text="技能不存在。")
     return CommandResult(text=f"{skill.description}\n\n{skill.body[:2000]}")
 
 

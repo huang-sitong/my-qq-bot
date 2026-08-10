@@ -98,11 +98,20 @@ def test_skill_returns_description_and_body():
     assert "正文内容" in result.text
 
 
+def test_skill_body_is_truncated_to_2000_chars():
+    skills = SkillRegistry({"x": Skill(name="x", description="描述", body="a" * 2001)})
+    services = _services(skills)
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "skill", ("x",))
+    assert "a" * 2000 in result.text
+    assert "a" * 2001 not in result.text
+
+
 def test_skill_missing():
     services = _services(SkillRegistry({}))
     registry = build_command_registry(services)
     result = _execute(registry, services, "skill", ("missing",))
-    assert result.text == "技能不存在：missing"
+    assert result.text == "技能不存在。"
 
 
 def test_skill_requires_arg():
