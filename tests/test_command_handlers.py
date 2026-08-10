@@ -1,0 +1,123 @@
+"""V1 内置命令 handler 输出测试。"""
+
+import asyncio
+import time
+
+from bot.core.commands import (
+    CommandActor,
+    CommandContext,
+    CommandServices,
+    build_command_registry,
+)
+from bot.core.skills import Skill, SkillRegistry
+from common import BotConfig
+
+
+def _services(skills=None):
+    return CommandServices(
+        version="1.2.3",
+        started_at=time.time() - 65,
+        bot_name="test-bot",
+        skill_registry=skills,
+        mcp_tool_count=2,
+    )
+
+
+def _ctx(services, args=(), actor=None):
+    return CommandContext(
+        raw="/" + " ".join(args),
+        actor=actor or CommandActor(user_id="u1", name="tester", is_admin=False),
+        platform="test",
+        guild_id="",
+        channel_id="ch1",
+        thread_id="t1",
+        channel_type=1,
+        args=args,
+        config=BotConfig(_env_file=None, admin_ids=["admin1"]),
+        services=services,
+    )
+
+
+def _execute(registry, services, name, args=(), actor=None):
+    command = registry.resolve(name)
+    ctx = _ctx(services, args=args, actor=actor)
+    return asyncio.run(command.handler(ctx))
+
+
+def test_help_lists_all_commands():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "help")
+    assert "/help" in result.text
+    assert "/ping" in result.text
+
+
+def test_help_shows_single_command():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "help", ("status",))
+    assert "/status" in result.text
+    assert "管理员" in result.text
+
+
+def test_ping():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "ping")
+    assert result.text == "Pong."
+
+
+def test_version():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "version")
+    assert result.text == "qq-bot 1.2.3"
+
+
+def test_skills_empty():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "skills")
+    assert result.text == "当前没有可用技能。"
+
+
+def test_skills_lists_index():
+    skills = SkillRegistry({"x": Skill(name="x", description="描述", body="正文")})
+    services = _services(skills)
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "skills")
+    assert "- x: 描述" in result.text
+
+
+def test_skill_returns_description_and_body():
+    skills = SkillRegistry({"x": Skill(name="x", description="描述", body="正文内容")})
+    services = _services(skills)
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "skill", ("x",))
+    assert "描述" in result.text
+    assert "正文内容" in result.text
+
+
+def test_skill_missing():
+    services = _services(SkillRegistry({}))
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "skill", ("missing",))
+    assert result.text == "技能不存在：missing"
+
+
+def test_skill_requires_arg():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "skill")
+    assert "用法" in result.text
+
+
+def test_status_returns_safe_runtime_info():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "status")
+    assert "qq-bot 1.2.3" in result.text
+    assert "sensenova-6.7-flash-lite" in result.text
+    assert "db" in result.text
+    assert "MCP：2 个工具" in result.text
+    assert "API_KEY" not in result.text

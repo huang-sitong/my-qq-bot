@@ -100,6 +100,10 @@ class SkillRegistry:
     def has(self, name: str) -> bool:
         return name in self._skills
 
+    def get_skill(self, name: str) -> Skill | None:
+        """返回指定技能对象；不存在返回 None。"""
+        return self._skills.get(name)
+
     def get_body(self, name: str) -> str | None:
         skill = self._skills.get(name)
         return skill.body if skill is not None else None

@@ -167,3 +167,10 @@ def test_random_data_entry_none_on_empty_list_or_bad_entries(tmp_path):
         assert reg.random_data_entry(n) is None
     # 缺 answer 是数据文件自己的形状约定，泛型方法不裁决 → 正常返回
     assert reg.random_data_entry("ok") == {"puzzle": "only"}
+
+
+def test_get_skill_returns_skill_or_none():
+    skill = Skill(name="x", description="d", body="b")
+    reg = SkillRegistry({"x": skill})
+    assert reg.get_skill("x") == skill
+    assert reg.get_skill("ghost") is None
