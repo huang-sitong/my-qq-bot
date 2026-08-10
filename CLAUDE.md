@@ -171,6 +171,15 @@ system_msgs = build_system_messages(
 ### 指令模块（图外斜杠指令）
 
 - **配置**（env `BOT_COMMAND_ENABLED` 默认 `1` / `BOT_COMMAND_PREFIX` 默认 `/` / `BOT_ADMIN_IDS` 逗号分隔）：`main.py` 构建 `CommandServices` 和 `CommandRegistry` 后注入 `MessageHandler`。
+
+```text
+env 清单：
+# --- Commands ---
+BOT_COMMAND_ENABLED = 1
+BOT_COMMAND_PREFIX = /
+BOT_ADMIN_IDS =
+```
+
 - **分发**：`MessageHandler._process` 在文本消息进入 LangGraph 前解析 `prefix + name + args`；命中已注册命令则执行权限检查、handler 和回复，**不进 LangGraph、不产生 RAG 索引**。未注册 `/xxx` 继续走现有对话流程。
 - **V1 指令**：`/help`、`/ping`、`/version`、`/skills`、`/skill <name>`、`/status`；管理员指令 `/status` 由 `BOT_ADMIN_IDS` 判定。
 - **CLI 复用**：`Command`、`CommandRegistry`、`CommandContext`、`CommandResult` 与 Satori 解耦，CLI 后续可直接构造 admin actor 复用同一命令层。
