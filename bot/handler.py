@@ -3,6 +3,14 @@ import logging
 
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
+from bot.core.commands import (
+    CommandActor,
+    CommandContext,
+    CommandRegistry,
+    CommandServices,
+    parse_command,
+    run_command,
+)
 from bot.core.utils import parse_content
 from bot.transport.http.client import SatoriApiClient
 from bot.transport.websocket.client import SatoriClient
@@ -25,12 +33,16 @@ class MessageHandler:
         persona: str,
         api_client: SatoriApiClient,
         bot_config=None,
+        command_registry: CommandRegistry | None = None,
+        command_services: CommandServices | None = None,
     ) -> None:
         self.client = client
         self.graph = graph
         self._persona = persona
         self._api_client = api_client
         self._bot_config = bot_config
+        self._command_registry = command_registry
+        self._command_services = command_services
         self._bot_id: str | None = None
         self._bot_name: str | None = None
         self._queue: asyncio.Queue[dict | None] = asyncio.Queue()
@@ -140,6 +152,44 @@ class MessageHandler:
         parsed = parse_content(raw_content)
         content_kind = parsed.kind.value
         image_srcs = [a.src for a in parsed.attachments if a.type == "img"]
+
+        if (
+            self._command_registry is not None
+            and self._command_services is not None
+            and self._bot_config is not None
+            and self._bot_config.command_enabled
+            and content_kind == "text"
+        ):
+            parsed_cmd = parse_command(
+                parsed.clean_text, self._bot_config.command_prefix
+            )
+            if parsed_cmd is not None:
+                command = self._command_registry.resolve(parsed_cmd.name)
+                if command is not None:
+                    actor = CommandActor(
+                        user_id=user_id,
+                        name=user_name,
+                        is_admin=user_id in (self._bot_config.admin_ids or []),
+                    )
+                    ctx = CommandContext(
+                        raw=raw_content,
+                        actor=actor,
+                        platform=item["platform"],
+                        guild_id=item["guild_id"],
+                        channel_id=channel_id,
+                        thread_id=thread_id,
+                        channel_type=channel_type,
+                        args=parsed_cmd.args,
+                        config=self._bot_config,
+                        services=self._command_services,
+                    )
+                    if parsed_cmd.error:
+                        reply_text = f"指令参数错误，用法：{command.usage}"
+                    else:
+                        reply_text = (await run_command(command, ctx)).text
+                    if reply_text:
+                        await self._send_reply(channel_id, reply_text)
+                    return
 
         # --- Invoke graph ---
         logger.info(

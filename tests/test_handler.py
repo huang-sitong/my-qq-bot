@@ -8,7 +8,9 @@ LLOneBot 投递的 ``event.channel.type`` 是 ``ChannelType``（IntEnum）实例
 
 import asyncio
 
+from bot.core.commands import CommandServices, build_command_registry
 from bot.handler import MessageHandler
+from common import BotConfig
 from object.satori import Channel, ChannelType, EventBody, Message, User
 
 
@@ -24,16 +26,22 @@ class _StubGraph:
 
 
 class _StubApi:
+    def __init__(self):
+        self.sent = []
+
     async def send_message(self, channel_id, content):
-        pass
+        self.sent.append((channel_id, content))
 
 
-def _make_handler(graph):
+def _make_handler(graph, bot_config=None, command_registry=None, command_services=None):
     return MessageHandler(
         client=object(),
         graph=graph,
         persona="你是{bot_name}",
         api_client=_StubApi(),
+        bot_config=bot_config,
+        command_registry=command_registry,
+        command_services=command_services,
     )
 
 
@@ -87,3 +95,142 @@ def test_channel_type_fallback_is_int_when_channel_missing():
 
     assert graph.state["channel_type"] == 0
     assert type(graph.state["channel_type"]) is int
+
+
+def _command_event(content):
+    return EventBody(
+        id=2,
+        sn=2,
+        type="message-created",
+        platform="llonebot",
+        channel=Channel(id="ch1", type=ChannelType.DIRECT),
+        user=User(id="admin1", name="admin"),
+        message=Message(id="m2", content=content),
+    )
+
+
+def _command_services():
+    return CommandServices(version="test", started_at=0.0, bot_name="")
+
+
+def test_registered_command_skips_graph():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+
+    asyncio.run(handler._process({
+        "event": _command_event("/ping"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+
+    assert graph.state is None
+    assert handler._api_client.sent == [("ch1", "Pong.")]
+
+
+def test_unknown_command_still_enters_graph():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+
+    asyncio.run(handler._process({
+        "event": _command_event("/unknown"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+
+    assert graph.state is not None
+
+
+def test_admin_command_permission_denied_skips_graph():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+
+    asyncio.run(handler._process({
+        "event": _command_event("/status"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "u-not-admin",
+        "thread_id": "llonebot::private:ch1",
+    }))
+
+    assert graph.state is None
+    assert handler._api_client.sent[0][1] == "无权执行该指令。"
+
+
+def test_command_disabled_enters_graph():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=False)
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+
+    asyncio.run(handler._process({
+        "event": _command_event("/ping"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+
+    assert graph.state is not None
+
+
+def test_malformed_command_args_returns_usage():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+
+    asyncio.run(handler._process({
+        "event": _command_event('/help "oops'),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+
+    assert graph.state is None
+    assert handler._api_client.sent[0][1] == "指令参数错误，用法：/help [command]"
