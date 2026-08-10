@@ -183,6 +183,7 @@ BOT_ADMIN_IDS =
 
 - **分发**：`MessageHandler._process` 在文本消息进入 LangGraph 前解析 `prefix + name + args`；命中已注册命令则执行权限检查、handler 和回复，**不进 LangGraph、不产生 RAG 索引**。未注册 `/xxx` 继续走现有对话流程。
 - **V1 指令**：`/help`、`/ping`、`/version`、`/skills`、`/skill <name>`、`/status`；管理员指令 `/status` 由 `BOT_ADMIN_IDS` 判定。
+- **`/skill` 正文可见性**：`/skill <name>` 是 everyone 命令，任意用户（含群成员）可读取技能正文（截断至 2000 字）。技能正文视为**非机密**提示词包内容（`skills/` 目录本就入库）；若某技能正文含敏感操作指令需自行评估暴露面，V2 可考虑 admin/私聊门控。
 - **CLI 复用**：`Command`、`CommandRegistry`、`CommandContext`、`CommandResult` 与 Satori 解耦，CLI 后续可直接构造 admin actor 复用同一命令层。
 
 ### Reply is sent outside the graph
@@ -215,6 +216,8 @@ When adding nodes, follow the classification in `bot/core/nodes/`:
 - **`uv` package manager**: PyPI mirror is `https://mirrors.aliyun.com/pypi/simple/`（pyproject `[[tool.uv.index]]`）。Python >=3.12.
 
 - **`.env` secrets**: `BASE_URL` + `API_KEY` (not `GO_BASE_URL`/`GO_API_KEY`). `.env-template` is the documented schema.
+
+- **严格布尔解析（BotConfig `Flag`）**: 布尔 env（`BOT_*_ENABLED` / `BOT_RECONNECT` / `BOT_LLM_MULTIMODAL` / `BOT_MCP_TOOL_NAME_PREFIX` 等）只接受 `1/0/true/false/yes/no/on/off/空串`，其他值（`2`、`y`、`banana`）直接抛 `ValidationError` 启动崩溃——有意 fail-fast，配置错误立即暴露而非静默降级。旧 dataclass 用 `== "1"` 比较：`true/yes/on` 会被静默当 False、`2` 静默当 False；新实现把 `true/yes/on` 当 True（修正静默误配）并把非法值显式报错。写 `.env` 布尔值只用上述枚举。
 
 - **`db/` directory**: auto-created on startup（`main.py` `os.makedirs`）；sqlite 库文件全部惰性重建——`checkpoint.sqlite`（AsyncSqliteSaver 初始化建表）、`memory.sqlite`（`MemoryStore` 惰性建连，官方 `AsyncSqliteStore` `setup()` 建 `store` 表 + 自动迁移旧 `user_memories` 表）、`embed_cache.sqlite`（`CREATE TABLE IF NOT EXISTS`）；`milvus.db`（milvus-lite 单文件，位于 `db/milvus.db`，`MilvusStore` 首次启动自动建集合 `chat`）。删除任意库 → 下次启动重建；`checkpoint.sqlite` 含会话状态、`memory.sqlite` 含用户记忆，是真数据。`BotConfig.db_dir` (default `"db"`, env `BOT_DB_DIR`).
 
