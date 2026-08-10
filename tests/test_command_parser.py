@@ -31,6 +31,12 @@ def test_invalid_command_name_returns_none():
     assert parse_command("/Bad.Name", "/") is None
 
 
+def test_command_name_must_start_with_letter():
+    assert parse_command("/123", "/") is None
+    assert parse_command("/--", "/") is None
+    assert parse_command("/3d-model", "/") is None
+
+
 def test_unterminated_quote_reports_error():
     parsed = parse_command('/help "oops', "/")
     assert parsed is not None

@@ -4,7 +4,8 @@ import re
 import shlex
 from dataclasses import dataclass
 
-_NAME_RE = re.compile(r"[a-z0-9_-]+")
+# 命令名须以字母开头（避免 /123、/-- 被误当作命令名；非法名直接回落对话流程）
+_NAME_RE = re.compile(r"[a-z][a-z0-9_-]*")
 
 
 @dataclass(frozen=True)

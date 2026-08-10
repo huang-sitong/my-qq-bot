@@ -66,10 +66,20 @@ def test_admin_command_allows_admin():
 
 
 def test_cli_actor_is_admin():
+    # is_cli 视为可信源 → 隐式 admin（不依赖 is_admin 标志）
     cmd = _command(_ok, permission="admin")
-    actor = CommandActor("<cli>", "cli", True, is_cli=True)
+    actor = CommandActor("<cli>", "cli", False, is_cli=True)
     result = asyncio.run(run_command(cmd, _ctx(actor)))
     assert result.text == "ok"
+
+
+def test_handler_returning_str_is_wrapped():
+    async def _str_handler(ctx):
+        return "plain string"
+
+    cmd = _command(_str_handler)
+    result = asyncio.run(run_command(cmd, _ctx(CommandActor("u1", "n", False))))
+    assert result.text == "plain string"
 
 
 def test_unknown_permission_fails_closed():
