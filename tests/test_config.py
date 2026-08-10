@@ -51,6 +51,9 @@ EXPECTED_DEFAULTS = {
     "skills_enabled": True,
     "skills_dir": "skills",
     "skills_index_max": 50,
+    "command_enabled": True,
+    "command_prefix": "/",
+    "admin_ids": [],
 }
 
 
@@ -98,6 +101,9 @@ ENV_SAMPLES = {
     "skills_enabled": ("0", False),
     "skills_dir": ("skills-env", "skills-env"),
     "skills_index_max": ("10", 10),
+    "command_enabled": ("0", False),
+    "command_prefix": ("!", "!"),
+    "admin_ids": ("u1, u2", ["u1", "u2"]),
 }
 
 
@@ -172,6 +178,13 @@ def test_env_template_contains_all_env_aliases():
         if alias not in template
     ]
     assert missing == []
+
+
+def test_empty_command_prefix_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_COMMAND_PREFIX", "")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
 
 
 def test_production_code_does_not_read_env_directly():

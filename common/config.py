@@ -226,6 +226,30 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_SKILLS_INDEX_MAX",
     )
 
+    # --- Commands（图外斜杠指令模块） ---
+    command_enabled: Flag = Field(
+        default=True,
+        validation_alias="BOT_COMMAND_ENABLED",
+    )
+    command_prefix: str = Field(
+        default="/",
+        min_length=1,
+        validation_alias="BOT_COMMAND_PREFIX",
+    )
+    admin_ids: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        validation_alias="BOT_ADMIN_IDS",
+    )
+
+    @field_validator("admin_ids", mode="before")
+    @classmethod
+    def _parse_admin_ids(cls, value: object) -> list[str]:
+        if isinstance(value, str):
+            return [part.strip() for part in value.split(",") if part.strip()]
+        if isinstance(value, (list, tuple)):
+            return [str(part).strip() for part in value if str(part).strip()]
+        return []
+
     @field_validator("mcp_servers", mode="before")
     @classmethod
     def _parse_mcp_servers(cls, value: object) -> dict[str, dict]:
