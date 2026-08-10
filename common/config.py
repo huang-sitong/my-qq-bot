@@ -236,6 +236,8 @@ class BotConfig(BaseSettings):
         min_length=1,
         validation_alias="BOT_COMMAND_PREFIX",
     )
+    # NoDecode keeps BOT_ADMIN_IDS raw; pydantic-settings would otherwise try
+    # to JSON-decode "u1, u2" before _parse_admin_ids can run.
     admin_ids: Annotated[list[str], NoDecode] = Field(
         default_factory=list,
         validation_alias="BOT_ADMIN_IDS",
