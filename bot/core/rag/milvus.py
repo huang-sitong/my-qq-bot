@@ -27,6 +27,18 @@ _OUTPUT_FIELDS = [
     "receiver_id", "receiver_name", "content", "timestamp",
 ]
 
+# 覆盖 pymilvus 硬编码的激进 keepalive。pymilvus 默认
+# ``grpc.keepalive_time_ms=10000`` + ``keepalive_permit_without_calls=True``：
+# 连接空闲时每 10s 发一次 keepalive ping。milvus-lite 进程内 server 用 gRPC 默认
+# ping 策略（无数据间隔 5 分钟、2 次违规即 ``too_many_pings`` GOAWAY），bot 回合间
+# 空闲 45-120s，连接被反复掐断（每轮刷屏 + 有 RPC 被静默丢的风险）。改为 idle 不
+# 主动 ping + 5 分钟间隔，与 server 策略对齐，消除 GOAWAY。
+_MILVUS_GRPC_OPTIONS = {
+    "grpc.keepalive_time_ms": 300_000,
+    "grpc.keepalive_timeout_ms": 20_000,
+    "grpc.keepalive_permit_without_calls": False,
+}
+
 
 def _esc(value: str) -> str:
     """转义 Milvus 表达式中的字符串值（反斜杠 + 单引号）。"""
@@ -73,7 +85,7 @@ class MilvusStore:
         self._embedder = embedder or EmbeddingService(config)
         # 默认落盘到 db_dir/milvus.db，避免从任意目录启动在 CWD 下静默新建空库
         uri = uri or os.path.join(config.db_dir, "milvus.db")
-        self._client = MilvusClient(uri=uri)
+        self._client = MilvusClient(uri=uri, grpc_options=_MILVUS_GRPC_OPTIONS)
         self._ensure_collection()
         logger.info("MilvusStore ready (uri=%s, collection=%s)", uri, collection)
 

@@ -202,3 +202,34 @@ def test_reopen_collection_after_restart(tmp_path):
     hits = asyncio.run(store.search_dense("遗留", "", "g1", k=5))
     assert hits and hits[0]["content"] == "跨进程遗留的消息"
     store.close()
+
+
+def test_milvus_store_sets_safe_keepalive(tmp_path, monkeypatch):
+    """MilvusStore 必须用 grpc_options 覆盖 pymilvus 硬编码的激进 keepalive。
+
+    pymilvus 默认 ``grpc.keepalive_time_ms=10000`` + ``keepalive_permit_without_calls=True``，
+    空闲时每 10s 发 keepalive ping；而 milvus-lite 进程内 server 用 gRPC 默认 ping 策略
+    （无数据间隔 5 分钟，2 次违规即 ``too_many_pings`` GOAWAY）。bot 回合间空闲 45-120s，
+    连接被 server 反复掐断（每轮刷屏 + 有 RPC 被静默丢的风险）。此处断言覆盖生效：
+    idle 不主动 ping（permit_without_calls=False）且间隔 >= 5 分钟。
+    """
+    import pymilvus
+
+    captured: dict = {}
+
+    class RecordingClient(pymilvus.MilvusClient):
+        def __init__(self, uri, **kwargs):
+            captured["uri"] = uri
+            captured["grpc_options"] = kwargs.get("grpc_options")
+            super().__init__(uri, **kwargs)
+
+    monkeypatch.setattr("bot.core.rag.milvus.MilvusClient", RecordingClient)
+    store = _store(tmp_path)
+    store.close()
+
+    opts = captured.get("grpc_options") or {}
+    assert opts.get("grpc.keepalive_permit_without_calls") is False, (
+        "pymilvus 默认 permit_without_calls=True：空闲每 10s 发 ping，"
+        "milvus-lite server 会发 too_many_pings GOAWAY 掐断连接"
+    )
+    assert int(opts.get("grpc.keepalive_time_ms", 0)) >= 300_000
