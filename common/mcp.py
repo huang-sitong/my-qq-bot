@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def parse_mcp_servers(raw: object) -> dict[str, dict]:
+def parse_mcp_servers(raw: object) -> dict:
     """解析 BOT_MCP_SERVERS JSON；非法 JSON 或非 dict 降级为空。"""
     if isinstance(raw, dict):
         return raw

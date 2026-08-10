@@ -1,5 +1,6 @@
 from typing import Annotated
 
+from dotenv import find_dotenv
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -22,9 +23,16 @@ def _parse_flag(value: object) -> bool:
 Flag = Annotated[bool, BeforeValidator(_parse_flag)]
 
 
+# 旧 BotConfig 用 load_dotenv() 从模块目录向上搜索 .env；pydantic-settings 的
+# env_file=".env" 只认 CWD 相对路径，从子目录启动会静默丢全部配置。这里在
+# import 时用 find_dotenv 解析一次绝对路径（common/ 向上找），修复该回归且
+# 不污染进程环境表（测试仍可用 _env_file=None 关掉 dotenv 源）。
+_ENV_FILE = find_dotenv() or None
+
+
 class BotConfig(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
         populate_by_name=True,
