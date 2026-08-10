@@ -89,6 +89,20 @@ def test_skills_lists_index():
     assert "- x: 描述" in result.text
 
 
+def test_skills_truncated_when_over_index_max():
+    skills = SkillRegistry(
+        {f"s{i}": Skill(name=f"s{i}", description="描述", body="正文") for i in range(10)},
+        index_max=3,
+    )
+    services = _services(skills)
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "skills")
+    assert "- s0: 描述" in result.text
+    assert "- s2: 描述" in result.text
+    assert "- s3: 描述" not in result.text
+    assert "共 10 个技能" in result.text
+
+
 def test_skill_returns_description_and_body():
     skills = SkillRegistry({"x": Skill(name="x", description="描述", body="正文内容")})
     services = _services(skills)

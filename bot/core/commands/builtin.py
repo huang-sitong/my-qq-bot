@@ -33,7 +33,8 @@ async def _skills(ctx: CommandContext) -> CommandResult:
     registry = ctx.services.skill_registry
     if registry is None or registry.total == 0:
         return CommandResult(text="当前没有可用技能。")
-    return CommandResult(text="\n".join(registry.index_lines()))
+    # 复用 LLM 索引的截断口径（skills_index_max），技能多时回复不超长
+    return CommandResult(text=registry.index_text())
 
 
 async def _skill(ctx: CommandContext) -> CommandResult:
