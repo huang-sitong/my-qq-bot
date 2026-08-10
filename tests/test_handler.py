@@ -8,7 +8,7 @@ LLOneBot 投递的 ``event.channel.type`` 是 ``ChannelType``（IntEnum）实例
 
 import asyncio
 
-from bot.core.commands import CommandServices, build_command_registry
+from bot.core.commands import Command, CommandServices, build_command_registry
 from bot.handler import MessageHandler
 from common import BotConfig
 from object.satori import Channel, ChannelType, EventBody, Message, User
@@ -111,6 +111,10 @@ def _command_event(content):
 
 def _command_services():
     return CommandServices(version="test", started_at=0.0, bot_name="")
+
+
+async def _boom(ctx):
+    raise RuntimeError("boom")
 
 
 def test_registered_command_skips_graph():
@@ -234,3 +238,56 @@ def test_malformed_command_args_returns_usage():
 
     assert graph.state is None
     assert handler._api_client.sent[0][1] == "指令参数错误，用法：/help [command]"
+
+
+def test_handler_exception_returns_failure_reply():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    registry.register(Command(
+        name="boom",
+        description="boom",
+        usage="/boom",
+        permission="everyone",
+        handler=_boom,
+    ))
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+    asyncio.run(handler._process({
+        "event": _command_event("/boom"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+    assert graph.state is None
+    assert handler._api_client.sent[0][1] == "指令执行失败。"
+
+
+def test_missing_required_arg_returns_usage():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+    asyncio.run(handler._process({
+        "event": _command_event("/skill"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+    assert graph.state is None
+    assert handler._api_client.sent[0][1] == "用法：/skill <name>"
