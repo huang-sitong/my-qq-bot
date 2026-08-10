@@ -13,11 +13,16 @@ class SatoriApiClient:
 
     def __init__(self, config: BotConfig) -> None:
         self._config = config
+        self._user_id: str | None = None
         self._http: httpx.AsyncClient | None = None
 
     @property
     def config(self) -> BotConfig:
         return self._config
+
+    def set_user_id(self, user_id: str | None) -> None:
+        """Set the runtime Satori user id used for API request headers."""
+        self._user_id = user_id
 
     @property
     def http(self) -> httpx.AsyncClient:
@@ -29,8 +34,8 @@ class SatoriApiClient:
         headers = {"Content-Type": "application/json"}
         if self._config.api_platform:
             headers["Satori-Platform"] = self._config.api_platform
-        if self._config.api_user_id:
-            headers["Satori-User-ID"] = self._config.api_user_id
+        if self._user_id:
+            headers["Satori-User-ID"] = self._user_id
         if self._config.token:
             headers["Authorization"] = f"Bearer {self._config.token}"
 

@@ -131,8 +131,7 @@ class SatoriClient:
         if self._ws is not None and not self._ws.closed:
             await self._ws.send(json.dumps(data))
 
-    @staticmethod
-    def _reconnect_delay(attempt: int) -> float:
-        delay = min(1.0 * 2 ** attempt, 30.0)
+    def _reconnect_delay(self, attempt: int) -> float:
+        delay = min(1.0 * 2 ** attempt, float(self.config.max_reconnect_delay))
         jitter = random.uniform(-0.5, 0.5)
         return max(0.5, delay + jitter)

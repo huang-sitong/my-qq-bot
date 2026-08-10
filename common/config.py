@@ -1,142 +1,230 @@
-import logging
-import os
-from dataclasses import dataclass, field
+from typing import Annotated
 
-from dotenv import load_dotenv
+from pydantic import BeforeValidator, Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from .mcp import load_mcp_servers_from_env
-
-# 在读取任何 env 覆盖项之前加载 .env，保证 BotConfig 的 env 默认值生效
-load_dotenv()
-
-logger = logging.getLogger(__name__)
+from .mcp import parse_mcp_servers
+from .prompts import DEFAULT_PERSONA_PROMPT
 
 
-@dataclass
-class BotConfig:
+def _parse_flag(value: object) -> bool:
+    """保留旧 BotConfig 的 0/1/false/true/空串布尔语义。"""
+    if isinstance(value, bool):
+        return value
+    text = str(value).strip().lower()
+    if text in ("1", "true", "yes", "on"):
+        return True
+    if text in ("0", "false", "no", "off", ""):
+        return False
+    raise ValueError(f"invalid boolean value: {value!r}")
+
+
+Flag = Annotated[bool, BeforeValidator(_parse_flag)]
+
+
+class BotConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+        populate_by_name=True,
+    )
+
     # --- Transport ---
-    ws_url: str = "ws://localhost:5600/v1/events"
-    token: str | None = None
-
-    reconnect: bool = True
-    max_reconnect_delay: int = 30
-
-    api_base_url: str = "http://localhost:5600"
-    api_platform: str = "llonebot"
-    api_user_id: str | None = None
-
-    # --- Storage ---
-    db_dir: str = field(
-        default_factory=lambda: os.getenv("BOT_DB_DIR", "db"),
+    ws_url: str = Field(
+        default="ws://localhost:5600/v1/events",
+        validation_alias="BOT_WS_URL",
     )
-
-    # --- Persona ---
-    persona_prompt: str = field(
-        default_factory=lambda: os.getenv("BOT_PERSONA_PROMPT", "你是一个AI助手，名字叫 \"{bot_name}\"，请用中文友好地回答问题。"),
+    token: str | None = Field(default=None, validation_alias="BOT_TOKEN")
+    reconnect: Flag = Field(default=True, validation_alias="BOT_RECONNECT")
+    max_reconnect_delay: int = Field(
+        default=30,
+        gt=0,
+        validation_alias="BOT_MAX_RECONNECT_DELAY",
     )
-
-    # --- Context Window ---
-    llm_context_window: int = 200_000
-    # Maximum context window in tokens for the LLM model.
-
-    summary_trigger_ratio: float = 0.8
-    # Fraction of context_window at which summarization triggers.
-    # e.g. 0.6 x 200K = 120K tokens.
-
-    summary_keep_ratio: float = 0.2
-    # Fraction of context_window to retain as the sliding window after trimming.
-    # e.g. 0.2 x 200K = 40K tokens of recent messages.
-
-    summary_max_input_tokens: int = 8_000
-    # Maximum tokens to send to the summarization LLM call.
-    # Prevents the summarization call itself from exceeding context.
+    api_base_url: str = Field(
+        default="http://localhost:5600",
+        validation_alias="BOT_API_BASE_URL",
+    )
+    api_platform: str = Field(
+        default="llonebot",
+        validation_alias="BOT_API_PLATFORM",
+    )
 
     # --- LLM ---
-    llm_model: str = field(
-        default_factory=lambda: os.getenv("BOT_LLM_MODEL", "sensenova-6.7-flash-lite"),
+    llm_base_url: str | None = Field(default=None, validation_alias="BASE_URL")
+    llm_api_key: str | None = Field(default=None, validation_alias="API_KEY")
+    llm_model: str = Field(
+        default="sensenova-6.7-flash-lite",
+        validation_alias="BOT_LLM_MODEL",
     )
-    llm_temperature: float = field(
-        default_factory=lambda: float(os.getenv("BOT_LLM_TEMPERATURE", "0.7")),
+    llm_temperature: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=2.0,
+        validation_alias="BOT_LLM_TEMPERATURE",
     )
-    llm_max_retries: int = field(
-        default_factory=lambda: int(os.getenv("BOT_LLM_MAX_RETRIES", "1")),
+    llm_max_retries: int = Field(
+        default=1,
+        ge=0,
+        validation_alias="BOT_LLM_MAX_RETRIES",
     )
-    llm_request_timeout: int = field(
-        default_factory=lambda: int(os.getenv("BOT_LLM_REQUEST_TIMEOUT", "30")),
+    llm_request_timeout: int = Field(
+        default=30,
+        gt=0,
+        validation_alias="BOT_LLM_REQUEST_TIMEOUT",
     )
     # 主 LLM 是否多模态（env BOT_LLM_MULTIMODAL，默认 0）：
     # 1 → 图片直接进主 LLM（describe_image 不预描述，本地视觉仅作 RAG 索引）；
     # 0 → 图片走本地视觉描述（纯文本 LLM 兜底）。失败方向永远偏纯文本——
     # 设错 0 只是退回现状；设错 1 会把图片块塞给不支持图片的 API。
-    llm_multimodal: bool = field(
-        default_factory=lambda: os.getenv("BOT_LLM_MULTIMODAL", "0") not in ("0", "false", "False", ""),
+    llm_multimodal: Flag = Field(
+        default=False,
+        validation_alias="BOT_LLM_MULTIMODAL",
+    )
+
+    # --- Context Window ---
+    llm_context_window: int = Field(
+        default=200_000,
+        gt=0,
+        validation_alias="BOT_LLM_CONTEXT_WINDOW",
+    )
+    summary_trigger_ratio: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        validation_alias="BOT_SUMMARY_TRIGGER_RATIO",
+    )
+    summary_keep_ratio: float = Field(
+        default=0.2,
+        ge=0.0,
+        le=1.0,
+        validation_alias="BOT_SUMMARY_KEEP_RATIO",
+    )
+    summary_max_input_tokens: int = Field(
+        default=8_000,
+        ge=0,
+        validation_alias="BOT_SUMMARY_MAX_INPUT_TOKENS",
+    )
+
+    # --- Storage ---
+    db_dir: str = Field(default="db", validation_alias="BOT_DB_DIR")
+
+    # --- Persona ---
+    persona_prompt: str = Field(
+        default=DEFAULT_PERSONA_PROMPT,
+        validation_alias="BOT_PERSONA_PROMPT",
     )
 
     # --- RAG (群聊历史向量检索) ---
-    rag_enabled: bool = field(
-        default_factory=lambda: os.getenv("BOT_RAG_ENABLED", "1") not in ("0", "false", "False", ""),
+    rag_enabled: Flag = Field(
+        default=True,
+        validation_alias="BOT_RAG_ENABLED",
     )
-    embed_model: str = field(
-        default_factory=lambda: os.getenv("BOT_EMBED_MODEL", "qwen3-embedding:0.6b"),
+    embed_model: str = Field(
+        default="qwen3-embedding:0.6b",
+        validation_alias="BOT_EMBED_MODEL",
     )
-    ollama_base_url: str = field(
-        default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://localhost:11434"),
+    ollama_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias="OLLAMA_BASE_URL",
     )
-    embed_dimensions: int = field(
-        default_factory=lambda: int(os.getenv("BOT_EMBED_DIMENSIONS", "1024")),
+    embed_dimensions: int = Field(
+        default=1024,
+        gt=0,
+        validation_alias="BOT_EMBED_DIMENSIONS",
     )
-    embed_cache_enabled: bool = field(
-        default_factory=lambda: os.getenv("BOT_EMBED_CACHE_ENABLED", "1") not in ("0", "false", "False", ""),
+    embed_cache_enabled: Flag = Field(
+        default=True,
+        validation_alias="BOT_EMBED_CACHE_ENABLED",
     )
-    embed_cache_max_entries: int = field(
-        default_factory=lambda: int(os.getenv("BOT_EMBED_CACHE_MAX_ENTRIES", "20000")),
+    embed_cache_max_entries: int = Field(
+        default=20_000,
+        ge=0,
+        validation_alias="BOT_EMBED_CACHE_MAX_ENTRIES",
     )
-    rag_top_k: int = field(
-        default_factory=lambda: int(os.getenv("BOT_RAG_TOP_K", "5")),
+    rag_top_k: int = Field(
+        default=5,
+        gt=0,
+        validation_alias="BOT_RAG_TOP_K",
     )
-    rag_score_threshold: float = field(
-        default_factory=lambda: float(os.getenv("BOT_RAG_SCORE_THRESHOLD", "0.35")),
+    rag_score_threshold: float = Field(
+        default=0.35,
+        ge=0.0,
+        le=1.0,
+        validation_alias="BOT_RAG_SCORE_THRESHOLD",
     )
-    rag_retention_per_thread: int = field(
-        default_factory=lambda: int(os.getenv("BOT_RAG_RETENTION_PER_THREAD", "2000")),
+    rag_retention_per_thread: int = Field(
+        default=2000,
+        gt=0,
+        validation_alias="BOT_RAG_RETENTION_PER_THREAD",
     )
-    rag_max_agent_rounds: int = field(
-        default_factory=lambda: int(os.getenv("BOT_RAG_MAX_AGENT_ROUNDS", "7")),
+    rag_max_agent_rounds: int = Field(
+        default=7,
+        ge=0,
+        validation_alias="BOT_RAG_MAX_AGENT_ROUNDS",
     )
 
     # --- Vision (本地 Ollama 视觉模型，图片描述) ---
-    vision_enabled: bool = field(
-        default_factory=lambda: os.getenv("BOT_VISION_ENABLED", "1") not in ("0", "false", "False", ""),
+    vision_enabled: Flag = Field(
+        default=True,
+        validation_alias="BOT_VISION_ENABLED",
     )
-    vision_model: str = field(
-        default_factory=lambda: os.getenv("BOT_VISION_MODEL", "qwen3-vl:2b"),
+    vision_model: str = Field(
+        default="qwen3-vl:2b",
+        validation_alias="BOT_VISION_MODEL",
     )
-    vision_max_images: int = field(
-        default_factory=lambda: int(os.getenv("BOT_VISION_MAX_IMAGES", "3")),
+    vision_max_images: int = Field(
+        default=3,
+        ge=0,
+        validation_alias="BOT_VISION_MAX_IMAGES",
     )
-    vision_timeout: int = field(
-        default_factory=lambda: int(os.getenv("BOT_VISION_TIMEOUT", "60")),
+    vision_timeout: int = Field(
+        default=60,
+        gt=0,
+        validation_alias="BOT_VISION_TIMEOUT",
     )
 
     # --- MCP (外部工具，经 langchain-mcp-adapters 接入) ---
-    mcp_enabled: bool = field(
-        default_factory=lambda: os.getenv("BOT_MCP_ENABLED", "0") not in ("0", "false", "False", ""),
+    mcp_enabled: Flag = Field(
+        default=False,
+        validation_alias="BOT_MCP_ENABLED",
     )
-    mcp_servers: dict = field(default_factory=load_mcp_servers_from_env)
-    mcp_tool_name_prefix: bool = field(
-        default_factory=lambda: os.getenv("BOT_MCP_TOOL_NAME_PREFIX", "0") not in ("0", "false", "False", ""),
+    mcp_servers: Annotated[dict[str, dict], NoDecode] = Field(
+        default_factory=dict,
+        validation_alias="BOT_MCP_SERVERS",
     )
-    tavily_api_key: str = field(
-        default_factory=lambda: os.getenv("TAVILY_API_KEY", ""),
+    mcp_tool_name_prefix: Flag = Field(
+        default=False,
+        validation_alias="BOT_MCP_TOOL_NAME_PREFIX",
+    )
+    tavily_api_key: str = Field(
+        default="",
+        validation_alias="TAVILY_API_KEY",
     )
 
     # --- Skills（提示词包技能，按需加载正文） ---
-    skills_enabled: bool = field(
-        default_factory=lambda: os.getenv("BOT_SKILLS_ENABLED", "1") not in ("0", "false", "False", ""),
+    skills_enabled: Flag = Field(
+        default=True,
+        validation_alias="BOT_SKILLS_ENABLED",
     )
-    skills_dir: str = field(
-        default_factory=lambda: os.getenv("BOT_SKILLS_DIR", "skills"),
+    skills_dir: str = Field(
+        default="skills",
+        validation_alias="BOT_SKILLS_DIR",
     )
-    skills_index_max: int = field(
-        default_factory=lambda: int(os.getenv("BOT_SKILLS_INDEX_MAX", "50")),
+    skills_index_max: int = Field(
+        default=50,
+        ge=0,
+        validation_alias="BOT_SKILLS_INDEX_MAX",
     )
+
+    @field_validator("mcp_servers", mode="before")
+    @classmethod
+    def _parse_mcp_servers(cls, value: object) -> dict[str, dict]:
+        return parse_mcp_servers(value)
+
+    @model_validator(mode="after")
+    def _validate_summary_ratios(self) -> "BotConfig":
+        if self.summary_keep_ratio > self.summary_trigger_ratio:
+            raise ValueError("summary_keep_ratio must be <= summary_trigger_ratio")
+        return self

@@ -41,12 +41,7 @@ async def main():
     persona = config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT
     logger.info("Persona: %.80s", persona)
 
-    llm = setup_llm(
-        model=config.llm_model,
-        temperature=config.llm_temperature,
-        max_retries=config.llm_max_retries,
-        request_timeout=config.llm_request_timeout,
-    )
+    llm = setup_llm(config)
     rag_service = None
     if config.rag_enabled:
         try:

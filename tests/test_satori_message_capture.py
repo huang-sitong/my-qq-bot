@@ -19,6 +19,7 @@ import pathlib
 import pytest
 import websockets
 
+from common import BotConfig
 from object.satori import EventBody  # show what the current model keeps/drops
 
 logging.basicConfig(level=logging.WARNING)
@@ -29,8 +30,9 @@ pytestmark = pytest.mark.skipif(
     reason="diagnostic capture needs BOT_CAPTURE=1 (hangs on real WS)",
 )
 
-WS_URL = os.getenv("BOT_WS_URL", "ws://localhost:5600/v1/events")
-TOKEN = os.getenv("BOT_TOKEN", "") or None
+_capture_config = BotConfig()
+WS_URL = _capture_config.ws_url
+TOKEN = _capture_config.token
 CAPTURE_SECONDS = int(os.getenv("BOT_CAPTURE_SECONDS", "300"))
 OUT_FILE = pathlib.Path(__file__).resolve().parents[1] / "docs" / "captured_messages.jsonl"
 

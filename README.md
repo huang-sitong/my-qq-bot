@@ -12,7 +12,7 @@ uv run python main.py         # 启动 bot
 
 ## 配置
 
-所有配置通过环境变量注入（见 `.env-template`），由 `common/config.py` 的 `BotConfig` 统一读取。核心项：
+所有运行参数统一由 `common/config.py` 的 `BotConfig`（pydantic-settings）从 `.env` 读取，完整环境变量清单见 `.env-template`。核心项：
 
 | 变量 | 说明 |
 |---|---|

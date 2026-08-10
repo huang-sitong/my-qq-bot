@@ -2,29 +2,38 @@
 
 from bot.core.mcp import build_mcp_connections
 from common import BotConfig
+from common.mcp import parse_mcp_servers
+
+
+def _clear_config_env(monkeypatch) -> None:
+    for field in BotConfig.model_fields.values():
+        if isinstance(field.validation_alias, str):
+            monkeypatch.delenv(field.validation_alias, raising=False)
 
 
 def test_mcp_disabled_by_default(monkeypatch):
-    monkeypatch.delenv("BOT_MCP_ENABLED", raising=False)
-    cfg = BotConfig()
+    _clear_config_env(monkeypatch)
+    cfg = BotConfig(_env_file=None)
     assert cfg.mcp_enabled is False
 
 
 def test_mcp_enabled_flag(monkeypatch):
+    _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_MCP_ENABLED", "1")
-    cfg = BotConfig()
+    cfg = BotConfig(_env_file=None)
     assert cfg.mcp_enabled is True
 
 
 def test_mcp_tool_name_prefix_false_by_default(monkeypatch):
-    monkeypatch.delenv("BOT_MCP_TOOL_NAME_PREFIX", raising=False)
-    cfg = BotConfig()
+    _clear_config_env(monkeypatch)
+    cfg = BotConfig(_env_file=None)
     assert cfg.mcp_tool_name_prefix is False
 
 
 def test_mcp_tool_name_prefix_flag(monkeypatch):
+    _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_MCP_TOOL_NAME_PREFIX", "1")
-    cfg = BotConfig()
+    cfg = BotConfig(_env_file=None)
     assert cfg.mcp_tool_name_prefix is True
 
 
@@ -41,18 +50,35 @@ def test_no_tavily_without_key():
     assert "tavily" not in servers
 
 
+def test_parse_mcp_servers_accepts_dict():
+    assert parse_mcp_servers({"x": {"transport": "stdio"}}) == {"x": {"transport": "stdio"}}
+
+
+def test_parse_mcp_servers_parses_json():
+    assert parse_mcp_servers('{"x": {"transport": "stdio"}}') == {
+        "x": {"transport": "stdio"},
+    }
+
+
+def test_parse_mcp_servers_empty_json_degrades():
+    assert parse_mcp_servers("") == {}
+    assert parse_mcp_servers("{}") == {}
+
+
 def test_extra_servers_from_env_json(monkeypatch):
+    _clear_config_env(monkeypatch)
     monkeypatch.setenv(
         "BOT_MCP_SERVERS",
         '{"weather": {"transport": "streamable_http", "url": "http://localhost:8000/mcp"}}',
     )
-    cfg = BotConfig()
+    cfg = BotConfig(_env_file=None)
     assert cfg.mcp_servers["weather"]["url"] == "http://localhost:8000/mcp"
 
 
 def test_invalid_mcp_servers_json_degrades(monkeypatch):
+    _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_MCP_SERVERS", "{not json")
-    cfg = BotConfig()
+    cfg = BotConfig(_env_file=None)
     assert cfg.mcp_servers == {}
 
 
