@@ -247,10 +247,13 @@ class BotConfig(BaseSettings):
     @classmethod
     def _parse_admin_ids(cls, value: object) -> list[str]:
         if isinstance(value, str):
-            return [part.strip() for part in value.split(",") if part.strip()]
-        if isinstance(value, (list, tuple)):
-            return [str(part).strip() for part in value if str(part).strip()]
-        return []
+            parts = [part.strip() for part in value.split(",") if part.strip()]
+        elif isinstance(value, (list, tuple)):
+            parts = [str(part).strip() for part in value if str(part).strip()]
+        else:
+            return []
+        # 保序去重（dict.fromkeys），防 "u1, u1" 双写
+        return list(dict.fromkeys(parts))
 
     @field_validator("mcp_servers", mode="before")
     @classmethod

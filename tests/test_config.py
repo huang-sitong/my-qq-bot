@@ -187,6 +187,13 @@ def test_empty_command_prefix_rejected(monkeypatch):
         BotConfig(_env_file=None)
 
 
+def test_admin_ids_deduplicated_and_stripped(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_ADMIN_IDS", "u1, u1 ,  u2")
+    config = BotConfig(_env_file=None)
+    assert config.admin_ids == ["u1", "u2"]
+
+
 def test_production_code_does_not_read_env_directly():
     source_files = [
         ROOT / "main.py",
