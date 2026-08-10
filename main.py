@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+import time
+from importlib.metadata import PackageNotFoundError, version
 
 from bot import (
     MemoryStore,
@@ -12,6 +14,7 @@ from bot import (
     create_graph,
     setup_llm,
 )
+from bot.core.commands import CommandServices, build_command_registry
 from bot.core.mcp import build_mcp_connections, load_mcp_tools
 from bot.core.skills import SkillRegistry
 from common import (
@@ -26,8 +29,16 @@ logging.basicConfig(
 logger = logging.getLogger("bot")
 
 
+def _bot_version() -> str:
+    try:
+        return version("qq-bot")
+    except PackageNotFoundError:
+        return "0.1.0"
+
+
 async def main():
     logger.info("Starting QQ bot ...")
+    started_at = time.time()
 
     # --- Initialise components ---
     config = BotConfig()
@@ -71,6 +82,21 @@ async def main():
             config.skills_dir, index_max=config.skills_index_max,
         )
         logger.info("Loaded %d skills from %s", skill_registry.total, config.skills_dir)
+    command_services = CommandServices(
+        version=_bot_version(),
+        started_at=started_at,
+        bot_name="",
+        skill_registry=skill_registry,
+        rag_service=rag_service,
+        vision_service=vision_service,
+        memory_store=memory_store,
+        mcp_tool_count=len(mcp_tools),
+    )
+    command_registry = (
+        build_command_registry(command_services, config.command_prefix)
+        if config.command_enabled
+        else None
+    )
     # checkpointer 由 graph 内部持有引用，生命周期随进程，main.py 无需单独管理
     graph, _ = await create_graph(
         llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
@@ -80,6 +106,8 @@ async def main():
     handler = MessageHandler(
         client, graph, persona, api_client,
         bot_config=config,
+        command_registry=command_registry,
+        command_services=command_services,
     )
 
     # --- Register event handlers ---

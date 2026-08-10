@@ -43,6 +43,11 @@ bot/
     skills/                  #  技能模块（提示词包）：SkillRegistry 扫描加载 + load/unload 工具
       loader.py              #   Skill/SkillRegistry — 解析 skills/<name>/SKILL.md 的 frontmatter + 正文
       tools.py               #   load_skill / unload_skill 纯函数（只返回正文/确认，状态由 skill_manager 写回）
+    commands/                #  图外斜杠指令：模型、解析器、注册表、内置命令
+      model.py               #   CommandActor / CommandServices / CommandContext / CommandResult / Command
+      parser.py              #   parse_command — prefix + 命令名 + shlex 位置参数
+      registry.py            #   CommandRegistry / can_run / run_command（权限 + 异常降级）
+      builtin.py             #   build_command_registry — /help /ping /version /skills /skill /status
     nodes/                   # Graph nodes classified by execution mechanism:
       llm_node/              #   call_llm — invoke LLM（router 保留但未接线）
       action_node/           #   detect_intent (routing), summarize (context window management), index_turn (RAG 入库), skill_manager (技能激活写回)
@@ -63,6 +68,7 @@ db/                          # runtime databases (checkpoint.sqlite, memory.sqli
 
 ```
 WebSocket event → SatoriClient → MessageHandler.handle()
+  → 已注册斜杠指令命中：权限检查 → Command.handler → send reply → 不进 LangGraph
   → validation + enqueue → worker dequeues（按 thread_id 加锁串行化）
   → graph.ainvoke(state, thread_id)
     → detect_intent (action_node)  ← 确定性三路（无 LLM router）：text/image 对 DIRECT/顶层@提及 回复；file/audio/video 永不回复；媒体非回复不入上下文
@@ -161,6 +167,13 @@ system_msgs = build_system_messages(
 - **激活写回**：工具执行由 prebuilt `ToolNode` 完成后，图边 `tools → skill_manager → call_llm` **逐轮**触发 `skill_manager` 节点（`bot/core/nodes/action_node/skill_manager.py`）——扫描最近带 tool_calls 的 AIMessage，把 `load_skill` 的 `skill_name` 追加进 `BotState.active_skills`（`unload_skill` 移除；**只增不改、不设 reducer**，last-write-wins）。必须逐轮接线而非图末一次：否则早期轮次的 load 调用会被后置轮次覆盖漏掉。
 - **注入层**：激活后 `build_system_messages` 注入**激活正文层**（`SKILL_ACTIVE_HINT` + 各技能 body；技能被删则静默跳过）；`estimate_context_tokens` 复用同一函数保证 token 估算一致。`active_skills` 经 checkpoint 跨轮持久化、按 thread 隔离（跨线程不串技能）。
 - **关键约束**：`active_skills` 是图状态通道，但 `bot/handler.py` **绝不注入**它——LangGraph 输入状态覆盖 checkpoint，每轮注入 `[]` 会清零已持久化的技能激活。节点一律用 `state.get("active_skills", [])` 读取。
+
+### 指令模块（图外斜杠指令）
+
+- **配置**（env `BOT_COMMAND_ENABLED` 默认 `1` / `BOT_COMMAND_PREFIX` 默认 `/` / `BOT_ADMIN_IDS` 逗号分隔）：`main.py` 构建 `CommandServices` 和 `CommandRegistry` 后注入 `MessageHandler`。
+- **分发**：`MessageHandler._process` 在文本消息进入 LangGraph 前解析 `prefix + name + args`；命中已注册命令则执行权限检查、handler 和回复，**不进 LangGraph、不产生 RAG 索引**。未注册 `/xxx` 继续走现有对话流程。
+- **V1 指令**：`/help`、`/ping`、`/version`、`/skills`、`/skill <name>`、`/status`；管理员指令 `/status` 由 `BOT_ADMIN_IDS` 判定。
+- **CLI 复用**：`Command`、`CommandRegistry`、`CommandContext`、`CommandResult` 与 Satori 解耦，CLI 后续可直接构造 admin actor 复用同一命令层。
 
 ### Reply is sent outside the graph
 
