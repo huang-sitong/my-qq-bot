@@ -68,17 +68,18 @@ db/                          # runtime databases (checkpoint.sqlite, memory.sqli
 
 ```
 WebSocket event → SatoriClient → MessageHandler.handle()
-  → 已注册斜杠指令命中：权限检查 → Command.handler → send reply → 不进 LangGraph
   → validation + enqueue → worker dequeues（按 thread_id 加锁串行化）
-  → graph.ainvoke(state, thread_id)
-    → detect_intent (action_node)  ← 确定性三路（无 LLM router）：text/image 对 DIRECT/顶层@提及 回复；file/audio/video 永不回复；媒体非回复不入上下文
-      → 条件边：should_respond → describe_image；非回复文本 → summarize；其余 → END
-    → describe_image (action_node) ← 图片回复路径：下载→Ollama qwen3-vl 描述→[图片] 原位替换（vision_desc 供索引）；非图片/禁用 no-op
-    → call_llm (llm_node)          ← dynamic SystemMessage injection
-      tools (ToolNode) → skill_manager (action_node) ← call_llm 返回 tool_calls 时由 prebuilt ToolNode 统一执行（RAG/记忆/MCP/技能工具），skill_manager 把 load/unload 调用写回 active_skills，逐轮回环到 call_llm
-    → summarize (action_node)      ← token threshold check → progressive summary
-    → index_turn (action_node)     ← 回复轮索引 2 条（用户+Bot）；群聊非@文本索引 1 条（仅用户）；纯媒体不索引
-  → send reply via SatoriApiClient
+    → MessageHandler._process
+      → 已注册斜杠指令命中：权限检查 → Command.handler → send reply → 不进 LangGraph
+      → graph.ainvoke(state, thread_id)
+        → detect_intent (action_node)  ← 确定性三路（无 LLM router）：text/image 对 DIRECT/顶层@提及 回复；file/audio/video 永不回复；媒体非回复不入上下文
+          → 条件边：should_respond → describe_image；非回复文本 → summarize；其余 → END
+        → describe_image (action_node) ← 图片回复路径：下载→Ollama qwen3-vl 描述→[图片] 原位替换（vision_desc 供索引）；非图片/禁用 no-op
+        → call_llm (llm_node)          ← dynamic SystemMessage injection
+          tools (ToolNode) → skill_manager (action_node) ← call_llm 返回 tool_calls 时由 prebuilt ToolNode 统一执行（RAG/记忆/MCP/技能工具），skill_manager 把 load/unload 调用写回 active_skills，逐轮回环到 call_llm
+        → summarize (action_node)      ← token threshold check → progressive summary
+        → index_turn (action_node)     ← 回复轮索引 2 条（用户+Bot）；群聊非@文本索引 1 条（仅用户）；纯媒体不索引
+      → send reply via SatoriApiClient
 ```
 
 ### Three-database design

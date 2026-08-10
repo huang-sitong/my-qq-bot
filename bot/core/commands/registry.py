@@ -14,6 +14,8 @@ class CommandRegistry:
         self._commands: dict[str, Command] = {}
 
     def register(self, command: Command) -> None:
+        if command.permission not in {"everyone", "admin"}:
+            raise ValueError(f"unknown permission: {command.permission}")
         key = command.name.lower()
         if key in self._commands:
             raise ValueError(f"duplicate command: {command.name}")
@@ -28,7 +30,9 @@ class CommandRegistry:
 
 def can_run(command: Command, actor: CommandActor) -> bool:
     """管理员命令只允许 admin actor；everyone 命令对所有人开放。"""
-    return command.permission != "admin" or actor.is_admin
+    if command.permission == "everyone":
+        return True
+    return command.permission == "admin" and actor.is_admin
 
 
 async def run_command(command: Command, ctx: CommandContext) -> CommandResult:

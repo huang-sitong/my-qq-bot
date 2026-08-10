@@ -8,6 +8,7 @@ from bot.core.commands import (
     CommandContext,
     CommandRegistry,
     CommandServices,
+    can_run,
     parse_command,
     run_command,
 )
@@ -133,7 +134,7 @@ class MessageHandler:
             self._queue.task_done()
 
     async def _process(self, item: dict) -> None:
-        """Process a single message: extract data → graph → reply → memory."""
+        """Process a single message: extract data → command dispatch → graph → reply."""
         event: EventBody = item["event"]
         channel_id: str = item["channel_id"]
         user_id: str = item["user_id"]
@@ -183,7 +184,9 @@ class MessageHandler:
                         config=self._bot_config,
                         services=self._command_services,
                     )
-                    if parsed_cmd.error:
+                    if not can_run(command, actor):
+                        reply_text = "无权执行该指令。"
+                    elif parsed_cmd.error:
                         reply_text = f"指令参数错误，用法：{command.usage}"
                     else:
                         reply_text = (await run_command(command, ctx)).text

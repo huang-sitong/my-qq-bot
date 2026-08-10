@@ -8,6 +8,7 @@ from bot.core.commands import (
     CommandContext,
     CommandResult,
     CommandServices,
+    can_run,
     run_command,
 )
 from common import BotConfig
@@ -69,6 +70,15 @@ def test_cli_actor_is_admin():
     actor = CommandActor("<cli>", "cli", True, is_cli=True)
     result = asyncio.run(run_command(cmd, _ctx(actor)))
     assert result.text == "ok"
+
+
+def test_unknown_permission_fails_closed():
+    cmd = _command(_ok, permission="admins")
+    for is_admin in (False, True):
+        actor = CommandActor("admin" if is_admin else "u1", "n", is_admin)
+        assert not can_run(cmd, actor)
+        result = asyncio.run(run_command(cmd, _ctx(actor)))
+        assert result.text == "无权执行该指令。"
 
 
 def test_handler_exception_returns_failure():

@@ -33,6 +33,12 @@ def test_duplicate_name_raises():
         reg.register(_cmd("PING"))
 
 
+def test_unknown_permission_raises():
+    reg = CommandRegistry()
+    with pytest.raises(ValueError):
+        reg.register(_cmd("status", permission="admins"))
+
+
 def test_commands_preserve_registration_order():
     reg = CommandRegistry()
     reg.register(_cmd("ping"))

@@ -240,6 +240,31 @@ def test_malformed_command_args_returns_usage():
     assert handler._api_client.sent[0][1] == "指令参数错误，用法：/help [command]"
 
 
+def test_malformed_admin_command_permission_denied_skips_graph():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+
+    asyncio.run(handler._process({
+        "event": _command_event('/status "oops'),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "u-not-admin",
+        "thread_id": "llonebot::private:ch1",
+    }))
+
+    assert graph.state is None
+    assert handler._api_client.sent[0][1] == "无权执行该指令。"
+
+
 def test_handler_exception_returns_failure_reply():
     graph = _StubGraph()
     services = _command_services()
