@@ -30,7 +30,9 @@ pytestmark = pytest.mark.skipif(
     reason="diagnostic capture needs BOT_CAPTURE=1 (hangs on real WS)",
 )
 
-_capture_config = BotConfig()
+# 诊断工具用进程 env（BOT_WS_URL/BOT_TOKEN），不读 .env 文件——避免真实 .env 里
+# 任一非法值在模块导入时崩掉整个测试收集
+_capture_config = BotConfig(_env_file=None)
 WS_URL = _capture_config.ws_url
 TOKEN = _capture_config.token
 CAPTURE_SECONDS = int(os.getenv("BOT_CAPTURE_SECONDS", "300"))

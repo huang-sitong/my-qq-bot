@@ -316,3 +316,83 @@ def test_missing_required_arg_returns_usage():
     }))
     assert graph.state is None
     assert handler._api_client.sent[0][1] == "用法：/skill <name>"
+
+
+def test_custom_prefix_dispatches_command():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(
+        _env_file=None, command_enabled=True, admin_ids=["admin1"], command_prefix="!",
+    )
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+    asyncio.run(handler._process({
+        "event": _command_event("!ping"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+    assert graph.state is None
+    assert handler._api_client.sent == [("ch1", "Pong.")]
+
+
+def test_unicode_command_name_falls_through_to_graph():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+    asyncio.run(handler._process({
+        "event": _command_event("/帮助"),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "admin1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+    assert graph.state is not None
+    assert graph.state["clean_text"] == "/帮助"
+
+
+def test_command_dispatches_in_group_channel():
+    graph = _StubGraph()
+    services = _command_services()
+    registry = build_command_registry(services)
+    config = BotConfig(_env_file=None, command_enabled=True, admin_ids=["admin1"])
+    handler = _make_handler(
+        graph,
+        bot_config=config,
+        command_registry=registry,
+        command_services=services,
+    )
+    event = EventBody(
+        id=3,
+        sn=3,
+        type="message-created",
+        platform="llonebot",
+        channel=Channel(id="g1", type=ChannelType.TEXT),
+        user=User(id="admin1", name="admin"),
+        message=Message(id="m3", content="/ping"),
+    )
+    asyncio.run(handler._process({
+        "event": event,
+        "platform": "llonebot",
+        "guild_id": "g1",
+        "channel_id": "g1",
+        "user_id": "admin1",
+        "thread_id": "llonebot:g1:g1",
+    }))
+    assert graph.state is None
+    assert handler._api_client.sent == [("g1", "Pong.")]

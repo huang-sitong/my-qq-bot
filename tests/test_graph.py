@@ -46,7 +46,7 @@ def test_graph_loops_tool_call_then_answers(tmp_path):
         AIMessage(content="我们上次决定用 qwen3-embedding 做嵌入"),
     ])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+        create_graph(llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
     )
 
     result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
@@ -61,7 +61,7 @@ def test_graph_loops_tool_call_then_answers(tmp_path):
 def test_graph_injects_current_time_hint(tmp_path):
     llm = ScriptedLLM([AIMessage(content="好的")])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(), db_dir=str(tmp_path))
+        create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path))
     )
     asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
 
@@ -103,7 +103,7 @@ def test_group_non_mention_text_indexes_without_reply(tmp_path):
     # 非回复路径不触发任何 LLM：call_llm 不执行，summarize 低于阈值 no-op
     llm = ScriptedLLM([])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+        create_graph(llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
     )
     state = {
         **_initial_state(),
@@ -184,7 +184,7 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
     rag = StubRagService()
     llm = ScriptedLLM([AIMessage(content="我看不到图")])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+        create_graph(llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
     )
     state = {
         **_initial_state(),
