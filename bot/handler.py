@@ -81,6 +81,8 @@ class MessageHandler:
             self._bot_id = user.id
             self._bot_name = user.name or user.nick or user.id
             self._api_client.set_user_id(self._bot_id)
+            if self._command_services is not None:
+                self._command_services.bot_name = self._bot_name
             logger.info("Bot info set: id=%s name=%s", self._bot_id, self._bot_name)
 
     async def handle(self, event: EventBody) -> None:
@@ -190,6 +192,11 @@ class MessageHandler:
                         reply_text = f"指令参数错误，用法：{command.usage}"
                     else:
                         reply_text = (await run_command(command, ctx)).text
+                    # 命令审计日志（含拒绝/畸形参数路径），不含回复正文防敏感内容入日志
+                    logger.info(
+                        "Command /%s by %s (admin=%s, thread=%s)",
+                        command.name, user_id, actor.is_admin, thread_id,
+                    )
                     if reply_text:
                         await self._send_reply(channel_id, reply_text)
                     return
