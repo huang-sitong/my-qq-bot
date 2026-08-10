@@ -171,7 +171,7 @@ system_msgs = build_system_messages(
 
 ### 指令模块（图外斜杠指令）
 
-- **配置**（env `BOT_COMMAND_ENABLED` 默认 `1` / `BOT_COMMAND_PREFIX` 默认 `/` / `BOT_ADMIN_IDS` 逗号分隔）：`main.py` 构建 `CommandServices` 和 `CommandRegistry` 后注入 `MessageHandler`。
+- **配置**（env `BOT_COMMAND_ENABLED` 默认 `1` / `BOT_COMMAND_PREFIX` 默认 `/` / `BOT_ADMIN_IDS` 逗号分隔）：`main.py` 构建 `CommandServices` 和 `CommandRegistry` 后注入 `MessageHandler`。**`BOT_COMMAND_PREFIX` 不允许空串**（`min_length=1`），空行会抛 `ValidationError` 启动即崩——与 `BOT_TOKEN=`（空→None）不对称，属有意 fail-fast；禁用指令请用 `BOT_COMMAND_ENABLED=0`。
 
 ```text
 env 清单：
@@ -181,7 +181,7 @@ BOT_COMMAND_PREFIX = /
 BOT_ADMIN_IDS =
 ```
 
-- **分发**：`MessageHandler._process` 在文本消息进入 LangGraph 前解析 `prefix + name + args`；命中已注册命令则执行权限检查、handler 和回复，**不进 LangGraph、不产生 RAG 索引**。未注册 `/xxx` 继续走现有对话流程。
+- **分发**：`MessageHandler._process` 在文本消息进入 LangGraph 前解析 `prefix + name + args`；命中已注册命令则执行权限检查、handler 和回复，**不进 LangGraph、不产生 RAG 索引**。未注册 `/xxx` 继续走现有对话流程。命令名须以字母开头（`[a-z][a-z0-9_-]*`，`/123`、`/--` 回落对话流程）；参数经 `shlex` **POSIX 模式**分词（`parse_command`）——引号分组生效、`\` 是转义符，Windows 路径参数（`C:\tmp\x` → `C:tmpx`）会被吞反斜杠，当前 V1 命令不吃路径，未来引入路径参数命令时需改用 `posix=False` 或要求引号/双反斜杠。
 - **V1 指令**：`/help`、`/ping`、`/version`、`/skills`、`/skill <name>`、`/status`；管理员指令 `/status` 由 `BOT_ADMIN_IDS` 判定。
 - **`/skill` 正文可见性**：`/skill <name>` 是 everyone 命令，任意用户（含群成员）可读取技能正文（截断至 2000 字）。技能正文视为**非机密**提示词包内容（`skills/` 目录本就入库）；若某技能正文含敏感操作指令需自行评估暴露面，V2 可考虑 admin/私聊门控。
 - **CLI 复用**：`Command`、`CommandRegistry`、`CommandContext`、`CommandResult` 与 Satori 解耦，CLI 后续可直接构造 admin actor 复用同一命令层。
