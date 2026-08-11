@@ -1,4 +1,4 @@
-"""确定性回复判定（LLM router 架空后的唯一判定表）。
+"""确定性回复判定（LLM router 已移除后的唯一判定表）。
 
 detect_intent 与 graph._route_after_detect 共同消费，消除双处同步。
 群聊 @ 判定按顶层 at 提及集合（``{id: 昵称}``，parse_mentions 产出）。

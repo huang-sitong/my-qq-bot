@@ -14,8 +14,7 @@ class BotState(TypedDict):
 
     ``should_respond`` is set by ``detect_intent`` deterministically
     (text/image reply on DIRECT or @-mention; file/audio/video never
-    reply). The LLM ``router_node`` has been unplugged from the graph —
-    no downstream node overrides it.
+    reply). No downstream node overrides it.
 
     ``clean_text`` 由 handler 预计算（``parse_content`` → ``ParsedContent.clean_text``）
     注入，供 RAG 索引（``index_turn``）直接消费，避免图内每轮重复解析。

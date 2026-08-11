@@ -5,9 +5,9 @@ from .action_node import (
     skill_manager_node,
     summarize_node,
 )
-from .llm_node import call_llm_node, router_node
+from .llm_node import call_llm_node
 
 __all__ = [
     "call_llm_node", "describe_image_node", "detect_intent", "index_turn_node",
-    "router_node", "skill_manager_node", "summarize_node",
+    "skill_manager_node", "summarize_node",
 ]
