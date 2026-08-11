@@ -54,6 +54,30 @@ def test_empty_mentions_with_empty_bot_id_no_reply():
     assert decide_reply(ChannelType.TEXT, "text", "", "Bot", {}) is False
 
 
+# --- decide_reply with auto_reply ---
+
+def test_auto_reply_group_text_replies():
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {}, auto_reply=True) is True
+
+
+def test_auto_reply_group_image_replies():
+    assert decide_reply(ChannelType.TEXT, "image", "bot1", "Bot", {}, auto_reply=True) is True
+
+
+def test_auto_reply_media_still_never_replies():
+    for kind in ("file", "audio", "video"):
+        assert decide_reply(ChannelType.TEXT, kind, "bot1", "Bot", {}, auto_reply=True) is False
+
+
+def test_auto_reply_off_is_default_no_change():
+    # 不带 auto_reply 参数 → 既有行为（群聊非@不回复）
+    assert decide_reply(ChannelType.TEXT, "text", "bot1", "Bot", {}) is False
+
+
+def test_auto_reply_direct_unchanged():
+    assert decide_reply(ChannelType.DIRECT, "text", "bot1", "Bot", {}, auto_reply=True) is True
+
+
 # --- keep_in_context ---
 
 def test_keep_when_replying():

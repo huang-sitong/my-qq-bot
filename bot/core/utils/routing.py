@@ -16,11 +16,15 @@ NON_REPLY_KINDS = frozenset({
 })
 
 
-def decide_reply(channel_type: int, content_kind: str, bot_id: str, bot_name: str, mentions: dict) -> bool:
-    """should_respond：媒体永不回复；私聊回复；群聊按顶层提及判定（id 为主、昵称兜底）。"""
+def decide_reply(channel_type: int, content_kind: str, bot_id: str,
+                 bot_name: str, mentions: dict, auto_reply: bool = False) -> bool:
+    """should_respond：媒体永不回复；私聊回复；群聊按顶层提及判定（id 为主、昵称兜底）；
+    auto_reply=True 时群聊非@文本/图片也回复（媒体仍排除）。"""
     if content_kind in NON_REPLY_KINDS:
         return False
     if channel_type == ChannelType.DIRECT:
+        return True
+    if auto_reply:
         return True
     mentioned_names = set(mentions.values())
     return bool(bot_id in mentions or (bot_name and bot_name in mentioned_names))
