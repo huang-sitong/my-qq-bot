@@ -3,9 +3,10 @@
 import time
 from functools import partial
 
+from common.config import _parse_flag
+
 from .model import Command, CommandContext, CommandResult, CommandServices
 from .registry import CommandRegistry
-from common.config import _parse_flag
 
 
 async def _help(ctx: CommandContext, registry: CommandRegistry) -> CommandResult:

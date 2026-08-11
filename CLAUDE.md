@@ -90,7 +90,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **技能模块**：`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：handler 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
 
-**指令模块（图外斜杠指令）**：env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。`_process` 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status`（status 为 admin）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
+**指令模块（图外斜杠指令）**：env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。`_process` 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply`（status/auto_reply 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
 
 **Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 skill_manager）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）· `subgraph/`（嵌套子图）。
 
@@ -99,7 +99,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - **`object/` 包**：setuptools `__legacy__` 把 `data_object` 改名 `object`。始终 `from object.*` 导入。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），detect_intent 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，detect_intent 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
-- **回复判定树（纯确定性，无 LLM router）**：text/image 在私聊或群聊**顶层**@时回复；file/audio/video 永不回复（即使私聊）；群聊非@文本入上下文+只索引用户消息、非@图片直接 END；图文混合按主类型。单一来源 `routing.py`（decide_reply 按 mentions id 为主昵称兜底，不子串匹配 raw_content）。
+- **回复判定树（纯确定性，无 LLM router）**：text/image 在私聊或群聊**顶层**@时回复；file/audio/video 永不回复（即使私聊）；群聊非@文本入上下文+只索引用户消息、非@图片直接 END；图文混合按主类型。单一来源 `routing.py`（decide_reply 按 mentions id 为主昵称兜底，不子串匹配 raw_content）。`BOT_AUTO_REPLY=1` 或管理员 `/auto_reply on` 后，群聊非@文本/图片也回复（媒体仍永不回复；全局、运行时态，重启回落 env 默认）。
 - **视觉节点双模式**：`llm_multimodal=0`（默认）把 `[图片]` 原位替换为 `[图片：描述]` 并写 vision_desc；`=1` 图片转 data URL 进主 LLM（本地视觉仅产 vision_desc 供 RAG）。多模态 content 块列表**一律经 `content_to_text` 归一化为字符串**（透传列表会在 index_turn `.strip()` 崩溃）；摘要格式化只取 text 块，绝不带 base64。VisionService 单张失败返回 `""` 不抛。`[图片：{desc}]` 变体由 describe_image 与 index_turn 各自拼装，分隔符变更须同步两处。
 - **uv**：PyPI mirror = mirrors.aliyun.com（pyproject `[[tool.uv.index]]`）；Python >=3.12。
 - **`.env`**：`BASE_URL` + `API_KEY`（非 GO_*），`.env-template` 是文档化 schema。
