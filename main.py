@@ -4,6 +4,8 @@ import os
 import time
 from importlib.metadata import PackageNotFoundError, version
 
+from dotenv import dotenv_values, find_dotenv
+
 from bot import (
     MemoryStore,
     MessageHandler,
@@ -15,12 +17,13 @@ from bot import (
     setup_llm,
 )
 from bot.core.commands import CommandServices, build_command_registry
-from bot.core.mcp import build_mcp_connections, load_mcp_tools
+from bot.core.mcp import load_mcp_tools
 from bot.core.skills import SkillRegistry
 from common import (
     DEFAULT_PERSONA_PROMPT,
     BotConfig,
 )
+from common.mcp import load_mcp_servers_from_file
 
 logging.basicConfig(
     level=logging.INFO,
@@ -42,6 +45,11 @@ async def main():
 
     # --- Initialise components ---
     config = BotConfig()
+
+    # .env 内容读成 dict，供 config/mcp_servers.json 的 ${ENV_VAR} 密钥插值
+    # （项目约定：生产代码不直接读进程环境，dotenv_values 是纯文件读取）。
+    env_file = find_dotenv()
+    env_vars = dotenv_values(env_file) if env_file else {}
 
     # Ensure db directory exists
     os.makedirs(config.db_dir, exist_ok=True)
@@ -72,7 +80,7 @@ async def main():
     mcp_tools = []
     if config.mcp_enabled:
         mcp_tools = await load_mcp_tools(
-            build_mcp_connections(config.mcp_servers, config.tavily_api_key),
+            load_mcp_servers_from_file(config.mcp_servers_file, env=env_vars),
             tool_name_prefix=config.mcp_tool_name_prefix,
         )
         logger.info("Loaded %d MCP tools", len(mcp_tools))

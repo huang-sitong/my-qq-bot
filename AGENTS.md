@@ -17,7 +17,7 @@ uv run ruff check        # lint（[tool.ruff] 见 pyproject.toml；BLE001/DTZ �
 main.py                 # entrypoint — 装配 BotConfig / LLM / Graph / Handler / RagService / MemoryStore
 common/                 # 共享配置 + 提示词（单一事实来源）
   config.py             #   BotConfig pydantic-settings（env 校验、严格布尔 Flag）
-  mcp.py                #   parse_mcp_servers — BOT_MCP_SERVERS JSON 解析
+  mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
   prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
 bot/
   transport/            # websocket（Satori WS 事件）+ http（send_message / call_api）
@@ -28,7 +28,7 @@ bot/
     rag/                # 群聊历史向量检索：embedder(Ollama) / cache / service / milvus
     vision/             # VisionService — Ollama 视觉描述 + 多模态 data-url 下载
     utils/              # 纯函数：context(token 估算) / content_parser / routing(回复判定)
-    mcp/                # client.load_mcp_tools（逐 server 降级）+ config.build_mcp_connections
+    mcp/                # client.load_mcp_tools（逐 server 降级）
     skills/             # loader(SkillRegistry 扫描) + tools(load/unload 纯函数)
     commands/           # 图外斜杠指令：model / parser / registry / builtin
     nodes/              # llm_node(call_llm) / action_node(detect_intent, describe_image, summarize, index_turn, skill_manager) / subgraph
@@ -84,7 +84,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - 索引 `index_turn`：回复轮 2 条（用户+Bot）、群聊非@文本 1 条（仅用户）、图片回复并入 vision_desc；纯媒体但有回复时仍存 bot 回复，两者皆空才整轮跳过。timestamp 为 ISO `YYYY-MM-DD HH:MM:SS`（字典序==时间序）；记录显式 sender/receiver（`sender_id/name`、`receiver_id/name`）
 - 嵌入：Ollama `qwen3-embedding`，Query/Document 共用 Instruct 前缀，按 `(model, 任务前缀, 角色, 原文)` 哈希落盘缓存（换模型/改 RETRIEVAL_TASK 自动失效）
 - env：`BOT_RAG_ENABLED`/`BOT_EMBED_MODEL`/`OLLAMA_BASE_URL`/`BOT_EMBED_DIMENSIONS`/`BOT_EMBED_CACHE_ENABLED`/`BOT_EMBED_CACHE_MAX_ENTRIES`/`BOT_RAG_TOP_K`/`BOT_RAG_SCORE_THRESHOLD`/`BOT_RAG_RETENTION_PER_THREAD`/`BOT_RAG_MAX_AGENT_ROUNDS`；视觉 `BOT_VISION_ENABLED`/`BOT_VISION_MODEL`/`BOT_VISION_MAX_IMAGES`/`BOT_VISION_TIMEOUT`；多模态 `BOT_LLM_MULTIMODAL`（0=本地视觉/1=主 LLM）
-- MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS`/`BOT_MCP_TOOL_NAME_PREFIX`/`TAVILY_API_KEY`；env 解析在 `common/mcp.py::parse_mcp_servers`，连接合并 `bot/core/mcp/config.py::build_mcp_connections`，加载 `client.py::load_mcp_tools`；加载后注入 MCP_TOOL_HINT 引导
+- MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS_FILE`/`BOT_MCP_TOOL_NAME_PREFIX`；server 定义集中在可提交的 `config/mcp_servers.json`（`{"servers": {...}}`，密钥用 `${ENV_VAR}` 占位），加载 `common/mcp.py::load_mcp_servers_from_file`（相对路径按项目根解析、缺失/损坏降级空、插值缺变量→空串；env 必传、不读 os.environ）；main.py 用 `dotenv_values(find_dotenv())` 读 .env 内容做插值源，再 `client.py::load_mcp_tools` 加载；加载后注入 MCP_TOOL_HINT 引导
 
 **记忆工具**：注入 MemoryStore 后 call_llm 绑定 `remember/recall_user_memory` 工具 + MEMORY_TOOL_HINT，LLM 自行决定读写；`user_id` 经 InjectedState 注入，底层官方 AsyncSqliteStore 全 async。旧"图前全量注入 + 图外抽取"方案已移除。
 

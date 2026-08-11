@@ -21,7 +21,7 @@ uv run python main.py         # 启动 bot
 | `BOT_LLM_MULTIMODAL` | `1` 时图片直接进主 LLM；`0` 走本地视觉（`BOT_VISION_MODEL`，默认 Ollama `qwen3-vl`） |
 | `BOT_RAG_ENABLED` | 群聊历史向量检索（默认开启；嵌入用 Ollama `qwen3-embedding`） |
 | `OLLAMA_BASE_URL` | 本地 Ollama 地址（嵌入 + 视觉复用） |
-| `BOT_MCP_ENABLED` / `TAVILY_API_KEY` | MCP 外部工具（可选） |
+| `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS_FILE` | MCP 外部工具（可选；server 定义在 `config/mcp_servers.json`） |
 
 ## 运行时数据
 

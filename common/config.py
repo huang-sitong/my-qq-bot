@@ -4,7 +4,6 @@ from dotenv import find_dotenv
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from .mcp import parse_mcp_servers
 from .prompts import DEFAULT_PERSONA_PROMPT
 
 
@@ -209,17 +208,15 @@ class BotConfig(BaseSettings):
         default=False,
         validation_alias="BOT_MCP_ENABLED",
     )
-    mcp_servers: Annotated[dict[str, dict], NoDecode] = Field(
-        default_factory=dict,
-        validation_alias="BOT_MCP_SERVERS",
+    # server 定义集中在 config/mcp_servers.json（可提交、可评审），
+    # 密钥用 ${ENV_VAR} 占位插值；本字段只保存文件路径。
+    mcp_servers_file: str = Field(
+        default="config/mcp_servers.json",
+        validation_alias="BOT_MCP_SERVERS_FILE",
     )
     mcp_tool_name_prefix: Flag = Field(
         default=False,
         validation_alias="BOT_MCP_TOOL_NAME_PREFIX",
-    )
-    tavily_api_key: str = Field(
-        default="",
-        validation_alias="TAVILY_API_KEY",
     )
 
     # --- Skills（提示词包技能，按需加载正文） ---
@@ -293,11 +290,6 @@ class BotConfig(BaseSettings):
     @classmethod
     def _parse_bash_allowed_roots(cls, value: object) -> list[str]:
         return _parse_comma_list(value)
-
-    @field_validator("mcp_servers", mode="before")
-    @classmethod
-    def _parse_mcp_servers(cls, value: object) -> dict[str, dict]:
-        return parse_mcp_servers(value)
 
     @model_validator(mode="after")
     def _validate_summary_ratios(self) -> "BotConfig":
