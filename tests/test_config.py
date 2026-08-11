@@ -54,6 +54,7 @@ EXPECTED_DEFAULTS = {
     "command_enabled": True,
     "command_prefix": "/",
     "admin_ids": [],
+    "auto_reply": False,
 }
 
 
@@ -104,6 +105,7 @@ ENV_SAMPLES = {
     "command_enabled": ("0", False),
     "command_prefix": ("!", "!"),
     "admin_ids": ("u1, u2", ["u1", "u2"]),
+    "auto_reply": ("1", True),
 }
 
 
@@ -144,6 +146,13 @@ def test_every_env_alias_maps_to_field(monkeypatch):
 def test_invalid_bool_rejected(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_RECONNECT", "2")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
+
+
+def test_invalid_auto_reply_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_AUTO_REPLY", "2")
     with pytest.raises(ValidationError):
         BotConfig(_env_file=None)
 

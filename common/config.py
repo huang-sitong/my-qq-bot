@@ -243,6 +243,12 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_ADMIN_IDS",
     )
 
+    # --- Reply behavior（回复行为；命令可运行时改写） ---
+    auto_reply: Flag = Field(
+        default=False,
+        validation_alias="BOT_AUTO_REPLY",
+    )
+
     @field_validator("admin_ids", mode="before")
     @classmethod
     def _parse_admin_ids(cls, value: object) -> list[str]:
