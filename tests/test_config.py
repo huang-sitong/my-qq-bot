@@ -237,3 +237,8 @@ def test_production_code_does_not_read_env_directly():
         text = path.read_text(encoding="utf-8")
         assert "os.getenv" not in text, path
         assert "os.environ" not in text, path
+
+
+def test_bash_tool_hint_exported_from_common():
+    from common import BASH_TOOL_HINT
+    assert "run_bash" in BASH_TOOL_HINT
