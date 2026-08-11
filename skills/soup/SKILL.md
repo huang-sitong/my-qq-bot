@@ -8,7 +8,8 @@ data: network_soupai.json
 
 ## 开局
 1. 调用 `load_skill("soup")` 取回本正文与「附带数据」——里面 `puzzle` 字段是汤面（谜题）、`answer` 字段是汤底（真相）。
-2. 只向群友公开贴出汤面，汤底藏在心里，**绝不能提前透露**。
+2. **若返回没有「附带数据」**：题库文件缺失，用 `run_bash` 执行 `python skills/soup/import_puzzles.py` 导入后重新 `load_skill`；题库就绪前不要凭空编题、也不要开局。
+3. 只向群友公开贴出汤面，汤底藏在心里，**绝不能提前透露**。
 
 ## 主持流程
 - 玩家根据汤面提问，每次限一个「是/否」能回答的问题。
@@ -26,3 +27,12 @@ data: network_soupai.json
 - 汤面、汤底一律来自「附带数据」，**不要自己编题**。
 - 全程不透露汤底，即使玩家直接问「答案是啥」。
 - 玩家问题偏离汤面时，用汤底判断，如实答「不知道」。
+
+## 题库导入（数据维护）
+- 题库文件是 `network_soupai.json`（frontmatter `data:` 指向），`load_skill` 每次随机抽一条。
+- 新增题目：在 `puzzles_raw.txt` 按格式追加「题面/汤底」记录，然后用 `run_bash` 执行：
+  ```
+  python skills/soup/import_puzzles.py
+  ```
+  cwd 可留空或传 `skills/soup`（脚本按自身位置定位题库文件）。
+- 脚本按「题面+汤底」去重合并（同一题面不同汤底视为两条独立记录，都保留）：已存在的记录跳过，幂等可反复执行；要全量重建，先删除 `network_soupai.json` 再运行。
