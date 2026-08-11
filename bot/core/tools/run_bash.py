@@ -6,6 +6,7 @@
 ③ 超时 + 输出截断。护栏拦截返回具体文案供 LLM 调整，真异常由 factory 层降级。
 """
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -68,6 +69,14 @@ def _within_roots(path: Path, roots: list[Path]) -> bool:
     return any(path == root or path.is_relative_to(root) for root in roots)
 
 
+def _decode(raw: bytes) -> str:
+    """UTF-8 解码；含替换符（�）说明是 GBK 等非 UTF-8 输出，回落 GBK。"""
+    text = raw.decode("utf-8", errors="replace")
+    if "�" in text:
+        text = raw.decode("gbk", errors="replace")
+    return text
+
+
 async def run_bash(command: str, cwd: str = "", *, cfg: BashConfig) -> str:
     """执行 bash 命令返回「退出码 + 输出」文本；护栏拦截返回具体文案。"""
     blocked = _is_blocked(command)
@@ -80,5 +89,27 @@ async def run_bash(command: str, cwd: str = "", *, cfg: BashConfig) -> str:
         shown = ", ".join(str(r) for r in roots)
         return f"工作目录 {path} 不在允许的根目录内。允许：{shown}"
 
-    # Task 2 会实现真正执行；此刻先占位返回（测试只断言前两道闸）
-    return "（执行主体见 Task 2）"
+    # cwd 用 subprocess 参数设置、不拼进命令串（规避 MSYS 路径 munging）。
+    # 走模块属性访问 asyncio.create_subprocess_exec——测试 monkeypatch 依赖此写法。
+    proc = await asyncio.create_subprocess_exec(
+        cfg.shell, "-c", command,
+        cwd=str(path), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+    )
+    try:
+        stdout_data, _ = await asyncio.wait_for(proc.communicate(), timeout=cfg.timeout)
+    except TimeoutError:
+        try:
+            proc.kill()  # 尽力回收；Windows 下 bash 子进程树清理是后续增强点
+        except OSError:
+            pass
+        return f"命令超时（> {cfg.timeout} 秒），已终止。"
+
+    text = _decode(stdout_data or b"").rstrip("\r\n")  # 剥掉 bash 输出的尾换行，输出行更整洁
+    if len(text) > cfg.max_output:
+        text = text[:cfg.max_output] + "\n…（输出已截断）"
+
+    if not text.strip():
+        if proc.returncode == 0:
+            return "命令执行成功（无输出）"
+        return f"退出码: {proc.returncode}\n（无输出）"
+    return f"退出码: {proc.returncode}\n{text}"
