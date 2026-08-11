@@ -1,8 +1,6 @@
 # tests/test_skill_loader.py
 """SkillRegistry 加载器测试：frontmatter 解析、非法跳过、索引截断。"""
 
-import json
-
 from bot.core.skills import Skill, SkillRegistry
 
 
@@ -105,68 +103,6 @@ def test_parses_frontmatter_without_trailing_newline(tmp_path):
     reg = SkillRegistry.from_directory(str(tmp_path))
     assert reg.names() == ["ok"]
     assert reg.get_body("ok") == ""
-
-
-def test_parses_data_field_resolved_relative_to_skill_dir(tmp_path):
-    """frontmatter data: 字段解析为相对技能目录的数据文件，random_data_entry 能抽出记录。"""
-    (tmp_path / ".others" / "plugins").mkdir(parents=True)
-    (tmp_path / ".others" / "plugins" / "soup.json").write_text(
-        '[{"puzzle": "P", "answer": "A"}]', encoding="utf-8"
-    )
-    _write_skill(tmp_path, "soup", (
-        "---\nname: soup\ndescription: 海龟汤\ndata: ../.others/plugins/soup.json\n---\n正文"
-    ))
-    reg = SkillRegistry.from_directory(str(tmp_path))
-    assert reg.names() == ["soup"]
-    assert reg.random_data_entry("soup") == {"puzzle": "P", "answer": "A"}
-
-
-def test_random_data_entry_picks_any_entry(tmp_path):
-    """多条记录时抽任意一条（随机，不保证具体哪条）。"""
-    (tmp_path / "data.json").write_text(json.dumps([
-        {"puzzle": "P1", "answer": "A1"},
-        {"puzzle": "P2", "answer": "A2"},
-    ], ensure_ascii=False), encoding="utf-8")
-    _write_skill(tmp_path, "soup", (
-        "---\nname: soup\ndescription: d\ndata: ../data.json\n---\n正文"
-    ))
-    reg = SkillRegistry.from_directory(str(tmp_path))
-    out = reg.random_data_entry("soup")
-    assert out in ({"puzzle": "P1", "answer": "A1"}, {"puzzle": "P2", "answer": "A2"})
-
-
-def test_random_data_entry_none_when_no_data_field(tmp_path):
-    _write_skill(tmp_path, "plain", "---\nname: plain\ndescription: d\n---\n正文")
-    reg = SkillRegistry.from_directory(str(tmp_path))
-    assert reg.random_data_entry("plain") is None
-    assert reg.random_data_entry("ghost") is None
-
-
-def test_random_data_entry_none_on_missing_or_invalid_file(tmp_path):
-    _write_skill(tmp_path, "a", "---\nname: a\ndescription: d\ndata: nope.json\n---\nb")
-    _write_skill(tmp_path, "b", "---\nname: b\ndescription: d\ndata: ../bad.json\n---\nb")
-    (tmp_path / "bad.json").write_text("{ not json", encoding="utf-8")
-    reg = SkillRegistry.from_directory(str(tmp_path))
-    assert reg.random_data_entry("a") is None
-    assert reg.random_data_entry("b") is None
-
-
-def test_random_data_entry_none_on_empty_list_or_bad_entries(tmp_path):
-    """空列表 / 非 list / 非 dict 条目 / 全空值条目 → None；缺个别 key 的记录是合法形状。"""
-    (tmp_path / "empty.json").write_text("[]", encoding="utf-8")
-    (tmp_path / "notlist.json").write_text('{"a": 1}', encoding="utf-8")
-    (tmp_path / "notdict.json").write_text('["str"]', encoding="utf-8")
-    (tmp_path / "allempty.json").write_text('[{"puzzle": "", "answer": "  "}]', encoding="utf-8")
-    (tmp_path / "onekey.json").write_text('[{"puzzle": "only"}]', encoding="utf-8")
-    cases = [("a", "empty.json"), ("b", "notlist.json"), ("c", "notdict.json"), ("d", "allempty.json")]
-    for n, f in cases:
-        _write_skill(tmp_path, n, f"---\nname: {n}\ndescription: d\ndata: ../{f}\n---\nb")
-    _write_skill(tmp_path, "ok", "---\nname: ok\ndescription: d\ndata: ../onekey.json\n---\nb")
-    reg = SkillRegistry.from_directory(str(tmp_path))
-    for n, _ in cases:
-        assert reg.random_data_entry(n) is None
-    # 缺 answer 是数据文件自己的形状约定，泛型方法不裁决 → 正常返回
-    assert reg.random_data_entry("ok") == {"puzzle": "only"}
 
 
 def test_get_skill_returns_skill_or_none():

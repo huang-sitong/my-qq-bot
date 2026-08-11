@@ -2,15 +2,12 @@
 """SkillRegistry — 扫描 skills/<name>/SKILL.md，解析 frontmatter 构建技能索引。
 
 frontmatter 最小解析（不引 pyyaml）：``---`` 包住的 ``key: value`` 行。
-只读 name/description/data 三个字段；缺失/非法一律跳过 + warning，绝不崩 bot。
-``data`` 为可选字段，指向相对技能目录的 JSON 数据文件（list 结构，每条
-一条记录如 ``{puzzle, answer}``）——load_skill 时由 random_data_entry 抽一条
-附带返回，供需要题库的技能（如海龟汤）使用。
+只读 name/description 两个字段；缺失/非法一律跳过 + warning，绝不崩 bot。
+技能自带的题库/脚本由 skill 正文自述路径，LLM 经 run_bash 执行（如 soup 的
+import_puzzles.py / draw_puzzle.py）——loader 不感知技能数据文件。
 """
 
-import json
 import logging
-import random
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,11 +23,10 @@ class Skill:
     name: str
     description: str
     body: str
-    data_path: Path | None = None  # 可选：data: 指向的 JSON 数据文件（相对技能目录解析）
 
 
-def _parse_skill_md(path: Path) -> tuple[str, str, str, str] | None:
-    """解析 SKILL.md → (name, description, data, body)；非法返回 None。"""
+def _parse_skill_md(path: Path) -> tuple[str, str, str] | None:
+    """解析 SKILL.md → (name, description, body)；非法返回 None。"""
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):  # 非 UTF-8（GBK/ANSI）解码失败也跳过，绝不崩 bot
@@ -46,10 +42,9 @@ def _parse_skill_md(path: Path) -> tuple[str, str, str, str] | None:
             meta[k.strip()] = v.strip()
     name = meta.get("name", "").strip()
     description = meta.get("description", "").strip()
-    data = meta.get("data", "").strip()
     if not name or not description:
         return None
-    return name, description, data, text[m.end():].strip()
+    return name, description, text[m.end():].strip()
 
 
 class SkillRegistry:
@@ -81,12 +76,11 @@ class SkillRegistry:
             if parsed is None:
                 logger.warning("skill %s: SKILL.md 缺少合法 frontmatter，跳过", skill_dir.name)
                 continue
-            name, description, data_str, body = parsed
+            name, description, body = parsed
             if not _NAME_RE.fullmatch(name):
                 logger.warning("skill %s: name %r 非法（须 [a-z0-9_-]），跳过", skill_dir.name, name)
                 continue
-            data_path = (skill_dir / data_str).resolve() if data_str else None
-            skills[name] = Skill(name=name, description=description, body=body, data_path=data_path)  # 重复取最后一个
+            skills[name] = Skill(name=name, description=description, body=body)  # 重复取最后一个
 
         return cls(skills, index_max)
 
@@ -107,30 +101,6 @@ class SkillRegistry:
     def get_body(self, name: str) -> str | None:
         skill = self._skills.get(name)
         return skill.body if skill is not None else None
-
-    def random_data_entry(self, name: str) -> dict | None:
-        """随机抽一条数据文件记录（如 ``{puzzle, answer}``）；不可用返回 None。
-
-        数据是附赠品：文件缺失/非法 JSON/空列表/坏条目一律返回 None，
-        绝不抛异常——load_skill 仍正常返回正文。
-        """
-        skill = self._skills.get(name)
-        if skill is None or skill.data_path is None:
-            return None
-        try:
-            raw = json.loads(skill.data_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
-            logger.warning("skill %s: data file unreadable: %s", name, skill.data_path)
-            return None
-        if not isinstance(raw, list) or not raw:
-            return None
-        entry = random.choice(raw)
-        if not isinstance(entry, dict):
-            return None
-        # 空 dict / 全空值视为坏条目；缺个别 key 是数据文件自己的形状约定，泛型不裁决
-        if not entry or all(v is None or not str(v).strip() for v in entry.values()):
-            return None
-        return entry
 
     def index_lines(self) -> list[str]:
         """LLM 可见的索引行（每技能一行，排序稳定——dict 保持插入序）。"""

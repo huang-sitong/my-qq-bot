@@ -1,15 +1,14 @@
 ---
 name: soup
 description: 主持「海龟汤」解谜游戏（汤面推理题）。用户说「海龟汤/来一局海龟汤/玩海龟汤/开海龟汤/来个汤面」时启用。
-data: network_soupai.json
 ---
 
 # 海龟汤解谜主持技能
 
 ## 开局
-1. 调用 `load_skill("soup")` 取回本正文与「附带数据」——里面 `puzzle` 字段是汤面（谜题）、`answer` 字段是汤底（真相）。
-2. **若返回没有「附带数据」**：题库文件缺失，用 `run_bash` 执行 `python skills/soup/import_puzzles.py` 导入后重新 `load_skill`；题库就绪前不要凭空编题、也不要开局。
-3. 只向群友公开贴出汤面，汤底藏在心里，**绝不能提前透露**。
+1. 调用 `load_skill("soup")` 取回本正文。
+2. 用 `run_bash` 执行 `python skills/soup/draw_puzzle.py` 抽一条题：输出里 `题面：` 是汤面（谜题）、`汤底：` 是真相。只向群友公开贴出汤面，汤底藏在心里，**绝不能提前透露**。
+3. **若抽题输出报「题库不存在/为空」**：先运行 `python skills/soup/import_puzzles.py` 导入题库，再重新抽题；题库就绪前不要凭空编题、也不要开局。
 
 ## 主持流程
 - 玩家根据汤面提问，每次限一个「是/否」能回答的问题。
@@ -21,18 +20,15 @@ data: network_soupai.json
 ## 揭底
 - 玩家正确说出完整真相 → 揭底并祝贺。
 - 玩家放弃或猜了很多轮仍未中 → 温和揭底。
-- 揭底时公布汤底原文（`answer` 字段）。
+- 揭底时公布汤底原文。
 
 ## 规则
-- 汤面、汤底一律来自「附带数据」，**不要自己编题**。
+- 汤面、汤底一律来自 `draw_puzzle.py` 的输出，**不要自己编题**。
+- 一局只抽一次题，中途不要重新抽题换题。
 - 全程不透露汤底，即使玩家直接问「答案是啥」。
 - 玩家问题偏离汤面时，用汤底判断，如实答「不知道」。
 
-## 题库导入（数据维护）
-- 题库文件是 `network_soupai.json`（frontmatter `data:` 指向），`load_skill` 每次随机抽一条。
-- 新增题目：在 `puzzles_raw.txt` 按格式追加「题面/汤底」记录，然后用 `run_bash` 执行：
-  ```
-  python skills/soup/import_puzzles.py
-  ```
-  cwd 可留空或传 `skills/soup`（脚本按自身位置定位题库文件）。
-- 脚本按「题面+汤底」去重合并（同一题面不同汤底视为两条独立记录，都保留）：已存在的记录跳过，幂等可反复执行；要全量重建，先删除 `network_soupai.json` 再运行。
+## 题库维护
+- 题库在 `network_soupai.json`，由 `puzzles_raw.txt` 生成。
+- 新增题目：在 `puzzles_raw.txt` 追加「题面/汤底」记录，然后运行 `python skills/soup/import_puzzles.py`（cwd 可留空或传 `skills/soup`，脚本按自身位置定位题库文件）。
+- 脚本按「题面+汤底」去重合并（标点全半角视为同一；同一题面不同汤底是独立记录，都保留），幂等可反复执行；要全量重建，先删除 `network_soupai.json` 再运行。
