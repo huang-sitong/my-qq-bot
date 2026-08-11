@@ -276,3 +276,52 @@ def test_graph_skill_isolated_per_thread(tmp_path):
             await checkpointer.conn.close()
 
     asyncio.run(run())
+
+
+# ----------------------------------------------------------------------
+# run_bash 工具：图内 ToolNode 端到端 + hint 注入。
+# ----------------------------------------------------------------------
+
+class _FakeProc:
+    returncode = 0
+
+    async def communicate(self):
+        return b"hello from bash\n", b""
+
+    def kill(self):
+        pass
+
+
+def test_graph_runs_bash_tool(tmp_path, monkeypatch):
+    """run_bash 工具经图内 ToolNode 执行并回环：tool_call → ToolMessage。"""
+    async def fake_exec(*args, **kwargs):
+        return _FakeProc()
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+
+    llm = ScriptedLLM([
+        AIMessage(content="", tool_calls=[
+            {"name": "run_bash", "args": {"command": "echo hi"},
+             "id": "call_bash", "type": "tool_call"},
+        ]),
+        AIMessage(content="已执行"),
+    ])
+    graph, _ = asyncio.run(
+        create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path))
+    )
+    result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == "已执行"
+    tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    assert tool_msgs
+    assert "hello from bash" in tool_msgs[0].content
+
+
+def test_graph_injects_bash_hint(tmp_path):
+    llm = ScriptedLLM([AIMessage(content="好的")])
+    graph, _ = asyncio.run(
+        create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path))
+    )
+    asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+    sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
+    assert any("run_bash" in m.content for m in sys_msgs)

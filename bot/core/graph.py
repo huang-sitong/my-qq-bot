@@ -1,6 +1,7 @@
 import logging
 import os
 from functools import partial
+from pathlib import Path
 
 import aiosqlite
 from langchain_openai import ChatOpenAI
@@ -19,6 +20,7 @@ from bot.core.nodes import (
     summarize_node,
 )
 from bot.core.tools import build_tools
+from bot.core.tools.run_bash import BashConfig
 from bot.core.utils.routing import route_after_detect
 from common import BotConfig
 from object.bot.state import BotState
@@ -77,12 +79,21 @@ async def create_graph(
     Returns ``(graph, checkpointer)`` so the caller can manage the
     checkpointer's lifecycle.
     """
+    bash_config = BashConfig(
+        enabled=config.bash_enabled,
+        shell=config.bash_shell,
+        timeout=config.bash_timeout,
+        max_output=config.bash_max_output,
+        allowed_roots=config.bash_allowed_roots,
+        project_root=Path(__file__).resolve().parents[2],
+    )
     tools = build_tools(
         rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools,
-        skill_registry=skill_registry,
+        skill_registry=skill_registry, bash_config=bash_config,
     )
     use_memory = memory_store is not None
     use_mcp = bool(mcp_tools)
+    use_bash = bash_config.enabled
 
     builder = StateGraph(BotState)
     builder.add_node("detect_intent", detect_intent)
@@ -93,6 +104,7 @@ async def create_graph(
             tools=tools,
             use_memory=use_memory,
             use_mcp=use_mcp,
+            use_bash=use_bash,
             bot_config=config,
             skill_registry=skill_registry,
         )
