@@ -59,6 +59,7 @@ BASH_TOOL_DESCRIPTION = (
     "- command：要执行的 bash 命令字符串"
     "（每次调用独立新 shell，cd/export 不跨调用保持）\n"
     "- cwd：工作目录（绝对路径；留空为项目根目录）\n"
+    "- timeout：可选，本次命令超时秒数（1..3600；默认 BOT_BASH_TIMEOUT）\n"
     "- 工作目录仅限白名单根目录内；危险命令会被拦截；输出截断；超时退出。\n"
     "- 返回「退出码 N」+ 输出；退出码非 0 表示失败，可调整命令重试。"
 )
@@ -68,9 +69,14 @@ def _make_bash_tool(cfg: BashConfig) -> BaseTool:
     async def _run(
         command: Annotated[str, Field(description="要执行的 bash 命令字符串")],
         cwd: Annotated[str, Field(description="工作目录（绝对路径；留空为项目根目录）")] = "",
+        timeout: Annotated[int | None, Field(
+            description="可选：本次命令超时秒数（1..3600；默认使用 BOT_BASH_TIMEOUT）",
+            ge=1,
+            le=3600,
+        )] = None,
     ) -> str:
         try:
-            return await run_bash(command, cwd, cfg=cfg)
+            return await run_bash(command, cwd, timeout, cfg=cfg)
         except Exception:
             logger.exception("run_bash failed")
             return "工具执行失败。"

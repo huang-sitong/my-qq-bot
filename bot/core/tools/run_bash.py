@@ -14,6 +14,8 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+MAX_BASH_TIMEOUT = 3600
+
 
 @dataclass(frozen=True)
 class BashConfig:
@@ -77,8 +79,17 @@ def _decode(raw: bytes) -> str:
     return text
 
 
-async def run_bash(command: str, cwd: str = "", *, cfg: BashConfig) -> str:
+async def run_bash(
+    command: str,
+    cwd: str = "",
+    timeout: int | None = None,
+    *,
+    cfg: BashConfig,
+) -> str:
     """执行 bash 命令返回「退出码 + 输出」文本；护栏拦截返回具体文案。"""
+    if timeout is not None and not 0 < timeout <= MAX_BASH_TIMEOUT:
+        return f"参数错误：timeout 必须在 1..{MAX_BASH_TIMEOUT} 秒之间。"
+
     blocked = _is_blocked(command)
     if blocked:
         return f"已拦截：命令命中危险模式 {blocked}，不予执行。"
@@ -89,6 +100,8 @@ async def run_bash(command: str, cwd: str = "", *, cfg: BashConfig) -> str:
         shown = ", ".join(str(r) for r in roots)
         return f"工作目录 {path} 不在允许的根目录内。允许：{shown}"
 
+    effective_timeout = cfg.timeout if timeout is None else timeout
+
     # cwd 用 subprocess 参数设置、不拼进命令串（规避 MSYS 路径 munging）。
     # 走模块属性访问 asyncio.create_subprocess_exec——测试 monkeypatch 依赖此写法。
     proc = await asyncio.create_subprocess_exec(
@@ -96,13 +109,13 @@ async def run_bash(command: str, cwd: str = "", *, cfg: BashConfig) -> str:
         cwd=str(path), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
     )
     try:
-        stdout_data, _ = await asyncio.wait_for(proc.communicate(), timeout=cfg.timeout)
+        stdout_data, _ = await asyncio.wait_for(proc.communicate(), timeout=effective_timeout)
     except TimeoutError:
         try:
             proc.kill()  # 尽力回收；Windows 下 bash 子进程树清理是后续增强点
         except OSError:
             pass
-        return f"命令超时（> {cfg.timeout} 秒），已终止。"
+        return f"命令超时（> {effective_timeout} 秒），已终止。"
 
     text = _decode(stdout_data or b"").rstrip("\r\n")  # 剥掉 bash 输出的尾换行，输出行更整洁
     if len(text) > cfg.max_output:

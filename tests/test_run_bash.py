@@ -221,6 +221,29 @@ def test_timeout_kills_process(monkeypatch, tmp_path):
     assert proc.killed
 
 
+def test_per_call_timeout_overrides_config(monkeypatch, tmp_path):
+    cfg = _cfg(tmp_path, timeout=5)
+    proc = FakeProc(out=b"", rc=0, delay=3)
+    _install_fake_exec(monkeypatch, proc)
+    result = asyncio.run(run_bash("sleep 10", timeout=1, cfg=cfg))
+    assert "命令超时（> 1 秒），已终止。" in result
+    assert proc.killed
+
+
+def test_invalid_per_call_timeout_rejected(monkeypatch, tmp_path):
+    cfg = _cfg(tmp_path)
+    calls = []
+
+    async def fake_exec(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("invalid timeout command was executed")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
+    result = asyncio.run(run_bash("echo hi", timeout=0, cfg=cfg))
+    assert "timeout 必须在" in result
+    assert calls == []
+
+
 def test_shell_spawned_with_dash_c(monkeypatch, tmp_path):
     captured = []
     _install_fake_exec(monkeypatch, FakeProc(out=b"", rc=0), captured=captured)

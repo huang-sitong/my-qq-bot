@@ -15,6 +15,11 @@ wheels/
 .env
 # Virtual environments
 .venv
+# Skills are local/runtime content; keep soup tracked for tests
+skills/*
+!skills/soup
+!skills/soup/**
+skills/soup/__pycache__/
 # Runtime data
 db/*.sqlite*
 !db/.gitkeep

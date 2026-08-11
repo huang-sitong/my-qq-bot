@@ -111,13 +111,18 @@ def test_no_bash_tool_when_disabled_or_none():
     assert "run_bash" not in _names(build_tools())
 
 
-def test_bash_schema_only_command_and_cwd():
+def test_bash_schema_has_command_cwd_and_timeout():
     tools = build_tools(bash_config=BashConfig(enabled=True, project_root=Path(".")))
     by_name = {t.name: t for t in tools}
     props = by_name["run_bash"].tool_call_schema.model_json_schema()["properties"]
-    assert set(props) == {"command", "cwd"}
+    assert set(props) == {"command", "cwd", "timeout"}
     assert "命令" in props["command"]["description"]
     assert "工作目录" in props["cwd"]["description"]
+    timeout_schema = props["timeout"]
+    assert any(
+        item.get("minimum") == 1 and item.get("maximum") == 3600
+        for item in timeout_schema["anyOf"]
+    )
 
 
 def test_bash_tool_degrades_on_exception():
