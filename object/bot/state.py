@@ -33,6 +33,7 @@ class BotState(TypedDict):
     channel_type: int       # ChannelType enum value (0=TEXT, 1=DIRECT)
     bot_id: str             # bot's own user ID for @-mention detection
     user_name: str          # sender's display name (for group chat attribution)
+    auto_reply: bool        # 群聊非@文本/图片是否直接回复（handler 从 config 注入，detect_intent 消费）
     # --- Message classification (computed in MessageHandler, ingress) ---
     content_kind: str       # object.bot.content.MessageKind.value: "text"/"image"/"file"/"audio"/"video"
     llm_text: str           # media→占位符、@→@昵称(id)/所有成员 — HumanMessage content

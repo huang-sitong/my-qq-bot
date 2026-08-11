@@ -146,3 +146,39 @@ def test_group_name_only_mention_responds_with_empty_bot_id():
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is True
+
+
+def test_group_non_at_text_responds_when_auto_reply():
+    state = make_state(
+        llm_text="晚上吃什么",
+        content_kind="text",
+        channel_type=0,
+        bot_id="bot1",
+        auto_reply=True,
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is True
+    assert len(result["messages"]) == 1  # 回复轮入上下文
+
+
+def test_group_non_at_image_responds_when_auto_reply():
+    state = make_state(
+        content_kind="image",
+        channel_type=0,
+        bot_id="bot1",
+        auto_reply=True,
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is True
+    assert len(result["messages"]) == 1
+
+
+def test_auto_reply_absent_defaults_to_off():
+    # make_state 不含 auto_reply → .get 兜底 False，既有行为不变
+    state = make_state(
+        llm_text="晚上吃什么",
+        channel_type=0,
+        bot_id="bot1",
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is False

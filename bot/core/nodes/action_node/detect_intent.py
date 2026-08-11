@@ -34,9 +34,10 @@ async def detect_intent(state: BotState) -> dict:
     mentions = state.get("mentions", {})
     user_name = state.get("user_name", "")
     content_kind = state.get("content_kind", "")
+    auto_reply = state.get("auto_reply", False)
 
     # 判定表（decide_reply / keep_in_context）单一来源见 bot.core.utils.routing
-    should_respond = decide_reply(channel_type, content_kind, bot_id, bot_name, mentions)
+    should_respond = decide_reply(channel_type, content_kind, bot_id, bot_name, mentions, auto_reply)
 
     # 2) Build HumanMessage: handler 每轮必注入 llm_text（媒体->占位符、@ 已渲染）
     content = state.get("llm_text", "")
