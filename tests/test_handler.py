@@ -396,3 +396,32 @@ def test_command_dispatches_in_group_channel():
     }))
     assert graph.state is None
     assert handler._api_client.sent == [("g1", "Pong.")]
+
+
+def test_auto_reply_injected_into_graph_state():
+    graph = _StubGraph()
+    config = BotConfig(_env_file=None, auto_reply=True)
+    handler = _make_handler(graph, bot_config=config)
+    asyncio.run(handler._process({
+        "event": _private_event(),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "u1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+    assert graph.state["auto_reply"] is True
+
+
+def test_auto_reply_defaults_false_when_config_absent():
+    graph = _StubGraph()
+    handler = _make_handler(graph)  # bot_config=None
+    asyncio.run(handler._process({
+        "event": _private_event(),
+        "platform": "llonebot",
+        "guild_id": "",
+        "channel_id": "ch1",
+        "user_id": "u1",
+        "thread_id": "llonebot::private:ch1",
+    }))
+    assert graph.state["auto_reply"] is False

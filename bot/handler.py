@@ -234,6 +234,7 @@ class MessageHandler:
                     "clean_text": parsed.clean_text,
                     "mentions": parsed.mentions,
                     "image_srcs": image_srcs,
+                    "auto_reply": self._bot_config.auto_reply if self._bot_config is not None else False,
                 },
                 {
                     "configurable": {"thread_id": thread_id},
