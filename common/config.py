@@ -20,6 +20,17 @@ def _parse_flag(value: object) -> bool:
     raise ValueError(f"invalid boolean value: {value!r}")
 
 
+def _parse_comma_list(value: object) -> list[str]:
+    """逗号分隔字符串 → 保序去重列表；list/tuple 原样规范化；其余返回 []。"""
+    if isinstance(value, str):
+        parts = [part.strip() for part in value.split(",") if part.strip()]
+    elif isinstance(value, (list, tuple)):
+        parts = [str(part).strip() for part in value if str(part).strip()]
+    else:
+        return []
+    return list(dict.fromkeys(parts))
+
+
 Flag = Annotated[bool, BeforeValidator(_parse_flag)]
 
 
@@ -249,17 +260,39 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_AUTO_REPLY",
     )
 
+    # --- Bash 工具（skill 脚本执行；Git Bash） ---
+    bash_enabled: Flag = Field(
+        default=True,
+        validation_alias="BOT_BASH_ENABLED",
+    )
+    bash_shell: str = Field(
+        default="bash",
+        validation_alias="BOT_BASH_SHELL",
+    )
+    bash_timeout: int = Field(
+        default=30,
+        gt=0,
+        validation_alias="BOT_BASH_TIMEOUT",
+    )
+    bash_max_output: int = Field(
+        default=4000,
+        ge=0,
+        validation_alias="BOT_BASH_MAX_OUTPUT",
+    )
+    bash_allowed_roots: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        validation_alias="BOT_BASH_ALLOWED_ROOTS",
+    )
+
     @field_validator("admin_ids", mode="before")
     @classmethod
     def _parse_admin_ids(cls, value: object) -> list[str]:
-        if isinstance(value, str):
-            parts = [part.strip() for part in value.split(",") if part.strip()]
-        elif isinstance(value, (list, tuple)):
-            parts = [str(part).strip() for part in value if str(part).strip()]
-        else:
-            return []
-        # 保序去重（dict.fromkeys），防 "u1, u1" 双写
-        return list(dict.fromkeys(parts))
+        return _parse_comma_list(value)
+
+    @field_validator("bash_allowed_roots", mode="before")
+    @classmethod
+    def _parse_bash_allowed_roots(cls, value: object) -> list[str]:
+        return _parse_comma_list(value)
 
     @field_validator("mcp_servers", mode="before")
     @classmethod

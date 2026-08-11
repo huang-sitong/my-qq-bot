@@ -55,6 +55,11 @@ EXPECTED_DEFAULTS = {
     "command_prefix": "/",
     "admin_ids": [],
     "auto_reply": False,
+    "bash_enabled": True,
+    "bash_shell": "bash",
+    "bash_timeout": 30,
+    "bash_max_output": 4000,
+    "bash_allowed_roots": [],
 }
 
 
@@ -106,6 +111,11 @@ ENV_SAMPLES = {
     "command_prefix": ("!", "!"),
     "admin_ids": ("u1, u2", ["u1", "u2"]),
     "auto_reply": ("1", True),
+    "bash_enabled": ("0", False),
+    "bash_shell": ("bash.exe", "bash.exe"),
+    "bash_timeout": ("10", 10),
+    "bash_max_output": ("100", 100),
+    "bash_allowed_roots": ("C:/work, D:/tmp", ["C:/work", "D:/tmp"]),
 }
 
 
@@ -201,6 +211,20 @@ def test_admin_ids_deduplicated_and_stripped(monkeypatch):
     monkeypatch.setenv("BOT_ADMIN_IDS", "u1, u1 ,  u2")
     config = BotConfig(_env_file=None)
     assert config.admin_ids == ["u1", "u2"]
+
+
+def test_bash_allowed_roots_stripped_and_deduped(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_BASH_ALLOWED_ROOTS", "C:/a, C:/a , D:/b")
+    config = BotConfig(_env_file=None)
+    assert config.bash_allowed_roots == ["C:/a", "D:/b"]
+
+
+def test_invalid_bash_timeout_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_BASH_TIMEOUT", "0")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
 
 
 def test_production_code_does_not_read_env_directly():
