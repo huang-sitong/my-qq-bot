@@ -1,9 +1,11 @@
 import asyncio
+from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage
 
 from bot.core.nodes import call_llm_node
 from bot.core.tools import build_tools
+from bot.core.tools.run_bash import BashConfig
 from common import BotConfig
 from tests.fakes import ScriptedLLM, StubMemoryStore, StubRagService, make_state
 
@@ -129,3 +131,27 @@ def test_mcp_hint_not_injected_when_disabled():
         "外部工具" in getattr(m, "content", "")
         for m in llm.last_messages
     )
+
+
+def _bash_tools():
+    return build_tools(bash_config=BashConfig(enabled=True, project_root=Path(".")))
+
+
+def test_bash_hint_injected_when_use_bash():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_bash_tools(), use_memory=False, use_bash=True,
+        bot_config=CONFIG_ON,
+    ))
+    assert any("run_bash" in getattr(m, "content", "") for m in llm.last_messages)
+
+
+def test_bash_hint_not_injected_when_disabled():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_bash_tools(), use_memory=False, use_bash=False,
+        bot_config=CONFIG_ON,
+    ))
+    assert not any("run_bash" in getattr(m, "content", "") for m in llm.last_messages)
