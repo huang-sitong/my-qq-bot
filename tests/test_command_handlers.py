@@ -144,3 +144,42 @@ def test_status_returns_safe_runtime_info():
     assert "db" in result.text
     assert "MCP：2 个工具" in result.text
     assert "API_KEY" not in result.text
+
+
+def test_auto_reply_shows_state():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "auto_reply")
+    assert "当前状态：关闭" in result.text
+
+
+def test_auto_reply_turns_on():
+    services = _services()
+    registry = build_command_registry(services)
+    ctx = _ctx(services, args=("on",), actor=CommandActor(user_id="admin1", name="admin", is_admin=True))
+    result = asyncio.run(registry.resolve("auto_reply").handler(ctx))
+    assert result.text == "auto_reply 已开启。"
+    assert ctx.config.auto_reply is True
+
+
+def test_auto_reply_turns_off():
+    services = _services()
+    registry = build_command_registry(services)
+    ctx = _ctx(services, args=("off",))
+    result = asyncio.run(registry.resolve("auto_reply").handler(ctx))
+    assert result.text == "auto_reply 已关闭。"
+    assert ctx.config.auto_reply is False
+
+
+def test_auto_reply_invalid_arg_returns_usage():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "auto_reply", ("maybe",))
+    assert "参数无效" in result.text
+
+
+def test_auto_reply_is_admin_command():
+    services = _services()
+    registry = build_command_registry(services)
+    assert registry.resolve("auto_reply").permission == "admin"
+    assert "/auto_reply" in _execute(registry, services, "help").text  # /help 自动收录

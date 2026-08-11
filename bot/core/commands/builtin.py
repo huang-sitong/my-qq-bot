@@ -5,6 +5,7 @@ from functools import partial
 
 from .model import Command, CommandContext, CommandResult, CommandServices
 from .registry import CommandRegistry
+from common.config import _parse_flag
 
 
 async def _help(ctx: CommandContext, registry: CommandRegistry) -> CommandResult:
@@ -69,8 +70,23 @@ async def _status(ctx: CommandContext) -> CommandResult:
         f"MCP：{services.mcp_tool_count} 个工具",
         f"技能：{services.skill_registry.total if services.skill_registry else 0} 个",
         f"记忆：{'开启' if services.memory_store is not None else '关闭'}",
+        f"自动回复：{'开启' if cfg.auto_reply else '关闭'}",
     ]
     return CommandResult(text="\n".join(lines))
+
+
+async def _auto_reply(ctx: CommandContext) -> CommandResult:
+    cfg = ctx.config
+    if not ctx.args:
+        return CommandResult(text=f"auto_reply 当前状态：{'开启' if cfg.auto_reply else '关闭'}")
+    if len(ctx.args) != 1:
+        return CommandResult(text="用法：/auto_reply [on|off]")
+    try:
+        value = _parse_flag(ctx.args[0])
+    except ValueError:
+        return CommandResult(text="参数无效，用法：/auto_reply [on|off]")
+    cfg.auto_reply = value
+    return CommandResult(text=f"auto_reply 已{'开启' if value else '关闭'}。")
 
 
 def build_command_registry(services: CommandServices, prefix: str = "/") -> CommandRegistry:
@@ -117,5 +133,12 @@ def build_command_registry(services: CommandServices, prefix: str = "/") -> Comm
         usage=f"{prefix}status",
         permission="admin",
         handler=_status,
+    ))
+    registry.register(Command(
+        name="auto_reply",
+        description="查看/设置全局自动回复开关",
+        usage=f"{prefix}auto_reply [on|off]",
+        permission="admin",
+        handler=_auto_reply,
     ))
     return registry

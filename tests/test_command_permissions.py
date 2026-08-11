@@ -8,6 +8,7 @@ from bot.core.commands import (
     CommandContext,
     CommandResult,
     CommandServices,
+    build_command_registry,
     can_run,
     run_command,
 )
@@ -95,3 +96,11 @@ def test_handler_exception_returns_failure():
     cmd = _command(_boom)
     result = asyncio.run(run_command(cmd, _ctx(CommandActor("u1", "n", False))))
     assert result.text == "指令执行失败。"
+
+
+def test_auto_reply_registered_admin_denies_non_admin():
+    services = CommandServices(version="test", started_at=0.0, bot_name="")
+    registry = build_command_registry(services)
+    command = registry.resolve("auto_reply")
+    result = asyncio.run(run_command(command, _ctx(CommandActor("u1", "n", False))))
+    assert result.text == "无权执行该指令。"
