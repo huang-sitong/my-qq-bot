@@ -1,7 +1,11 @@
 """build_tools 工具统一层测试：组装、schema 排除注入参数。"""
 
+import asyncio
+from pathlib import Path
+
 from bot.core.skills import Skill, SkillRegistry
 from bot.core.tools import build_tools
+from bot.core.tools.run_bash import BashConfig
 from tests.fakes import StubMemoryStore, StubRagService
 
 
@@ -91,3 +95,35 @@ def test_load_skill_schema_only_has_skill_name():
     by_name = {t.name: t for t in tools}
     props = by_name["load_skill"].tool_call_schema.model_json_schema()["properties"]
     assert set(props) == {"skill_name"}
+
+
+"""run_bash 工具：bash_config 启用才注入；schema 仅 command/cwd；shell 不存在降级。"""
+
+
+def test_bash_tool_present_when_config_enabled():
+    tools = build_tools(bash_config=BashConfig(enabled=True, project_root=Path(".")))
+    assert "run_bash" in _names(tools)
+
+
+def test_no_bash_tool_when_disabled_or_none():
+    disabled = build_tools(bash_config=BashConfig(enabled=False, project_root=Path(".")))
+    assert "run_bash" not in _names(disabled)
+    assert "run_bash" not in _names(build_tools())
+
+
+def test_bash_schema_only_command_and_cwd():
+    tools = build_tools(bash_config=BashConfig(enabled=True, project_root=Path(".")))
+    by_name = {t.name: t for t in tools}
+    props = by_name["run_bash"].tool_call_schema.model_json_schema()["properties"]
+    assert set(props) == {"command", "cwd"}
+    assert "命令" in props["command"]["description"]
+    assert "工作目录" in props["cwd"]["description"]
+
+
+def test_bash_tool_degrades_on_exception():
+    """shell 不存在（FileNotFoundError）→ 工具返回「工具执行失败。」，不让异常崩 ToolNode。"""
+    cfg = BashConfig(enabled=True, shell="no_such_shell", timeout=1, project_root=Path("."))
+    tools = build_tools(bash_config=cfg)
+    tool = {t.name: t for t in tools}["run_bash"]
+    result = asyncio.run(tool.ainvoke({"command": "echo hi"}))
+    assert result == "工具执行失败。"

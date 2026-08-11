@@ -17,6 +17,7 @@ from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
 from bot.core.skills.tools import load_skill, unload_skill
+from bot.core.tools.run_bash import BashConfig, run_bash
 from bot.core.tools.search_chat_history import search_chat_history
 from bot.core.tools.user_memory import recall_user_memory, remember_user_memory
 
@@ -50,6 +51,33 @@ LOAD_SKILL_TOOL_DESCRIPTION = (
 UNLOAD_SKILL_TOOL_DESCRIPTION = (
     "释放一个已加载的技能，停止遵循其规则。技能不再需要（任务完成/话题偏离）时调用。幂等。"
 )
+
+BASH_TOOL_DESCRIPTION = (
+    "在 bot 宿主上执行 bash 命令（Git Bash，Windows）。"
+    "主要用于运行技能（skill）中的脚本、配置技能所需环境"
+    "（安装依赖/创建虚拟环境/设置环境变量等）。\n"
+    "- command：要执行的 bash 命令字符串"
+    "（每次调用独立新 shell，cd/export 不跨调用保持）\n"
+    "- cwd：工作目录（绝对路径；留空为项目根目录）\n"
+    "- 工作目录仅限白名单根目录内；危险命令会被拦截；输出截断；超时退出。\n"
+    "- 返回「退出码 N」+ 输出；退出码非 0 表示失败，可调整命令重试。"
+)
+
+
+def _make_bash_tool(cfg: BashConfig) -> BaseTool:
+    async def _run(
+        command: Annotated[str, Field(description="要执行的 bash 命令字符串")],
+        cwd: Annotated[str, Field(description="工作目录（绝对路径；留空为项目根目录）")] = "",
+    ) -> str:
+        try:
+            return await run_bash(command, cwd, cfg=cfg)
+        except Exception:
+            logger.exception("run_bash failed")
+            return "工具执行失败。"
+
+    return StructuredTool.from_function(
+        coroutine=_run, name="run_bash", description=BASH_TOOL_DESCRIPTION,
+    )
 
 
 def _make_search_tool(rag_service) -> BaseTool:
@@ -161,12 +189,13 @@ def _make_skill_tools(skill_registry) -> list[BaseTool]:
 
 
 def build_tools(rag_service=None, memory_store=None, mcp_tools=None,
-                skill_registry=None) -> list[BaseTool]:
+                skill_registry=None, bash_config=None) -> list[BaseTool]:
     """组装当前可用工具列表（BaseTool）。
 
     - rag_service 存在且启用 → search_chat_history
     - memory_store 存在 → remember/recall_user_memory
     - skill_registry 非空 → load_skill/unload_skill
+    - bash_config 存在且 enabled → run_bash
     - mcp_tools（BaseTool 列表）→ 直接并入
     """
     tools: list[BaseTool] = []
@@ -176,5 +205,7 @@ def build_tools(rag_service=None, memory_store=None, mcp_tools=None,
         tools += _make_memory_tools(memory_store)
     if skill_registry is not None and skill_registry.names():
         tools += _make_skill_tools(skill_registry)
+    if bash_config is not None and bash_config.enabled:
+        tools.append(_make_bash_tool(bash_config))
     tools += list(mcp_tools or [])
     return tools
