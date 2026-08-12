@@ -41,6 +41,7 @@ class EmbeddingService:
                 max_entries=getattr(config, "embed_cache_max_entries", 20000),
             )
         self._cache = cache
+        self._embed_lock = asyncio.Lock()
         logger.info(
             "EmbeddingService ready: model=%s dimensions=%s base_url=%s cache=%s",
             config.embed_model, config.embed_dimensions, config.embed_base_url,
@@ -70,25 +71,29 @@ class EmbeddingService:
             cached = await asyncio.to_thread(self._cache.get, key)
             if cached is not None:
                 return cached
-            vec = await asyncio.to_thread(self._embeddings.embed_query, text)
+            async with self._embed_lock:
+                vec = await asyncio.to_thread(self._embeddings.embed_query, text)
             await asyncio.to_thread(self._cache.set, key, self._config.embed_model, query, vec)
             return vec
-        return await asyncio.to_thread(self._embeddings.embed_query, text)
+        async with self._embed_lock:
+            return await asyncio.to_thread(self._embeddings.embed_query, text)
 
     async def embed_documents(self, contents: list[str]) -> list[list[float]]:
         if not contents:
             return []
         texts = [self._document_text(c) for c in contents]
         if self._cache is None:
-            return await asyncio.to_thread(self._embeddings.embed_documents, texts)
+            async with self._embed_lock:
+                return await asyncio.to_thread(self._embeddings.embed_documents, texts)
         keys = [self._cache_key("document", c) for c in contents]
         cached = await asyncio.to_thread(self._cache.mget, keys)
         missing = [(i, t) for i, t in enumerate(texts) if cached[i] is None]
         if missing:
             idxs = [i for i, _ in missing]
-            vecs = await asyncio.to_thread(
-                self._embeddings.embed_documents, [t for _, t in missing]
-            )
+            async with self._embed_lock:
+                vecs = await asyncio.to_thread(
+                    self._embeddings.embed_documents, [t for _, t in missing]
+                )
             pairs = [
                 (keys[i], self._config.embed_model, contents[i], v)
                 for i, v in zip(idxs, vecs)

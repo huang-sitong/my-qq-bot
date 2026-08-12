@@ -1,6 +1,7 @@
 """EmbeddingCache + EmbeddingService 嵌入缓存：命中跳过 Ollama、批量、禁用、淘汰。"""
 
 import asyncio
+import threading
 
 from bot.core.rag.cache import EmbeddingCache
 from bot.core.rag.embedder import EmbeddingService
@@ -21,6 +22,23 @@ class CountingEmbedder:
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         self.doc_calls += 1
         return [[0.1] * 4 for _ in texts]
+
+
+class BlockingEmbedder(CountingEmbedder):
+    def __init__(self):
+        super().__init__()
+        self.entered = threading.Event()
+        self.release = threading.Event()
+        self.active = 0
+        self.max_active = 0
+
+    def embed_query(self, text):
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        self.entered.set()
+        self.release.wait(2)
+        self.active -= 1
+        return [0.1] * 4
 
 
 def _svc(tmp_path, **cfg_overrides):
@@ -131,3 +149,20 @@ def test_cache_text_stores_raw_content(tmp_path):
             "SELECT text FROM embed_cache WHERE text = ?", (raw,)
         ).fetchall()
         assert rows and rows[0][0] == raw
+
+
+def test_embed_query_serializes_underlying_embedder():
+    fake = BlockingEmbedder()
+    config = BotConfig(embed_dimensions=4, embed_cache_enabled=False)
+    svc = EmbeddingService(config, embedder=fake, cache=None)
+
+    async def run():
+        first = asyncio.create_task(svc.embed_query("a"))
+        await asyncio.to_thread(fake.entered.wait, 2)
+        second = asyncio.create_task(svc.embed_query("b"))
+        await asyncio.sleep(0.05)
+        assert fake.max_active == 1
+        fake.release.set()
+        await asyncio.gather(first, second)
+
+    asyncio.run(run())

@@ -83,6 +83,7 @@ class MilvusStore:
         self._config = config
         self._collection = collection
         self._embedder = embedder or EmbeddingService(config)
+        self._client_lock = asyncio.Lock()
         # 默认落盘到 db_dir/milvus.db，避免从任意目录启动在 CWD 下静默新建空库
         uri = uri or os.path.join(config.db_dir, "milvus.db")
         self._client = MilvusClient(uri=uri, grpc_options=_MILVUS_GRPC_OPTIONS)
@@ -169,9 +170,10 @@ class MilvusStore:
             {**meta, "vector": vec, "text": text}
             for text, meta, vec in zip(texts, metadatas, vecs)
         ]
-        await asyncio.to_thread(self._client.insert, self._collection, rows)
-        for tid in {m["thread_id"] for m in metadatas}:
-            self._prune_thread(tid, self._config.rag_retention_per_thread)
+        async with self._client_lock:
+            await asyncio.to_thread(self._client.insert, self._collection, rows)
+            for tid in {m["thread_id"] for m in metadatas}:
+                self._prune_thread(tid, self._config.rag_retention_per_thread)
 
     def _prune_thread(self, thread_id: str, keep: int) -> None:
         """删除每线程超出 keep 的最旧记录（timestamp DESC）。
@@ -198,9 +200,10 @@ class MilvusStore:
         ids = [r["pk"] for r in rows[keep:]]
         self._client.delete(self._collection, filter=f"pk in [{', '.join(map(str, ids))}]")
 
-    def prune(self, thread_id: str, keep: int) -> None:
+    async def prune(self, thread_id: str, keep: int) -> None:
         """公开淘汰接口（add_texts 内部已自动淘汰；此接口供显式调用/测试）。"""
-        self._prune_thread(thread_id, keep)
+        async with self._client_lock:
+            self._prune_thread(thread_id, keep)
 
     # ------------------------------------------------------------------
     # 检索（字段级，D5：不用 client.query 作检索）
@@ -211,26 +214,28 @@ class MilvusStore:
     ) -> list[dict]:
         """dense 语义检索：query 嵌入后按 vector 字段 ANN。"""
         vec = await self._embedder.embed_query(query)
-        raw = await asyncio.to_thread(
-            self._client.search,
-            self._collection, data=[vec], anns_field="vector",
-            filter=_build_filter(expr, thread_id), limit=k,
-            search_params={"metric_type": "COSINE"},
-            output_fields=_OUTPUT_FIELDS,
-        )
+        async with self._client_lock:
+            raw = await asyncio.to_thread(
+                self._client.search,
+                self._collection, data=[vec], anns_field="vector",
+                filter=_build_filter(expr, thread_id), limit=k,
+                search_params={"metric_type": "COSINE"},
+                output_fields=_OUTPUT_FIELDS,
+            )
         return [_dense_hit(h) for h in raw[0]]
 
     async def search_sparse(
         self, query: str, expr: str, thread_id: str | None, k: int,
     ) -> list[dict]:
         """sparse 词法检索：query 文本直接进 BM25 函数（jieba 分词）。"""
-        raw = await asyncio.to_thread(
-            self._client.search,
-            self._collection, data=[query], anns_field="sparse",
-            filter=_build_filter(expr, thread_id), limit=k,
-            search_params={"metric_type": "BM25"},
-            output_fields=_OUTPUT_FIELDS,
-        )
+        async with self._client_lock:
+            raw = await asyncio.to_thread(
+                self._client.search,
+                self._collection, data=[query], anns_field="sparse",
+                filter=_build_filter(expr, thread_id), limit=k,
+                search_params={"metric_type": "BM25"},
+                output_fields=_OUTPUT_FIELDS,
+            )
         return [_sparse_hit(h) for h in raw[0]]
 
     def close(self) -> None:

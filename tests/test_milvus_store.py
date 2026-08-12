@@ -6,6 +6,7 @@ expr 过滤（人名 / 时间窗）、prune 淘汰、dense score 语义。
 """
 
 import asyncio
+import threading
 
 from bot.core.rag.milvus import MilvusStore
 from common import BotConfig
@@ -33,6 +34,36 @@ class FakeEmbedder:
         return vecs
 
     def close(self) -> None:
+        pass
+
+
+class _ImmediateEmbedder:
+    async def embed_query(self, query):
+        return [1.0, 0.0, 0.0, 0.0]
+
+    async def embed_documents(self, contents):
+        return [[1.0, 0.0, 0.0, 0.0] for _ in contents]
+
+    def close(self):
+        pass
+
+
+class _FakeClient:
+    def __init__(self):
+        self.active = 0
+        self.max_active = 0
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def search(self, *args, **kwargs):
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        self.entered.set()
+        self.release.wait(2)
+        self.active -= 1
+        return [[]]
+
+    def close(self):
         pass
 
 
@@ -145,7 +176,7 @@ def test_prune_keeps_newest(tmp_path):
          _meta("g1", "张三", "m2", "2026-08-01 11:00:00"),
          _meta("g1", "张三", "m3", "2026-08-01 12:00:00")],
     ))
-    store.prune("g1", 2)
+    asyncio.run(store.prune("g1", 2))
     hits = asyncio.run(store.search_dense("m", "", "g1", k=10))
     assert {h["content"] for h in hits} == {"m2", "m3"}
 
@@ -233,3 +264,21 @@ def test_milvus_store_sets_safe_keepalive(tmp_path, monkeypatch):
         "milvus-lite server 会发 too_many_pings GOAWAY 掐断连接"
     )
     assert int(opts.get("grpc.keepalive_time_ms", 0)) >= 300_000
+
+
+def test_milvus_client_operations_serialized(tmp_path):
+    store = _store(tmp_path)
+    fake = _FakeClient()
+    store._client = fake
+    store._embedder = _ImmediateEmbedder()
+
+    async def run():
+        first = asyncio.create_task(store.search_dense("a", "", "g1", 1))
+        await asyncio.to_thread(fake.entered.wait, 2)
+        second = asyncio.create_task(store.search_sparse("b", "", "g1", 1))
+        await asyncio.sleep(0.05)
+        assert fake.max_active == 1
+        fake.release.set()
+        await asyncio.gather(first, second)
+
+    asyncio.run(run())
