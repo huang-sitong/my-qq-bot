@@ -27,7 +27,7 @@ class MessageHandler:
     """Orchestrates message dispatch from Satori events to the LangGraph.
 
     Messages are validated and enqueued in ``handle()``, then processed
-    by a background worker that serializes per-thread_id processing.
+    by a background worker pool that serializes per-thread_id processing.
     """
 
     def __init__(
@@ -39,6 +39,8 @@ class MessageHandler:
         bot_config=None,
         command_registry: CommandRegistry | None = None,
         command_services: CommandServices | None = None,
+        worker_count: int = 1,
+        queue_maxsize: int = 0,
     ) -> None:
         self.client = client
         self.graph = graph
@@ -49,9 +51,10 @@ class MessageHandler:
         self._command_services = command_services
         self._bot_id: str | None = None
         self._bot_name: str | None = None
-        self._queue: asyncio.Queue[dict | None] = asyncio.Queue()
+        self._worker_count = worker_count
+        self._queue: asyncio.Queue[dict | None] = asyncio.Queue(maxsize=queue_maxsize)
         self._locks: dict[str, asyncio.Lock] = {}
-        self._worker_task: asyncio.Task[None] | None = None
+        self._worker_tasks: list[asyncio.Task[None]] = []
         self._last_auto_reply_at: dict[str, float] = {}
         self._random = random.Random()
 
@@ -60,16 +63,20 @@ class MessageHandler:
     # ------------------------------------------------------------------
 
     async def start(self) -> None:
-        """Start the background message worker."""
-        self._worker_task = asyncio.create_task(self._worker())
-        logger.info("Message worker started")
+        """Start the configured number of background message workers."""
+        self._worker_tasks = [
+            asyncio.create_task(self._worker())
+            for _ in range(self._worker_count)
+        ]
+        logger.info("Message workers started: %d", self._worker_count)
 
     async def stop(self) -> None:
-        """Signal the worker to stop and wait for pending messages."""
-        await self._queue.put(None)  # Sentinel
-        if self._worker_task is not None:
-            await self._worker_task
-            self._worker_task = None
+        """Signal workers to stop and wait for pending messages."""
+        for _ in range(self._worker_count):
+            await self._queue.put(None)
+        if self._worker_tasks:
+            await asyncio.gather(*self._worker_tasks, return_exceptions=True)
+            self._worker_tasks = []
         logger.info("Message worker stopped")
 
     # ------------------------------------------------------------------
@@ -146,24 +153,29 @@ class MessageHandler:
     # ------------------------------------------------------------------
 
     async def _worker(self) -> None:
-        """Background worker: dequeue and process messages sequentially.
+        """Background worker: dequeue and process messages.
 
-        Per-thread_id locks serialise same-conversation messages to
+        Per-thread_id locks serialize same-conversation messages to
         prevent LangGraph checkpoint conflicts.
         """
         while True:
-            item = await self._queue.get()
-            if item is None:  # Sentinel — shutdown
+            try:
+                item = await self._queue.get()
+                if item is None:  # Sentinel — shutdown
+                    self._queue.task_done()
+                    return
+                thread_id: str = item["thread_id"]
+                lock = self._locks.setdefault(thread_id, asyncio.Lock())
+                async with lock:
+                    try:
+                        await self._process(item)
+                    except Exception:
+                        logger.exception("Message processing failed for thread %s", thread_id)
                 self._queue.task_done()
-                break
-            thread_id: str = item["thread_id"]
-            lock = self._locks.setdefault(thread_id, asyncio.Lock())
-            async with lock:
-                try:
-                    await self._process(item)
-                except Exception:
-                    logger.exception("Message processing failed for thread %s", thread_id)
-            self._queue.task_done()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Message worker loop error")
 
     async def _process(self, item: dict) -> None:
         """Process a single message: extract data → command dispatch → graph → reply."""

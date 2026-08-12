@@ -120,6 +120,8 @@ async def main():
         bot_config=config,
         command_registry=command_registry,
         command_services=command_services,
+        worker_count=config.message_worker_count,
+        queue_maxsize=config.message_queue_maxsize,
     )
 
     # --- Register event handlers ---
