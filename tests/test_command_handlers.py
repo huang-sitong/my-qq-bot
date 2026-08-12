@@ -140,7 +140,7 @@ def test_status_returns_safe_runtime_info():
     registry = build_command_registry(services)
     result = _execute(registry, services, "status")
     assert "qq-bot 1.2.3" in result.text
-    assert "sensenova-6.7-flash-lite" in result.text
+    assert "deepseek-v4-flash" in result.text
     assert "db" in result.text
     assert "MCP：2 个工具" in result.text
     assert "API_KEY" not in result.text

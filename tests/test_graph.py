@@ -375,7 +375,8 @@ def test_graph_runs_send_file_tool(tmp_path):
     ])
     graph, _ = asyncio.run(
         create_graph(
-            llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
+            llm, BotConfig(_env_file=None, bash_allowed_roots=[str(tmp_path)]),
+            db_dir=str(tmp_path),
             file_sender=sender,
         )
     )

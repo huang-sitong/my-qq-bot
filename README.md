@@ -17,7 +17,7 @@ uv run python main.py         # 启动 bot
 | 变量 | 说明 |
 |---|---|
 | `BASE_URL` / `API_KEY` | 主 LLM OpenAI 兼容端点 |
-| `BOT_LLM_MODEL` | 主 LLM 模型名（默认 `sensenova-6.7-flash-lite`） |
+| `BOT_LLM_MODEL` | 主 LLM 模型名（默认 `deepseek-v4-flash`） |
 | `BOT_LLM_MULTIMODAL` | `1` 时图片直接进主 LLM；`0` 走本地视觉（`BOT_VISION_MODEL`，默认 Ollama `qwen3-vl`） |
 | `BOT_RAG_ENABLED` | 群聊历史向量检索（默认开启；嵌入用 Ollama `qwen3-embedding`） |
 | `BOT_EMBED_BASE_URL` | 嵌入向量专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |

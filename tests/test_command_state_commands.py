@@ -69,7 +69,7 @@ def test_clear_resets_context_and_skills_but_keeps_persona(tmp_path):
             registry = build_command_registry(services)
             reply = await registry.resolve("clear").handler(_ctx(services))
 
-            assert reply.text == "已清空当前会话上下文，已加载技能也已清除。"
+            assert reply.text == "已清空当前会话上下文。"
             snapshot = await graph.aget_state(cfg)
             assert snapshot.values["persona"] == "你是{bot_name}"
             assert snapshot.values.get("messages", []) == []
