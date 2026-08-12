@@ -37,6 +37,7 @@ class BotState(TypedDict):
     auto_reply: bool        # 群聊非@文本/图片是否直接回复（handler 从 config 注入，detect_intent 消费）
     # --- Message classification (computed in MessageHandler, ingress) ---
     content_kind: str       # object.bot.content.MessageKind.value: "text"/"image"/"file"/"audio"/"video"
+    has_text: bool         # handler 从 ParsedContent.has_text 注入，供图文混合入上下文
     llm_text: str           # media→占位符、@→@昵称(id)/所有成员 — HumanMessage content
     clean_text: str         # 剥全部标签、unescape、折叠空白（RAG 索引用，handler 预计算）
     image_srcs: list[str]   # 本轮图片 URL（describe_image 视觉理解用）

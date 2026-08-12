@@ -138,6 +138,26 @@ def test_group_non_mention_image_ends_without_index(tmp_path):
     assert result["messages"] == []  # 不入上下文
 
 
+def test_group_non_mention_image_text_indexes_without_reply(tmp_path):
+    rag = StubRagService()
+    graph, _ = asyncio.run(
+        create_graph(ScriptedLLM([]), BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+    )
+    state = {
+        **_initial_state(),
+        "channel_type": 0,
+        "content_kind": "image",
+        "clean_text": "看看这张图",
+        "llm_text": "看看这张图 [图片]",
+        "has_text": True,
+    }
+    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+
+    assert result["reply_text"] == ""
+    assert rag.last_indexed is not None
+    assert rag.last_indexed["user_message"] == "看看这张图"
+
+
 def test_private_file_ends_without_reply(tmp_path):
     rag = StubRagService()
     graph, _ = asyncio.run(

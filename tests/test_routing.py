@@ -110,6 +110,14 @@ def test_not_keep_non_reply_media():
     assert keep_in_context(False, "file") is False
 
 
+def test_keep_mixed_image_text_without_reply():
+    assert keep_in_context(False, "image", has_text=True) is True
+
+
+def test_not_keep_pure_image_without_text():
+    assert keep_in_context(False, "image", has_text=False) is False
+
+
 # --- route_after_detect ---
 
 def test_reply_routes_to_describe_image():
@@ -127,3 +135,7 @@ def test_non_reply_text_routes_to_summarize():
 def test_non_reply_media_routes_to_none():
     assert route_after_detect(False, "image") is None
     assert route_after_detect(False, "file") is None
+
+
+def test_non_reply_mixed_image_text_routes_to_summarize():
+    assert route_after_detect(False, "image", has_text=True) == "summarize"

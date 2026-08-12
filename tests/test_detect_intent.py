@@ -135,6 +135,20 @@ def test_image_in_group_without_at_does_not_respond():
     assert result["messages"] == []  # 不入上下文、不索引
 
 
+def test_group_image_with_text_without_at_added_to_context():
+    state = make_state(
+        llm_text="看图 [图片]",
+        clean_text="看图",
+        content_kind="image",
+        channel_type=0,
+        bot_id="bot1",
+        has_text=True,
+    )
+    result = asyncio.run(detect_intent(state))
+    assert result["should_respond"] is False
+    assert len(result["messages"]) == 1
+
+
 def test_group_name_only_mention_responds_with_empty_bot_id():
     state = make_state(
         llm_text="@小助手(10001) 你好",

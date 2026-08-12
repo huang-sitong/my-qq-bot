@@ -55,6 +55,7 @@ def _route_after_detect(state: BotState) -> str:
     return route_after_detect(
         state.get("should_respond", False),
         state.get("content_kind", ""),
+        state.get("has_text", False),
     ) or END
 
 

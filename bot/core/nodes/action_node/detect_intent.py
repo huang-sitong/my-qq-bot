@@ -35,6 +35,7 @@ async def detect_intent(state: BotState) -> dict:
     user_name = state.get("user_name", "")
     content_kind = state.get("content_kind", "")
     auto_reply = state.get("auto_reply", False)
+    has_text = state.get("has_text", False)
 
     # 判定表（decide_reply / keep_in_context）单一来源见 bot.core.utils.routing
     should_respond = decide_reply(channel_type, content_kind, bot_id, bot_name, mentions, auto_reply)
@@ -49,10 +50,10 @@ async def detect_intent(state: BotState) -> dict:
 
     # 3) Non-replied media must NOT enter context — its placeholder would
     #    pollute later @-mention turns. Keep them out of ``messages``.
-    add_to_context = keep_in_context(should_respond, content_kind)
+    add_to_context = keep_in_context(should_respond, content_kind, has_text)
     logger.debug(
-        "detect_intent: should_respond=%s channel_type=%s content_kind=%s add_to_context=%s",
-        should_respond, channel_type, content_kind, add_to_context,
+        "detect_intent: should_respond=%s channel_type=%s content_kind=%s has_text=%s add_to_context=%s",
+        should_respond, channel_type, content_kind, has_text, add_to_context,
     )
     return {
         "should_respond": should_respond,
