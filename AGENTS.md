@@ -99,7 +99,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - **`object/` 包**：setuptools `__legacy__` 把 `data_object` 改名 `object`。始终 `from object.*` 导入。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），detect_intent 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，detect_intent 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
-- **回复判定树（纯确定性，无 LLM router）**：text/image 在私聊或群聊**顶层**@时回复；file/audio/video 永不回复（即使私聊）；群聊非@文本入上下文+只索引用户消息、非@图片直接 END；图文混合按主类型。单一来源 `routing.py`（decide_reply 按 mentions id 为主昵称兜底，不子串匹配 raw_content）。`BOT_AUTO_REPLY=1` 或管理员 `/auto_reply on` 后，群聊非@文本/图片也回复（媒体仍永不回复；全局、运行时态，重启回落 env 默认）。
+- **回复判定树（纯确定性，无 LLM router）**：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本忽略；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。
 - **视觉节点双模式**：`llm_multimodal=0`（默认）把 `[图片]` 原位替换为 `[图片：描述]` 并写 vision_desc；`=1` 图片转 data URL 进主 LLM（本地视觉仅产 vision_desc 供 RAG）。`auto_reply=True` 图片轮跳过本地视觉：多模态主 LLM 直接看图，非多模态保留 `[图片]` 占位符且不产 vision_desc。多模态 content 块列表**一律经 `content_to_text` 归一化为字符串**（透传列表会在 index_turn `.strip()` 崩溃）；摘要格式化只取 text 块，绝不带 base64。VisionService 单张失败返回 `""` 不抛。`[图片：{desc}]` 变体由 describe_image 与 index_turn 各自拼装，分隔符变更须同步两处。
 - **uv**：PyPI mirror = mirrors.aliyun.com（pyproject `[[tool.uv.index]]`）；Python >=3.12。
 - **`.env`**：`BASE_URL` + `API_KEY`（非 GO_*），`.env-template` 是文档化 schema。

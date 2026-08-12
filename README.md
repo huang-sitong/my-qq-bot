@@ -23,6 +23,8 @@ uv run python main.py         # 启动 bot
 | `BOT_EMBED_BASE_URL` | 嵌入向量专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |
 | `BOT_VISION_BASE_URL` | 视觉模型专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |
 | `OLLAMA_BASE_URL` | 旧共用 Ollama 地址，作为嵌入/视觉的兼容回落 |
+| `BOT_AUTO_REPLY_RANDOM_RATE` | auto_reply 非@消息的随机回复概率，默认 `0.3` |
+| `BOT_AUTO_REPLY_COOLDOWN` | 同一会话两次 auto_reply 的最小间隔秒数，默认 `30` |
 | `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS_FILE` | MCP 外部工具（可选；server 定义在 `config/mcp_servers.json`） |
 
 ## 运行时数据
