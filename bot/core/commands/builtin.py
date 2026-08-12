@@ -1,8 +1,9 @@
-"""V1 内置命令：help / ping / version / skills / skill / status。"""
+"""V1 内置命令：help / ping / version / skills / skill / status / auto_reply / clear / compact / mcp。"""
 
 import time
 from functools import partial
 
+from bot.core.nodes import summarize_node
 from common.config import _parse_flag
 
 from .model import Command, CommandContext, CommandResult, CommandServices
@@ -61,6 +62,7 @@ def _format_uptime(seconds: float) -> str:
 async def _status(ctx: CommandContext) -> CommandResult:
     cfg = ctx.config
     services = ctx.services
+    mcp_count = len(services.mcp_tool_names) or services.mcp_tool_count
     lines = [
         f"qq-bot {services.version}",
         f"运行时间：{_format_uptime(time.time() - services.started_at)}",
@@ -68,7 +70,7 @@ async def _status(ctx: CommandContext) -> CommandResult:
         f"数据库目录：{cfg.db_dir}",
         f"RAG：{'开启' if services.rag_service is not None else '关闭'}",
         f"视觉：{'开启' if services.vision_service is not None else '关闭'}",
-        f"MCP：{services.mcp_tool_count} 个工具",
+        f"MCP：{mcp_count} 个工具",
         f"技能：{services.skill_registry.total if services.skill_registry else 0} 个",
         f"记忆：{'开启' if services.memory_store is not None else '关闭'}",
         f"自动回复：{'开启' if cfg.auto_reply else '关闭'}",
@@ -88,6 +90,49 @@ async def _auto_reply(ctx: CommandContext) -> CommandResult:
         return CommandResult(text="参数无效，用法：/auto_reply [on|off]")
     cfg.auto_reply = value
     return CommandResult(text=f"auto_reply 已{'开启' if value else '关闭'}。")
+
+
+async def _clear(ctx: CommandContext) -> CommandResult:
+    if ctx.services.checkpointer is None:
+        return CommandResult(text="当前未启用会话检查点，无法清空。")
+    await ctx.services.checkpointer.adelete_thread(ctx.thread_id)
+    return CommandResult(text="已清空当前会话上下文，已加载技能也已清除。")
+
+
+async def _compact(ctx: CommandContext) -> CommandResult:
+    graph = ctx.services.graph
+    llm = ctx.services.llm
+    if graph is None or llm is None:
+        return CommandResult(text="当前未启用对话图或 LLM，无法压缩上下文。")
+    config = {"configurable": {"thread_id": ctx.thread_id}}
+    snapshot = await graph.aget_state(config)
+    state = snapshot.values if snapshot is not None else {}
+    if not state.get("messages"):
+        return CommandResult(text="当前没有可压缩的上下文。")
+    result = await summarize_node(
+        state,
+        llm=llm,
+        bot_config=ctx.config,
+        skill_registry=ctx.services.skill_registry,
+        force=True,
+    )
+    if not result:
+        return CommandResult(text="当前上下文较少，无需压缩。")
+    await graph.aupdate_state(config, result)
+    removed = len(result.get("messages", []))
+    return CommandResult(text=f"已提前压缩上下文，移除 {removed} 条历史消息。")
+
+
+async def _mcp(ctx: CommandContext) -> CommandResult:
+    names = ctx.services.mcp_tool_names
+    count = ctx.services.mcp_tool_count
+    if not names and count <= 0:
+        return CommandResult(text="当前未加载 MCP 工具。")
+    if not names:
+        return CommandResult(text=f"已加载 {count} 个 MCP 工具。")
+    lines = [f"已加载 {len(names)} 个 MCP 工具："]
+    lines.extend(f"- {name}" for name in names)
+    return CommandResult(text="\n".join(lines))
 
 
 def build_command_registry(services: CommandServices, prefix: str = "/") -> CommandRegistry:
@@ -141,5 +186,26 @@ def build_command_registry(services: CommandServices, prefix: str = "/") -> Comm
         usage=f"{prefix}auto_reply [on|off]",
         permission="admin",
         handler=_auto_reply,
+    ))
+    registry.register(Command(
+        name="clear",
+        description="清空当前会话上下文（含已加载技能）",
+        usage=f"{prefix}clear",
+        permission="admin",
+        handler=_clear,
+    ))
+    registry.register(Command(
+        name="compact",
+        description="提前总结并压缩当前会话上下文",
+        usage=f"{prefix}compact",
+        permission="admin",
+        handler=_compact,
+    ))
+    registry.register(Command(
+        name="mcp",
+        description="查看已加载的 MCP 工具",
+        usage=f"{prefix}mcp",
+        permission="admin",
+        handler=_mcp,
     ))
     return registry

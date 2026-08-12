@@ -36,30 +36,34 @@ async def summarize_node(
     llm: ChatOpenAI,
     bot_config: BotConfig,
     skill_registry=None,
+    force: bool = False,
 ) -> dict:
     """Check context size; if over threshold, summarize old messages.
 
     Returns ``{}`` (no-op) when below threshold or when there are no
     messages to compress.  Otherwise returns ``RemoveMessage`` updates
-    and a new ``conversation_summary``.
+    and a new ``conversation_summary``. ``force=True`` skips the threshold
+    check so commands can compact proactively; it still no-ops when there
+    is nothing old enough to remove.
     """
-    trigger = int(bot_config.summary_trigger_ratio * bot_config.llm_context_window)
+    if not force:
+        trigger = int(bot_config.summary_trigger_ratio * bot_config.llm_context_window)
 
-    # 1. Check if summarization is needed
-    total = estimate_context_tokens(
-        state["messages"],
-        state.get("persona", ""),
-        state.get("conversation_summary", ""),
-        skill_registry=skill_registry,
-        active_skills=state.get("active_skills", []),
-    )
-    logger.debug(
-        "summarize check: total=%d trigger=%d thread=%s",
-        total, trigger, state.get("thread_id", ""),
-    )
+        # 1. Check if summarization is needed
+        total = estimate_context_tokens(
+            state["messages"],
+            state.get("persona", ""),
+            state.get("conversation_summary", ""),
+            skill_registry=skill_registry,
+            active_skills=state.get("active_skills", []),
+        )
+        logger.debug(
+            "summarize check: total=%d trigger=%d thread=%s",
+            total, trigger, state.get("thread_id", ""),
+        )
 
-    if total <= trigger:
-        return {}  # No summarization needed
+        if total <= trigger:
+            return {}  # No summarization needed
 
     # 2. Split messages: keep recent, summarize the rest
     keep_tokens = int(bot_config.summary_keep_ratio * bot_config.llm_context_window)

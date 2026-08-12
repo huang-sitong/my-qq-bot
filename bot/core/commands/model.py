@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from langchain_openai import ChatOpenAI
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+    from langgraph.graph.state import CompiledStateGraph
+
     from bot.core.memory import MemoryStore
     from bot.core.rag.service import RagService
     from bot.core.skills import SkillRegistry
@@ -29,10 +33,14 @@ class CommandServices:
     version: str
     started_at: float
     bot_name: str
+    llm: ChatOpenAI | None = None
+    graph: CompiledStateGraph | None = None
+    checkpointer: AsyncSqliteSaver | None = None
     skill_registry: SkillRegistry | None = None
     rag_service: RagService | None = None
     vision_service: VisionService | None = None
     memory_store: MemoryStore | None = None
+    mcp_tool_names: tuple[str, ...] = ()
     mcp_tool_count: int = 0
 
 

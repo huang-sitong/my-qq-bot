@@ -90,26 +90,29 @@ async def main():
             config.skills_dir, index_max=config.skills_index_max,
         )
         logger.info("Loaded %d skills from %s", skill_registry.total, config.skills_dir)
+    graph, checkpointer = await create_graph(
+        llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
+        vision_service=vision_service, mcp_tools=mcp_tools, skill_registry=skill_registry,
+        file_sender=api_client,
+    )
     command_services = CommandServices(
         version=_bot_version(),
         started_at=started_at,
         bot_name="",
+        llm=llm,
+        graph=graph,
+        checkpointer=checkpointer,
         skill_registry=skill_registry,
         rag_service=rag_service,
         vision_service=vision_service,
         memory_store=memory_store,
+        mcp_tool_names=tuple(tool.name for tool in mcp_tools),
         mcp_tool_count=len(mcp_tools),
     )
     command_registry = (
         build_command_registry(command_services, config.command_prefix)
         if config.command_enabled
         else None
-    )
-    # checkpointer 由 graph 内部持有引用，生命周期随进程，main.py 无需单独管理
-    graph, _ = await create_graph(
-        llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
-        vision_service=vision_service, mcp_tools=mcp_tools, skill_registry=skill_registry,
-        file_sender=api_client,
     )
 
     handler = MessageHandler(

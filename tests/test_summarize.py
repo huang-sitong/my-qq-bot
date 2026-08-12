@@ -27,3 +27,25 @@ def test_summary_from_multimodal_list_content_normalized_to_text():
     result = asyncio.run(summarize_node(state, llm=llm, bot_config=config))
     assert result["conversation_summary"] == "聊过猫和狗"
     assert isinstance(result["conversation_summary"], str)
+
+
+def test_force_summarizes_below_trigger():
+    """/compact 的 force 模式应绕过正常 trigger，提前压缩旧消息。"""
+    llm = ScriptedLLM([AIMessage(content="压缩后的摘要")])
+    # 正常路径不会触发：context_window 足够大，summary_trigger_ratio 未达阈值
+    config = BotConfig(
+        llm_context_window=10000,
+        summary_trigger_ratio=0.5,
+        summary_keep_ratio=0.01,
+    )
+    state = make_state(messages=[
+        HumanMessage(content="这是第一条较长的背景信息，请记住，后面会继续讨论"),
+        AIMessage(content="好的，我已经记住这条较长的背景信息。"),
+        HumanMessage(content="这是第二条较长的背景信息，也需要保留"),
+        AIMessage(content="明白，这条背景信息也会保留。"),
+    ])
+    result = asyncio.run(summarize_node(
+        state, llm=llm, bot_config=config, force=True,
+    ))
+    assert result["conversation_summary"] == "压缩后的摘要"
+    assert result["messages"]

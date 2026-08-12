@@ -42,7 +42,7 @@ db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite
 
 ```
 WS 事件 → MessageHandler.handle() → 校验+入队 → worker（按 thread_id 锁串行）→ _process
-  → 命中已注册斜杠指令：权限 → handler → 回复 → 不进图、不索引
+  → 命中已注册斜杠指令：权限 → handler → 回复 → 不进图、不索引（clear/compact 图外直接读写 checkpoint）
   → graph.ainvoke
     → detect_intent（确定性三路，无 LLM router）
     → describe_image（回复轮图片：下载→Ollama 描述→[图片] 原位替换）
@@ -90,7 +90,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **技能模块**：`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：handler 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
 
-**指令模块（图外斜杠指令）**：env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。`_process` 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply`（status/auto_reply 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
+**指令模块（图外斜杠指令）**：env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。`_process` 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp`（status/auto_reply/clear/compact/mcp 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `AsyncSqliteSaver.adelete_thread` 删当前 thread checkpoint（消息/摘要/active_skills 一并清空，不删 RAG 历史与用户记忆）；`/compact` 读 checkpoint 后调 `summarize_node(force=True)`，经 `aupdate_state` 写回新摘要并移除旧消息；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
 
 **Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 skill_manager）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）· `subgraph/`（嵌套子图）。
 

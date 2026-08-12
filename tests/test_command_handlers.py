@@ -183,3 +183,31 @@ def test_auto_reply_is_admin_command():
     registry = build_command_registry(services)
     assert registry.resolve("auto_reply").permission == "admin"
     assert "/auto_reply" in _execute(registry, services, "help").text  # /help 自动收录
+
+
+def test_mcp_lists_loaded_tool_names():
+    services = _services()
+    services.mcp_tool_names = ("web_search", "read_file")
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "mcp")
+    assert "已加载 2 个 MCP 工具" in result.text
+    assert "- web_search" in result.text
+    assert "- read_file" in result.text
+
+
+def test_mcp_empty():
+    services = CommandServices(
+        version="test", started_at=0.0, bot_name="",
+        mcp_tool_count=0,
+    )
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "mcp")
+    assert result.text == "当前未加载 MCP 工具。"
+
+
+def test_state_commands_are_admin_commands():
+    services = _services()
+    registry = build_command_registry(services)
+    assert registry.resolve("clear").permission == "admin"
+    assert registry.resolve("compact").permission == "admin"
+    assert registry.resolve("mcp").permission == "admin"
