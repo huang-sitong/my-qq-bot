@@ -72,7 +72,7 @@ async def main():
     vision_service = None
     if config.vision_enabled:
         vision_service = VisionService(
-            base_url=config.ollama_base_url,
+            base_url=config.vision_base_url,
             model=config.vision_model,
             timeout=config.vision_timeout,
             max_images=config.vision_max_images,

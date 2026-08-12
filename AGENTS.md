@@ -82,8 +82,8 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - LLM 主动触发：`search_chat_history` 绑定为工具，返回 tool_calls 时经 ToolNode 执行并回环；`tool_rounds` 达 `rag_max_agent_rounds` 强制收尾
 - 检索双模式：`hybrid_search`（dense ANN+score 阈值 + sparse BM25/jieba，RRF k=60 融合，当前群优先、不足跨群补齐）；属性检索（`search_by_user`，milvus expr 过滤：`person`/`content_keyword`/ISO 时间窗，thread_id=None 跨全部群）。`hours`/`start_time`/`end_time` 入口 `normalize_time` 规范化
 - 索引 `index_turn`：回复轮 2 条（用户+Bot）、群聊非@文本 1 条（仅用户）、图片回复并入 vision_desc；纯媒体但有回复时仍存 bot 回复，两者皆空才整轮跳过。timestamp 为 ISO `YYYY-MM-DD HH:MM:SS`（字典序==时间序）；记录显式 sender/receiver（`sender_id/name`、`receiver_id/name`）
-- 嵌入：Ollama `qwen3-embedding`，Query/Document 共用 Instruct 前缀，按 `(model, 任务前缀, 角色, 原文)` 哈希落盘缓存（换模型/改 RETRIEVAL_TASK 自动失效）
-- env：`BOT_RAG_ENABLED`/`BOT_EMBED_MODEL`/`OLLAMA_BASE_URL`/`BOT_EMBED_DIMENSIONS`/`BOT_EMBED_CACHE_ENABLED`/`BOT_EMBED_CACHE_MAX_ENTRIES`/`BOT_RAG_TOP_K`/`BOT_RAG_SCORE_THRESHOLD`/`BOT_RAG_RETENTION_PER_THREAD`/`BOT_RAG_MAX_AGENT_ROUNDS`；视觉 `BOT_VISION_ENABLED`/`BOT_VISION_MODEL`/`BOT_VISION_MAX_IMAGES`/`BOT_VISION_TIMEOUT`；多模态 `BOT_LLM_MULTIMODAL`（0=本地视觉/1=主 LLM）
+- 嵌入：Ollama `qwen3-embedding`，Query/Document 共用 Instruct 前缀，按 `(model, 任务前缀, 角色, 原文)` 哈希落盘缓存（换模型/改 RETRIEVAL_TASK 自动失效）；嵌入/视觉 base URL 独立配置，`OLLAMA_BASE_URL` 仅作旧共用地址兼容回落
+- env：`BOT_RAG_ENABLED`/`BOT_EMBED_MODEL`/`BOT_EMBED_BASE_URL`/`BOT_EMBED_DIMENSIONS`/`BOT_EMBED_CACHE_ENABLED`/`BOT_EMBED_CACHE_MAX_ENTRIES`/`BOT_RAG_TOP_K`/`BOT_RAG_SCORE_THRESHOLD`/`BOT_RAG_RETENTION_PER_THREAD`/`BOT_RAG_MAX_AGENT_ROUNDS`；视觉 `BOT_VISION_ENABLED`/`BOT_VISION_MODEL`/`BOT_VISION_BASE_URL`/`BOT_VISION_MAX_IMAGES`/`BOT_VISION_TIMEOUT`；多模态 `BOT_LLM_MULTIMODAL`（0=本地视觉/1=主 LLM）；`OLLAMA_BASE_URL` 旧共用地址兼容回落
 - MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS_FILE`/`BOT_MCP_TOOL_NAME_PREFIX`；server 定义集中在可提交的 `config/mcp_servers.json`（`{"servers": {...}}`，密钥用 `${ENV_VAR}` 占位），加载 `common/mcp.py::load_mcp_servers_from_file`（相对路径按项目根解析、缺失/损坏降级空、插值缺变量→空串；env 必传、不读 os.environ）；main.py 用 `dotenv_values(find_dotenv())` 读 .env 内容做插值源，再 `client.py::load_mcp_tools` 加载；加载后注入 MCP_TOOL_HINT 引导
 
 **记忆工具**：注入 MemoryStore 后 call_llm 绑定 `remember/recall_user_memory` 工具 + MEMORY_TOOL_HINT，LLM 自行决定读写；`user_id` 经 InjectedState 注入，底层官方 AsyncSqliteStore 全 async。旧"图前全量注入 + 图外抽取"方案已移除。
@@ -100,7 +100,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），detect_intent 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，detect_intent 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
 - **回复判定树（纯确定性，无 LLM router）**：text/image 在私聊或群聊**顶层**@时回复；file/audio/video 永不回复（即使私聊）；群聊非@文本入上下文+只索引用户消息、非@图片直接 END；图文混合按主类型。单一来源 `routing.py`（decide_reply 按 mentions id 为主昵称兜底，不子串匹配 raw_content）。`BOT_AUTO_REPLY=1` 或管理员 `/auto_reply on` 后，群聊非@文本/图片也回复（媒体仍永不回复；全局、运行时态，重启回落 env 默认）。
-- **视觉节点双模式**：`llm_multimodal=0`（默认）把 `[图片]` 原位替换为 `[图片：描述]` 并写 vision_desc；`=1` 图片转 data URL 进主 LLM（本地视觉仅产 vision_desc 供 RAG）。多模态 content 块列表**一律经 `content_to_text` 归一化为字符串**（透传列表会在 index_turn `.strip()` 崩溃）；摘要格式化只取 text 块，绝不带 base64。VisionService 单张失败返回 `""` 不抛。`[图片：{desc}]` 变体由 describe_image 与 index_turn 各自拼装，分隔符变更须同步两处。
+- **视觉节点双模式**：`llm_multimodal=0`（默认）把 `[图片]` 原位替换为 `[图片：描述]` 并写 vision_desc；`=1` 图片转 data URL 进主 LLM（本地视觉仅产 vision_desc 供 RAG）。`auto_reply=True` 图片轮跳过本地视觉：多模态主 LLM 直接看图，非多模态保留 `[图片]` 占位符且不产 vision_desc。多模态 content 块列表**一律经 `content_to_text` 归一化为字符串**（透传列表会在 index_turn `.strip()` 崩溃）；摘要格式化只取 text 块，绝不带 base64。VisionService 单张失败返回 `""` 不抛。`[图片：{desc}]` 变体由 describe_image 与 index_turn 各自拼装，分隔符变更须同步两处。
 - **uv**：PyPI mirror = mirrors.aliyun.com（pyproject `[[tool.uv.index]]`）；Python >=3.12。
 - **`.env`**：`BASE_URL` + `API_KEY`（非 GO_*），`.env-template` 是文档化 schema。
 - **严格布尔解析（Flag）**：布尔 env 只接受 `1/0/true/false/yes/no/on/off/空`，非法值抛 ValidationError 启动崩——有意 fail-fast。

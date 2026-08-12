@@ -77,7 +77,7 @@ class BotConfig(BaseSettings):
     llm_base_url: str | None = Field(default=None, validation_alias="BASE_URL")
     llm_api_key: str | None = Field(default=None, validation_alias="API_KEY")
     llm_model: str = Field(
-        default="sensenova-6.7-flash-lite",
+        default="deepseek-v4-flash",
         validation_alias="BOT_LLM_MODEL",
     )
     llm_temperature: float = Field(
@@ -107,7 +107,7 @@ class BotConfig(BaseSettings):
 
     # --- Context Window ---
     llm_context_window: int = Field(
-        default=200_000,
+        default=500_000,
         gt=0,
         validation_alias="BOT_LLM_CONTEXT_WINDOW",
     )
@@ -146,6 +146,15 @@ class BotConfig(BaseSettings):
     embed_model: str = Field(
         default="qwen3-embedding:0.6b",
         validation_alias="BOT_EMBED_MODEL",
+    )
+    # 嵌入与视觉各自独立 URL；两者都未设置时回落到旧 OLLAMA_BASE_URL。
+    embed_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias="BOT_EMBED_BASE_URL",
+    )
+    vision_base_url: str = Field(
+        default="http://localhost:11434",
+        validation_alias="BOT_VISION_BASE_URL",
     )
     ollama_base_url: str = Field(
         default="http://localhost:11434",
@@ -299,4 +308,8 @@ class BotConfig(BaseSettings):
     def _validate_summary_ratios(self) -> "BotConfig":
         if self.summary_keep_ratio > self.summary_trigger_ratio:
             raise ValueError("summary_keep_ratio must be <= summary_trigger_ratio")
+        if "embed_base_url" not in self.model_fields_set and self.ollama_base_url:
+            self.embed_base_url = self.ollama_base_url
+        if "vision_base_url" not in self.model_fields_set and self.ollama_base_url:
+            self.vision_base_url = self.ollama_base_url
         return self

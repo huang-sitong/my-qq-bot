@@ -8,6 +8,8 @@
   为 [图片：描述]，``vision_desc`` 供 RAG 索引。
 
 视觉服务为 None 或非图片消息时 no-op（占位符保留，行为同旧版）。
+``auto_reply=True`` 时跳过本地视觉：多模态主 LLM 直接收图；非多模态只保留
+``[图片]`` 占位符，且不产生 ``vision_desc``。
 """
 
 from langchain_core.messages import HumanMessage
@@ -81,10 +83,17 @@ async def describe_image_node(
     if not messages or not isinstance(messages[-1], HumanMessage):
         return {}
     msg = messages[-1]
+    auto_reply = state.get("auto_reply", False)
+
+    # auto_reply 图片轮不走本地视觉模型：多模态由主 LLM 直接看图，
+    # 非多模态只保留占位符，并清空陈旧 vision_desc 防止污染 RAG 索引。
+    if auto_reply and not llm_multimodal:
+        return {"vision_desc": ""}
 
     if llm_multimodal:
         return await _describe_multimodal(
             msg, image_srcs, vision_service, max_images, timeout,
+            use_local_vision=not auto_reply,
         )
 
     # 纯文本模式（现状）：本地视觉描述 → [图片：描述] 原位替换
@@ -107,13 +116,14 @@ async def _describe_multimodal(
     vision_service: VisionService | None,
     max_images: int,
     timeout: float,
+    use_local_vision: bool = True,
 ) -> dict:
     """多模态模式：下载图片 → 原位替换为 content 数组；本地视觉仅产 vision_desc。"""
     data_urls = await download_images_as_data_urls(
         image_srcs, max_images=max_images, timeout=timeout,
     )
     vision_desc = ""
-    if vision_service is not None:
+    if use_local_vision and vision_service is not None:
         descriptions = await vision_service.describe_many(image_srcs)
         vision_desc = "；".join(d for d in descriptions if d)
     # 图片全下载失败且无描述：清空陈旧 vision_desc，防跨轮污染 RAG 索引

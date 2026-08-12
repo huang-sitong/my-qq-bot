@@ -33,6 +33,8 @@ EXPECTED_DEFAULTS = {
     "persona_prompt": DEFAULT_PERSONA_PROMPT,
     "rag_enabled": True,
     "embed_model": "qwen3-embedding:0.6b",
+    "embed_base_url": "http://localhost:11434",
+    "vision_base_url": "http://localhost:11434",
     "ollama_base_url": "http://localhost:11434",
     "embed_dimensions": 1024,
     "embed_cache_enabled": True,
@@ -86,6 +88,8 @@ ENV_SAMPLES = {
     "persona_prompt": ("prompt", "prompt"),
     "rag_enabled": ("0", False),
     "embed_model": ("model", "model"),
+    "embed_base_url": ("http://embed", "http://embed"),
+    "vision_base_url": ("http://vision", "http://vision"),
     "ollama_base_url": ("http://ollama", "http://ollama"),
     "embed_dimensions": ("8", 8),
     "embed_cache_enabled": ("0", False),
@@ -215,6 +219,32 @@ def test_bash_allowed_roots_stripped_and_deduped(monkeypatch):
     monkeypatch.setenv("BOT_BASH_ALLOWED_ROOTS", "C:/a, C:/a , D:/b")
     config = BotConfig(_env_file=None)
     assert config.bash_allowed_roots == ["C:/a", "D:/b"]
+
+
+def test_embed_and_vision_urls_use_specific_env(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_EMBED_BASE_URL", "http://embed.local")
+    monkeypatch.setenv("BOT_VISION_BASE_URL", "http://vision.local")
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy.local")
+    config = BotConfig(_env_file=None)
+    assert config.embed_base_url == "http://embed.local"
+    assert config.vision_base_url == "http://vision.local"
+
+
+def test_embed_and_vision_urls_fallback_to_ollama(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy.local")
+    config = BotConfig(_env_file=None)
+    assert config.embed_base_url == "http://legacy.local"
+    assert config.vision_base_url == "http://legacy.local"
+
+
+def test_embed_url_does_not_leak_to_vision(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_EMBED_BASE_URL", "http://embed.local")
+    config = BotConfig(_env_file=None)
+    assert config.embed_base_url == "http://embed.local"
+    assert config.vision_base_url == "http://localhost:11434"
 
 
 def test_invalid_bash_timeout_rejected(monkeypatch):

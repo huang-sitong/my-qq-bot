@@ -69,6 +69,14 @@ def test_all_failed_clears_stale_vision_desc():
     assert asyncio.run(describe_image_node(_state(msg), fake)) == {"vision_desc": ""}
 
 
+def test_auto_reply_non_multimodal_keeps_placeholder_and_skips_vision():
+    fake = FakeVisionService(["猫"])
+    msg = HumanMessage(content="看 [图片]")
+    result = asyncio.run(describe_image_node(_state(msg, auto_reply=True), fake))
+    assert result == {"vision_desc": ""}
+    assert fake.calls == 0
+
+
 # --- 多模态模式（主 LLM 直接收图） ---
 
 def test_multimodal_builds_content_array_and_vision_desc(monkeypatch):
@@ -93,6 +101,21 @@ def test_multimodal_without_vision_service(monkeypatch):
     result = asyncio.run(describe_image_node(_state(msg), None, llm_multimodal=True))
     assert result["vision_desc"] == ""
     assert result["messages"][0].content == [
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AAA"}},
+    ]
+
+
+def test_auto_reply_multimodal_skips_vision_desc(monkeypatch):
+    fake = FakeVisionService(["猫"])
+    msg = HumanMessage(content="看 [图片]")
+    _patch_download(monkeypatch, ["data:image/jpeg;base64,AAA"])
+    result = asyncio.run(
+        describe_image_node(_state(msg, auto_reply=True), fake, llm_multimodal=True)
+    )
+    assert result["vision_desc"] == ""
+    assert fake.calls == 0
+    assert result["messages"][0].content == [
+        {"type": "text", "text": "看 "},
         {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,AAA"}},
     ]
 

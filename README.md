@@ -20,7 +20,9 @@ uv run python main.py         # 启动 bot
 | `BOT_LLM_MODEL` | 主 LLM 模型名（默认 `sensenova-6.7-flash-lite`） |
 | `BOT_LLM_MULTIMODAL` | `1` 时图片直接进主 LLM；`0` 走本地视觉（`BOT_VISION_MODEL`，默认 Ollama `qwen3-vl`） |
 | `BOT_RAG_ENABLED` | 群聊历史向量检索（默认开启；嵌入用 Ollama `qwen3-embedding`） |
-| `OLLAMA_BASE_URL` | 本地 Ollama 地址（嵌入 + 视觉复用） |
+| `BOT_EMBED_BASE_URL` | 嵌入向量专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |
+| `BOT_VISION_BASE_URL` | 视觉模型专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |
+| `OLLAMA_BASE_URL` | 旧共用 Ollama 地址，作为嵌入/视觉的兼容回落 |
 | `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS_FILE` | MCP 外部工具（可选；server 定义在 `config/mcp_servers.json`） |
 
 ## 运行时数据

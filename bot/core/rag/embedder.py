@@ -31,7 +31,7 @@ class EmbeddingService:
         self._config = config
         self._embeddings = embedder or OllamaEmbeddings(
             model=config.embed_model,
-            base_url=config.ollama_base_url,
+            base_url=config.embed_base_url,
             dimensions=config.embed_dimensions,
         )
         # 未显式注入缓存时，按配置自动创建（embed_cache_enabled 开关）
@@ -43,7 +43,7 @@ class EmbeddingService:
         self._cache = cache
         logger.info(
             "EmbeddingService ready: model=%s dimensions=%s base_url=%s cache=%s",
-            config.embed_model, config.embed_dimensions, config.ollama_base_url,
+            config.embed_model, config.embed_dimensions, config.embed_base_url,
             "on" if cache is not None else "off",
         )
 
