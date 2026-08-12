@@ -1,4 +1,4 @@
-"""/clear /compact 与真实 LangGraph checkpoint 的集成测试。"""
+"""/clear /compact /context 与真实 LangGraph checkpoint 的集成测试。"""
 
 import asyncio
 
@@ -31,7 +31,7 @@ def _ctx(services, thread_id="t1", config=None):
     )
 
 
-def test_clear_deletes_thread_checkpoint_and_active_skills(tmp_path):
+def test_clear_resets_context_and_skills_but_keeps_persona(tmp_path):
     async def run():
         skill_registry = SkillRegistry({
             "translate": Skill(name="translate", description="翻译", body="规则"),
@@ -60,6 +60,7 @@ def test_clear_deletes_thread_checkpoint_and_active_skills(tmp_path):
             )
             result = await graph.ainvoke(state, cfg)
             assert result["active_skills"] == ["translate"]
+            await graph.aupdate_state(cfg, {"conversation_summary": "旧摘要"})
 
             services = CommandServices(
                 version="test", started_at=0.0, bot_name="",
@@ -70,8 +71,52 @@ def test_clear_deletes_thread_checkpoint_and_active_skills(tmp_path):
 
             assert reply.text == "已清空当前会话上下文，已加载技能也已清除。"
             snapshot = await graph.aget_state(cfg)
+            assert snapshot.values["persona"] == "你是{bot_name}"
             assert snapshot.values.get("messages", []) == []
+            assert snapshot.values.get("conversation_summary", "") == ""
             assert not snapshot.values.get("active_skills", [])
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())
+
+
+def test_context_reports_context_usage(tmp_path):
+    async def run():
+        llm = ScriptedLLM([AIMessage(content="第一轮回复")])
+        config = BotConfig(
+            _env_file=None,
+            llm_context_window=1000,
+            summary_trigger_ratio=0.5,
+            summary_keep_ratio=0.01,
+        )
+        graph, checkpointer = await create_graph(
+            llm, config, db_dir=str(tmp_path),
+        )
+        try:
+            cfg = {"configurable": {"thread_id": "t1"}}
+            state = make_state(
+                thread_id="t1",
+                channel_id="c1",
+                channel_type=1,
+                llm_text="你好",
+                clean_text="你好",
+            )
+            await graph.ainvoke(state, cfg)
+
+            services = CommandServices(
+                version="test", started_at=0.0, bot_name="",
+                llm=llm, graph=graph, checkpointer=checkpointer,
+            )
+            registry = build_command_registry(services)
+            reply = await registry.resolve("context").handler(
+                _ctx(services, config=config)
+            )
+
+            assert "当前上下文占用：" in reply.text
+            assert "/ 1000 tokens" in reply.text
+            assert "对话消息：2 条" in reply.text
+            assert "已加载技能：0 个" in reply.text
         finally:
             await checkpointer.conn.close()
 

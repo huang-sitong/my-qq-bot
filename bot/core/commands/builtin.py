@@ -1,9 +1,12 @@
-"""V1 内置命令：help / ping / version / skills / skill / status / auto_reply / clear / compact / mcp。"""
+"""V1 内置命令：help / ping / version / skills / skill / status / auto_reply / clear / compact / mcp / context。"""
 
 import time
 from functools import partial
 
+from langchain_core.messages import RemoveMessage
+
 from bot.core.nodes import summarize_node
+from bot.core.utils import content_to_text, estimate_context_tokens
 from common.config import _parse_flag
 
 from .model import Command, CommandContext, CommandResult, CommandServices
@@ -93,10 +96,23 @@ async def _auto_reply(ctx: CommandContext) -> CommandResult:
 
 
 async def _clear(ctx: CommandContext) -> CommandResult:
-    if ctx.services.checkpointer is None:
-        return CommandResult(text="当前未启用会话检查点，无法清空。")
-    await ctx.services.checkpointer.adelete_thread(ctx.thread_id)
-    return CommandResult(text="已清空当前会话上下文，已加载技能也已清除。")
+    graph = ctx.services.graph
+    if graph is None:
+        return CommandResult(text="当前未启用对话图，无法清空。")
+    config = {"configurable": {"thread_id": ctx.thread_id}}
+    snapshot = await graph.aget_state(config)
+    state = snapshot.values if snapshot is not None else {}
+    messages = state.get("messages", [])
+    updates = {
+        "messages": [
+            RemoveMessage(id=m.id) for m in messages if getattr(m, "id", None)
+        ],
+        "conversation_summary": "",
+        "active_skills": [],
+        "tool_rounds": 0,
+    }
+    await graph.aupdate_state(config, updates)
+    return CommandResult(text="已清空当前会话上下文。")
 
 
 async def _compact(ctx: CommandContext) -> CommandResult:
@@ -132,6 +148,40 @@ async def _mcp(ctx: CommandContext) -> CommandResult:
         return CommandResult(text=f"已加载 {count} 个 MCP 工具。")
     lines = [f"已加载 {len(names)} 个 MCP 工具："]
     lines.extend(f"- {name}" for name in names)
+    return CommandResult(text="\n".join(lines))
+
+
+async def _context(ctx: CommandContext) -> CommandResult:
+    graph = ctx.services.graph
+    if graph is None:
+        return CommandResult(text="当前未启用对话图，无法查看上下文占用。")
+    config = {"configurable": {"thread_id": ctx.thread_id}}
+    snapshot = await graph.aget_state(config)
+    state = snapshot.values if snapshot is not None else {}
+    messages = state.get("messages", [])
+    summary = content_to_text(state.get("conversation_summary", "")).strip()
+    active_skills = state.get("active_skills", [])
+    persona = state.get("persona", "")
+    total = estimate_context_tokens(
+        messages,
+        persona,
+        summary,
+        skill_registry=ctx.services.skill_registry,
+        active_skills=active_skills,
+    )
+    window = ctx.config.llm_context_window
+    trigger = int(window * ctx.config.summary_trigger_ratio)
+    lines = [
+        f"当前上下文占用：{total} / {window} tokens（{total / window:.1%}）",
+        f"剩余空间：{max(0, window - total)} tokens",
+        f"对话消息：{len(messages)} 条",
+        f"当前摘要：{len(summary)} 字符",
+        f"已加载技能：{len(active_skills)} 个",
+    ]
+    if total >= trigger:
+        lines.append("已达自动压缩阈值，下一轮会自动触发摘要。")
+    else:
+        lines.append(f"距自动压缩阈值：{trigger - total} tokens。")
     return CommandResult(text="\n".join(lines))
 
 
@@ -207,5 +257,12 @@ def build_command_registry(services: CommandServices, prefix: str = "/") -> Comm
         usage=f"{prefix}mcp",
         permission="admin",
         handler=_mcp,
+    ))
+    registry.register(Command(
+        name="context",
+        description="查看当前上下文占用情况",
+        usage=f"{prefix}context",
+        permission="admin",
+        handler=_context,
     ))
     return registry

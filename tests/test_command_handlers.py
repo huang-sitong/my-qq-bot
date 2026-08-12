@@ -211,3 +211,4 @@ def test_state_commands_are_admin_commands():
     assert registry.resolve("clear").permission == "admin"
     assert registry.resolve("compact").permission == "admin"
     assert registry.resolve("mcp").permission == "admin"
+    assert registry.resolve("context").permission == "admin"
