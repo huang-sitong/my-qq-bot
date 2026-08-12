@@ -20,7 +20,7 @@ common/                 # 共享配置 + 提示词（单一事实来源）
   mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
   prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
 bot/
-  transport/            # websocket（Satori WS 事件）+ http（send_message / call_api）
+  transport/            # websocket（Satori WS 事件）+ http（send_message / call_api；send_file 普通文件走 OneBot11 HTTP）
   core/
     graph.py            # LangGraph 组装 → (graph, checkpointer)
     llm.py              # ChatOpenAI 工厂（读 BASE_URL / API_KEY）
@@ -32,7 +32,7 @@ bot/
     skills/             # loader(SkillRegistry 扫描) + tools(load/unload 纯函数)
     commands/           # 图外斜杠指令：model / parser / registry / builtin
     nodes/              # llm_node(call_llm) / action_node(detect_intent, describe_image, summarize, index_turn, skill_manager) / subgraph
-    tools/              # factory.build_tools + search_chat_history / user_memory 纯函数
+    tools/              # factory.build_tools + search_chat_history / user_memory / send_file 纯函数
   handler.py            # MessageHandler — ingress → 指令分发 → graph → reply
 object/                 # 协议数据对象（懒加载）：bot/state.py、bot/content.py、satori/
 db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
@@ -106,6 +106,6 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - **严格布尔解析（Flag）**：布尔 env 只接受 `1/0/true/false/yes/no/on/off/空`，非法值抛 ValidationError 启动崩——有意 fail-fast。
 - **db/**：启动自动建目录；库文件全部惰性重建（删除→重启重建）。checkpoint.sqlite 含会话状态、memory.sqlite 含用户记忆，**是真数据**。`BOT_DB_DIR`(默认 `db`)。
 - **milvus-lite**：集合 `chat` 双向量（`vector` HNSW/COSINE + `sparse` BM25，text jieba analyzer），timestamp TEXT ISO，`_prune_thread` 超 `rag_retention_per_thread` Python 侧排序删最旧（query 不支持 order_by，动态字段须先 `list()` 物化）。`_ensure_collection` 校验 vector dim，维度漂移 DROP 重建；末尾统一 `load_collection`（新进程集合默认 released，查询前必须 load，跨进程脚本同）。新进程 hit 动态字段在 `entity` 子字典，`_dense_hit`/`_sparse_hit` 统一展平。**pymilvus 直连须覆盖 `grpc_options` 防 `too_many_pings` GOAWAY**（官方激进 keepalive 与 milvus-lite 默认 ping 策略冲突；MilvusStore 已处理，新增客户端须同样覆盖）。
-- **工具定位**：纯函数在 `tools/search_chat_history.py`、`tools/user_memory.py`、`skills/tools.py`、`tools/run_bash.py`；`build_tools` 包装为 BaseTool（闭包绑服务 + InjectedState 注入 thread_id/user_id + 异常降级）。ToolNode `handle_tool_errors`：除 `ToolInvocationError`（原样返回逐字段校验信息供 LLM 纠正）外统一降级、按类名记日志（防 Tavily URL 泄漏）。MemoryStore 首次启动自动迁移旧 `user_memories` 表进 `store` 后 DROP。
-- **run_bash（bash 工具）**：LLM 在 bot 宿主（Windows + Git Bash）执行 bash 命令，主要跑 skill 脚本与 skill 内环境配置。三道护栏按序：① `DANGEROUS_PATTERNS` 正则拦截危险命令（返回具体文案）② cwd `resolve()` 白名单（project_root 恒允许，`BOT_BASH_ALLOWED_ROOTS` 扩展，越界返回提示）③ `asyncio.wait_for` 超时杀进程 + 输出截断到 `bash_max_output`。cwd 走 subprocess 参数、不拼命令串（防 MSYS 路径 munging）；每次调用独立新 shell，`cd`/`export` 不跨调用持久（环境配置靠文件系统）。编码 UTF-8 回落 GBK。config：`BOT_BASH_ENABLED`(默认1) / `BOT_BASH_SHELL` / `BOT_BASH_TIMEOUT` / `BOT_BASH_MAX_OUTPUT` / `BOT_BASH_ALLOWED_ROOTS`。护栏拦截/超时/越界是正常返回，真异常（shell 不存在）由 factory 降级「工具执行失败。」。
+- **工具定位**：纯函数在 `tools/search_chat_history.py`、`tools/user_memory.py`、`skills/tools.py`、`tools/run_bash.py`、`tools/send_file.py`；`build_tools` 包装为 BaseTool（闭包绑服务 + InjectedState 注入 thread_id/user_id/channel_id + 异常降级）。ToolNode `handle_tool_errors`：除 `ToolInvocationError`（原样返回逐字段校验信息供 LLM 纠正）外统一降级、按类名记日志（防 Tavily URL 泄漏）。MemoryStore 首次启动自动迁移旧 `user_memories` 表进 `store` 后 DROP。
+- **run_bash（bash 工具）**：LLM 在 bot 宿主执行 bash 命令，主要跑 skill 脚本与 skill 内环境配置。本机 `.env` 显式指向 `E:/Git/bin/bash.exe`（Git Bash）；未配置时 `bash` 可能解析为 WSL，技能调用 Windows Python 时须用 `WSLENV` 共享 `.env` 变量（见 jmcomic SKILL.md）。三道护栏按序：① `DANGEROUS_PATTERNS` 正则拦截危险命令（返回具体文案）② cwd `resolve()` 白名单（project_root 恒允许，`BOT_BASH_ALLOWED_ROOTS` 扩展，越界返回提示）③ `asyncio.wait_for` 超时杀进程 + 输出截断到 `bash_max_output`。cwd 走 subprocess 参数、不拼命令串；每次调用独立新 shell，`cd`/`export` 不跨调用持久（环境配置靠文件系统）。编码 UTF-8 回落 GBK。config：`BOT_BASH_ENABLED`(默认1) / `BOT_BASH_SHELL` / `BOT_BASH_TIMEOUT` / `BOT_BASH_MAX_OUTPUT` / `BOT_BASH_ALLOWED_ROOTS`。护栏拦截/超时/越界是正常返回，真异常（shell 不存在）由 factory 降级「工具执行失败。」。
 - **Persona fallback**：`config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT`（默认是真实提示词非空串），`BOT_PERSONA_PROMPT=""` 强制回落；均用 `{bot_name}` 占位符。

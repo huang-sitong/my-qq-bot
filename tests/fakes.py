@@ -83,6 +83,7 @@ def make_state(**overrides) -> dict:
         "persona": "你是{bot_name}",
         "conversation_summary": "",
         "thread_id": "test:thread",
+        "channel_id": "private:u1",
         "user_id": "u1",
         "reply_text": "",
         "should_respond": True,

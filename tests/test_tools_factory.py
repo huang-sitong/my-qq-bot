@@ -132,3 +132,36 @@ def test_bash_tool_degrades_on_exception():
     tool = {t.name: t for t in tools}["run_bash"]
     result = asyncio.run(tool.ainvoke({"command": "echo hi"}))
     assert result == "工具执行失败。"
+
+
+"""send_file 工具：file_sender 与 send_roots 都注入才暴露；schema 无 channel_id。"""
+
+
+class _FakeFileSender:
+    async def send_file(self, channel_id, path, name):
+        return {"status": "ok"}
+
+
+def test_send_file_tool_present_when_sender_and_roots_injected():
+    tools = build_tools(
+        file_sender=_FakeFileSender(),
+        send_roots=[Path.cwd()],
+    )
+    assert "send_file" in _names(tools)
+
+
+def test_no_send_file_tool_without_sender_or_roots():
+    assert "send_file" not in _names(build_tools())
+    assert "send_file" not in _names(build_tools(
+        file_sender=_FakeFileSender(), send_roots=None,
+    ))
+
+
+def test_send_file_schema_only_has_path_and_name():
+    tools = build_tools(
+        file_sender=_FakeFileSender(),
+        send_roots=[Path.cwd()],
+    )
+    props = {t.name: t for t in tools}["send_file"].tool_call_schema.model_json_schema()["properties"]
+    assert set(props) == {"path", "name"}
+    assert "路径" in props["path"]["description"]

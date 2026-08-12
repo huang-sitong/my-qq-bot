@@ -155,3 +155,35 @@ def test_bash_hint_not_injected_when_disabled():
         bot_config=CONFIG_ON,
     ))
     assert not any("run_bash" in getattr(m, "content", "") for m in llm.last_messages)
+
+
+class _FakeFileSender:
+    async def send_file(self, channel_id, path, name):
+        return {"status": "ok"}
+
+
+def _file_send_tools():
+    return build_tools(
+        file_sender=_FakeFileSender(),
+        send_roots=[Path.cwd()],
+    )
+
+
+def test_file_send_hint_injected_when_use_file_send():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_file_send_tools(), use_memory=False,
+        use_file_send=True, bot_config=CONFIG_ON,
+    ))
+    assert any("send_file" in getattr(m, "content", "") for m in llm.last_messages)
+
+
+def test_file_send_hint_not_injected_when_disabled():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_file_send_tools(), use_memory=False,
+        use_file_send=False, bot_config=CONFIG_ON,
+    ))
+    assert not any("send_file" in getattr(m, "content", "") for m in llm.last_messages)

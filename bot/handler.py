@@ -220,6 +220,7 @@ class MessageHandler:
             result = await self.graph.ainvoke(
                 {
                     "thread_id": thread_id,
+                    "channel_id": channel_id,
                     "persona": self._persona,
                     "reply_text": "",
                     "should_respond": False,  # detect_intent decides

@@ -28,6 +28,28 @@
 
 所有 28 个已声明特性接口均可用，详见下方接口可用性表。
 
+### 端口
+
+| 协议 | 地址 |
+|------|------|
+| Satori WS/API | `http://127.0.0.1:5600` |
+| OneBot11 HTTP（`send_file` 普通文件上传） | `http://127.0.0.1:3000` |
+| OneBot11 正向 WS | `ws://127.0.0.1:3001`（本项目当前未使用） |
+
+### 文件发送能力（LLBot）
+
+- Satori 标准 `upload.create` 资源上传是实验性 API；LLBot 当前源码没有注册
+  `upload.create`，且 `message.create` 对 `<file>` 元素只 fetch、不真正发送（上游 TODO）。
+- 本项目已用 LLBot 的 OneBot11 HTTP 兜底：
+  - 私聊文件：`POST /upload_private_file`
+    `{"user_id": "...", "file": "绝对路径", "name": "文件名"}`
+  - 群文件：`POST /upload_group_file`
+    `{"group_id": "...", "file": "绝对路径", "name": "文件名"}`
+- 图片仍走标准 Satori：`message.create` 内容为
+  `<img src="file:///本地路径"/>`，LLBot 会把本地图片发送为 QQ 图片消息。
+- `SatoriApiClient.send_file()` 已封装上述选择逻辑；agent 侧对应工具是 `send_file`，
+  OneBot11 地址由 `BOT_ONEBOT11_API_BASE_URL` 配置。
+
 ### 运行信息
 
 | 项目 | 值 |

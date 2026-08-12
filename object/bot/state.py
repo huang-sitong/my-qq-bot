@@ -23,6 +23,7 @@ class BotState(TypedDict):
     persona: str
     conversation_summary: str   # progressive summary of older messages (dynamic inject)
     thread_id: str        # checkpoint isolation key = platform:guild:channel
+    channel_id: str       # Satori channel id（send_file 等工具定位当前会话）
     user_id: str          # 当前消息发送者的用户 ID（记忆工具按用户维度存取）
     reply_text: str
     should_respond: bool

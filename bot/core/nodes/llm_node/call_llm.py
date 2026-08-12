@@ -5,7 +5,13 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
 from bot.core.utils import build_system_messages, content_to_text
-from common import BASH_TOOL_HINT, MCP_TOOL_HINT, MEMORY_TOOL_HINT, BotConfig
+from common import (
+    BASH_TOOL_HINT,
+    FILE_SEND_TOOL_HINT,
+    MCP_TOOL_HINT,
+    MEMORY_TOOL_HINT,
+    BotConfig,
+)
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -18,6 +24,7 @@ async def call_llm_node(
     use_memory: bool = False,
     use_mcp: bool = False,
     use_bash: bool = False,
+    use_file_send: bool = False,
     bot_config: BotConfig | None = None,
     skill_registry=None,
 ) -> dict:
@@ -41,6 +48,8 @@ async def call_llm_node(
         system_msgs.append(SystemMessage(content=MCP_TOOL_HINT))
     if use_bash:
         system_msgs.append(SystemMessage(content=BASH_TOOL_HINT))
+    if use_file_send:
+        system_msgs.append(SystemMessage(content=FILE_SEND_TOOL_HINT))
 
     messages = system_msgs + state["messages"]
 

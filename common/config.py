@@ -64,6 +64,10 @@ class BotConfig(BaseSettings):
         default="http://localhost:5600",
         validation_alias="BOT_API_BASE_URL",
     )
+    onebot11_api_base_url: str = Field(
+        default="http://localhost:3000",
+        validation_alias="BOT_ONEBOT11_API_BASE_URL",
+    )
     api_platform: str = Field(
         default="llonebot",
         validation_alias="BOT_API_PLATFORM",
@@ -178,7 +182,7 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_RAG_RETENTION_PER_THREAD",
     )
     rag_max_agent_rounds: int = Field(
-        default=7,
+        default=12,
         ge=0,
         validation_alias="BOT_RAG_MAX_AGENT_ROUNDS",
     )

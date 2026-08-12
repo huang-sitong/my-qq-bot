@@ -2,6 +2,7 @@
 .others
 .superpowers
 .pytest_cache
+.pytest_tmp
 .ruff_cache
 docs/superpowers
 # Python-generated files
@@ -23,6 +24,8 @@ skills/soup/__pycache__/
 # Runtime data
 db/*.sqlite*
 !db/.gitkeep
+downloads/*
+!downloads/.gitkeep
 # Captured Satori wire-format samples (diagnostic output)
 docs/captured_messages.jsonl
 # milvus-lite embedded db

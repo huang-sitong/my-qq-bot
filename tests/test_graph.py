@@ -22,6 +22,7 @@ def _initial_state() -> dict:
     # channel_type=1 (DIRECT) → detect_intent 置 should_respond=True → call_llm
     return {
         "thread_id": "test:thread",
+        "channel_id": "private:u1",
         "persona": "你是{bot_name}",
         "reply_text": "",
         "should_respond": False,
@@ -325,3 +326,60 @@ def test_graph_injects_bash_hint(tmp_path):
     asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
     sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
     assert any("run_bash" in m.content for m in sys_msgs)
+
+
+# ----------------------------------------------------------------------
+# send_file 工具：图内 ToolNode 端到端 + hint 注入。
+# ----------------------------------------------------------------------
+
+class _FakeFileSender:
+    def __init__(self):
+        self.calls = []
+
+    async def send_file(self, channel_id, path, name):
+        self.calls.append((channel_id, path, name))
+        return {"status": "ok", "data": {"file_id": "f1"}}
+
+
+def test_graph_runs_send_file_tool(tmp_path):
+    sender = _FakeFileSender()
+    path = tmp_path / "chapter.zip"
+    path.write_bytes(b"zip")
+
+    llm = ScriptedLLM([
+        AIMessage(content="", tool_calls=[
+            {"name": "send_file", "args": {"path": str(path)},
+             "id": "call_file", "type": "tool_call"},
+        ]),
+        AIMessage(content="已发送"),
+    ])
+    graph, _ = asyncio.run(
+        create_graph(
+            llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
+            file_sender=sender,
+        )
+    )
+    result = asyncio.run(graph.ainvoke(
+        _initial_state(), {"configurable": {"thread_id": "test:thread"}},
+    ))
+
+    assert result["reply_text"] == "已发送"
+    tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+    assert tool_msgs
+    assert "文件已发送" in tool_msgs[0].content
+    assert sender.calls[0][0] == "private:u1"
+
+
+def test_graph_injects_file_send_hint(tmp_path):
+    llm = ScriptedLLM([AIMessage(content="好的")])
+    graph, _ = asyncio.run(
+        create_graph(
+            llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
+            file_sender=_FakeFileSender(),
+        )
+    )
+    asyncio.run(graph.ainvoke(
+        _initial_state(), {"configurable": {"thread_id": "test:thread"}},
+    ))
+    sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
+    assert any("send_file" in m.content for m in sys_msgs)

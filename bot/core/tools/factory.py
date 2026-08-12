@@ -10,6 +10,7 @@ InjectedState 是 InjectedToolArg 子类：LangChain 的 tool_call_schema 自动
 """
 
 import logging
+from pathlib import Path
 from typing import Annotated
 
 from langchain_core.tools import BaseTool, StructuredTool
@@ -19,6 +20,7 @@ from pydantic import Field
 from bot.core.skills.tools import load_skill, unload_skill
 from bot.core.tools.run_bash import BashConfig, run_bash
 from bot.core.tools.search_chat_history import search_chat_history
+from bot.core.tools.send_file import send_file
 from bot.core.tools.user_memory import recall_user_memory, remember_user_memory
 
 logger = logging.getLogger(__name__)
@@ -64,6 +66,15 @@ BASH_TOOL_DESCRIPTION = (
     "- 返回「退出码 N」+ 输出；退出码非 0 表示失败，可调整命令重试。"
 )
 
+SEND_FILE_TOOL_DESCRIPTION = (
+    "把 bot 宿主上的单个本地文件发送到当前 QQ 会话。"
+    "用于把 run_bash 下载/生成的结果（如 jmcomic 漫画、zip、pdf）交付给用户。"
+    "- path：本地文件绝对路径，目录请先用 run_bash 打包成 zip/pdf 等单文件\n"
+    "- name：可选，发送时显示的文件名；留空使用原文件名\n"
+    "- 图片会作为图片消息发送，其他文件作为 QQ 群文件/私聊文件发送；"
+    "文件路径必须位于允许的根目录内。"
+)
+
 
 def _make_bash_tool(cfg: BashConfig) -> BaseTool:
     async def _run(
@@ -83,6 +94,29 @@ def _make_bash_tool(cfg: BashConfig) -> BaseTool:
 
     return StructuredTool.from_function(
         coroutine=_run, name="run_bash", description=BASH_TOOL_DESCRIPTION,
+    )
+
+
+def _make_send_file_tool(file_sender, roots: list[Path]) -> BaseTool:
+    async def _run(
+        path: Annotated[str, Field(
+            description="要发送的本地文件绝对路径（必须是文件；目录请先打包）",
+        )],
+        name: Annotated[str, Field(
+            description="可选：发送时显示的文件名；留空使用原文件名",
+        )] = "",
+        channel_id: Annotated[str, InjectedState("channel_id")] = "",
+    ) -> str:
+        try:
+            return await send_file(
+                path, name, channel_id, file_sender=file_sender, roots=roots,
+            )
+        except Exception:
+            logger.exception("send_file failed")
+            return "工具执行失败。"
+
+    return StructuredTool.from_function(
+        coroutine=_run, name="send_file", description=SEND_FILE_TOOL_DESCRIPTION,
     )
 
 
@@ -195,13 +229,15 @@ def _make_skill_tools(skill_registry) -> list[BaseTool]:
 
 
 def build_tools(rag_service=None, memory_store=None, mcp_tools=None,
-                skill_registry=None, bash_config=None) -> list[BaseTool]:
+                skill_registry=None, bash_config=None, file_sender=None,
+                send_roots=None) -> list[BaseTool]:
     """组装当前可用工具列表（BaseTool）。
 
     - rag_service 存在且启用 → search_chat_history
     - memory_store 存在 → remember/recall_user_memory
     - skill_registry 非空 → load_skill/unload_skill
     - bash_config 存在且 enabled → run_bash
+    - file_sender 存在且 send_roots 非空 → send_file
     - mcp_tools（BaseTool 列表）→ 直接并入
     """
     tools: list[BaseTool] = []
@@ -213,5 +249,7 @@ def build_tools(rag_service=None, memory_store=None, mcp_tools=None,
         tools += _make_skill_tools(skill_registry)
     if bash_config is not None and bash_config.enabled:
         tools.append(_make_bash_tool(bash_config))
+    if file_sender is not None and send_roots:
+        tools.append(_make_send_file_tool(file_sender, send_roots))
     tools += list(mcp_tools or [])
     return tools

@@ -77,6 +77,7 @@ def test_channel_type_coerced_to_int_before_graph():
     assert not isinstance(ct, ChannelType)          # 枚举不再进入 state → checkpoint
     assert graph.state["mentions"] == {}   # parse_content → mentions 注入 state（空提及锁键存在）
     assert graph.state["clean_text"] == "你好"   # 预计算清洗文本注入 state
+    assert graph.state["channel_id"] == "ch1"
 
 
 def test_channel_type_fallback_is_int_when_channel_missing():

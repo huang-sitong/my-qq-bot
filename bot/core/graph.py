@@ -73,6 +73,7 @@ async def create_graph(
     vision_service=None,
     mcp_tools=None,
     skill_registry=None,
+    file_sender=None,
 ) -> tuple[CompiledStateGraph, AsyncSqliteSaver]:
     """Build and compile the conversation graph.
 
@@ -87,9 +88,14 @@ async def create_graph(
         allowed_roots=config.bash_allowed_roots,
         project_root=Path(__file__).resolve().parents[2],
     )
+    project_root = Path(__file__).resolve().parents[2].resolve()
+    send_roots = [project_root] + [
+        Path(root).resolve() for root in config.bash_allowed_roots
+    ]
     tools = build_tools(
         rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools,
         skill_registry=skill_registry, bash_config=bash_config,
+        file_sender=file_sender, send_roots=send_roots,
     )
     use_memory = memory_store is not None
     use_mcp = bool(mcp_tools)
@@ -105,6 +111,7 @@ async def create_graph(
             use_memory=use_memory,
             use_mcp=use_mcp,
             use_bash=use_bash,
+            use_file_send=file_sender is not None,
             bot_config=config,
             skill_registry=skill_registry,
         )

@@ -109,6 +109,7 @@ async def main():
     graph, _ = await create_graph(
         llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
         vision_service=vision_service, mcp_tools=mcp_tools, skill_registry=skill_registry,
+        file_sender=api_client,
     )
 
     handler = MessageHandler(
