@@ -73,6 +73,19 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_API_PLATFORM",
     )
 
+    # --- Message concurrency ---
+    message_worker_count: int = Field(
+        default=1,
+        ge=1,
+        le=64,
+        validation_alias="BOT_MESSAGE_WORKER_COUNT",
+    )
+    message_queue_maxsize: int = Field(
+        default=0,
+        ge=0,
+        validation_alias="BOT_MESSAGE_QUEUE_MAXSIZE",
+    )
+
     # --- LLM ---
     llm_base_url: str | None = Field(default=None, validation_alias="BASE_URL")
     llm_api_key: str | None = Field(default=None, validation_alias="API_KEY")

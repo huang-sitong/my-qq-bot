@@ -64,6 +64,8 @@ EXPECTED_DEFAULTS = {
     "bash_timeout": 30,
     "bash_max_output": 4000,
     "bash_allowed_roots": [],
+    "message_worker_count": 1,
+    "message_queue_maxsize": 0,
 }
 
 
@@ -121,6 +123,8 @@ ENV_SAMPLES = {
     "bash_timeout": ("10", 10),
     "bash_max_output": ("100", 100),
     "bash_allowed_roots": ("C:/work, D:/tmp", ["C:/work", "D:/tmp"]),
+    "message_worker_count": ("4", 4),
+    "message_queue_maxsize": ("512", 512),
 }
 
 
@@ -268,6 +272,20 @@ def test_embed_url_does_not_leak_to_vision(monkeypatch):
 def test_invalid_bash_timeout_rejected(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_BASH_TIMEOUT", "0")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
+
+
+def test_invalid_message_worker_count_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_MESSAGE_WORKER_COUNT", "0")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
+
+
+def test_invalid_message_queue_maxsize_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_MESSAGE_QUEUE_MAXSIZE", "-1")
     with pytest.raises(ValidationError):
         BotConfig(_env_file=None)
 
