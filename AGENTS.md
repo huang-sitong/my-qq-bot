@@ -41,7 +41,7 @@ db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite
 ## Data flow
 
 ```
-WS 事件 → MessageHandler.handle() → 校验+入队 → worker（按 thread_id 锁串行）→ _process
+WS 事件 → MessageHandler.handle() → 校验+入队 → worker 池（N 个 asyncio worker，按 thread_id 锁串行）→ _process
   → 命中已注册斜杠指令：权限 → handler → 回复 → 不进图、不索引（clear/compact/context 图外直接读写 checkpoint）
   → graph.ainvoke
     → detect_intent（确定性三路，无 LLM router）
