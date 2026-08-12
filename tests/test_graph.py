@@ -155,7 +155,7 @@ def test_group_non_mention_image_text_indexes_without_reply(tmp_path):
 
     assert result["reply_text"] == ""
     assert rag.last_indexed is not None
-    assert rag.last_indexed["user_message"] == "看看这张图"
+    assert rag.last_indexed["user_message"] == "看看这张图 [图片]"
 
 
 def test_private_file_ends_without_reply(tmp_path):
@@ -198,7 +198,7 @@ def test_graph_image_reply_includes_vision_description(tmp_path):
     humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
     assert humans and humans[0].content == "[图片：一只猫坐在窗台上]"
     assert rag.last_indexed is not None
-    assert "一只猫坐在窗台上" in rag.last_indexed["user_message"]
+    assert rag.last_indexed["user_message"] == "[图片]"
 
 
 def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
@@ -219,9 +219,9 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
     assert result["reply_text"] == "我看不到图"
     humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
     assert humans and humans[0].content == "[图片]"  # 占位符保留
-    # 纯图片无描述：user 侧不入库，但 bot 回复（承载主 LLM 理解）作为 assistant 记录入库
+    # 纯图片无描述：user 侧只存图片占位符，bot 回复作为 assistant 记录入库
     assert rag.last_indexed is not None
-    assert rag.last_indexed["user_message"] == ""
+    assert rag.last_indexed["user_message"] == "[图片]"
     assert rag.last_indexed["bot_reply"] == "我看不到图"
 
 

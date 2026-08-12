@@ -1,4 +1,4 @@
-"""index_turn_node：RAG 索引图节点（消费 handler 预计算的 clean_text；纯媒体无回复跳过、回复轮入库、vision 描述并入）。"""
+"""index_turn_node：RAG 索引图节点（消费 handler 预计算的 clean_text；纯媒体无回复跳过、回复轮入库、图片占位符）。"""
 
 import asyncio
 
@@ -23,11 +23,11 @@ def test_index_turn_indexes_user_message_without_reply():
 
 
 def test_index_turn_media_only_with_reply_indexes_reply():
-    """纯媒体无描述但有回复：reply 作为 assistant 记录入库（多模态 (1,0) 图片轮）。"""
+    """纯媒体有回复：图片占位符与 reply 一并入库（多模态 (1,0) 图片轮）。"""
     rag = StubRagService()
     _run(rag, clean_text="", reply_text="收到", content_kind="image")
     assert rag.last_indexed is not None
-    assert rag.last_indexed["user_message"] == ""
+    assert rag.last_indexed["user_message"] == "[图片]"
     assert rag.last_indexed["bot_reply"] == "收到"
 
 
@@ -58,12 +58,12 @@ def test_index_turn_unescapes_entities():
     assert rag.last_indexed["user_message"] == "A & B"
 
 
-def test_index_turn_appends_vision_desc_for_image():
+def test_index_turn_appends_image_placeholder_for_image():
     rag = StubRagService()
     _run(rag, clean_text="", reply_text="收到",
          content_kind="image", vision_desc="一只猫")
     assert rag.last_indexed is not None
-    assert rag.last_indexed["user_message"] == "[图片：一只猫]"
+    assert rag.last_indexed["user_message"] == "[图片]"
 
 
 def test_index_turn_image_without_vision_indexes_reply():

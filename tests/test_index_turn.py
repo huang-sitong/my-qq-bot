@@ -29,18 +29,18 @@ def test_non_replied_group_text_indexes_user_only():
     assert indexed["bot_reply"] == ""
 
 
-def test_image_with_vision_desc_appends_description():
+def test_image_with_vision_desc_indexes_placeholder_only():
     indexed = _run(_img_state(vision_desc="一只橘猫", reply_text="图里是猫"), StubRagService())
-    assert indexed["user_message"] == "[图片：一只橘猫]"
+    assert indexed["user_message"] == "[图片]"
     assert indexed["bot_reply"] == "图里是猫"
 
 
-def test_image_text_with_desc_appends_to_text():
+def test_image_text_with_desc_indexes_placeholder_only():
     indexed = _run(
         _img_state(clean_text="帮我看看这张图", vision_desc="一只橘猫", reply_text="是猫"),
         StubRagService(),
     )
-    assert indexed["user_message"] == "帮我看看这张图 [图片：一只橘猫]"
+    assert indexed["user_message"] == "帮我看看这张图 [图片]"
 
 
 def test_pure_image_no_desc_no_reply_not_indexed():
@@ -49,11 +49,11 @@ def test_pure_image_no_desc_no_reply_not_indexed():
     assert rag.last_indexed is None
 
 
-def test_pure_image_no_desc_but_reply_indexes_reply_only():
+def test_pure_image_no_desc_but_reply_indexes_placeholder_and_reply():
     """多模态 (1,0) 模式：纯图片无 vision_desc，但 bot 回复（含主 LLM 理解）仍入库。"""
     rag = StubRagService()
     indexed = _run(_img_state(reply_text="图里是一只橘猫在晒太阳"), rag)
-    assert indexed["user_message"] == ""
+    assert indexed["user_message"] == "[图片]"
     assert indexed["bot_reply"] == "图里是一只橘猫在晒太阳"
 
 
