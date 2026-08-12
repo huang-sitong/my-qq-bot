@@ -1,6 +1,7 @@
 .claude
 .others
 .superpowers
+.worktrees
 .pytest_cache
 .pytest_tmp
 .ruff_cache
