@@ -16,6 +16,14 @@ NON_REPLY_KINDS = frozenset({
 })
 
 
+def is_explicit_request(channel_type: int, bot_id: str, bot_name: str, mentions: dict) -> bool:
+    """私聊或群聊顶层@bot 视为显式请求，永远绕过 auto_reply 随机门。"""
+    if channel_type == ChannelType.DIRECT:
+        return True
+    mentioned_names = set(mentions.values())
+    return bool(bot_id in mentions or (bot_name and bot_name in mentioned_names))
+
+
 def decide_reply(channel_type: int, content_kind: str, bot_id: str,
                  bot_name: str, mentions: dict, auto_reply: bool = False) -> bool:
     """should_respond：媒体永不回复；私聊回复；群聊按顶层提及判定（id 为主、昵称兜底）；

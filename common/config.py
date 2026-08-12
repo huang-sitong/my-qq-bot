@@ -269,6 +269,17 @@ class BotConfig(BaseSettings):
         default=False,
         validation_alias="BOT_AUTO_REPLY",
     )
+    auto_reply_random_rate: float = Field(
+        default=0.3,
+        ge=0.0,
+        le=1.0,
+        validation_alias="BOT_AUTO_REPLY_RANDOM_RATE",
+    )
+    auto_reply_cooldown: int = Field(
+        default=30,
+        ge=0,
+        validation_alias="BOT_AUTO_REPLY_COOLDOWN",
+    )
 
     # --- Bash 工具（skill 脚本执行；Git Bash） ---
     bash_enabled: Flag = Field(

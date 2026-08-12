@@ -57,6 +57,8 @@ EXPECTED_DEFAULTS = {
     "command_prefix": "/",
     "admin_ids": [],
     "auto_reply": False,
+    "auto_reply_random_rate": 0.3,
+    "auto_reply_cooldown": 30,
     "bash_enabled": True,
     "bash_shell": "bash",
     "bash_timeout": 30,
@@ -112,6 +114,8 @@ ENV_SAMPLES = {
     "command_prefix": ("!", "!"),
     "admin_ids": ("u1, u2", ["u1", "u2"]),
     "auto_reply": ("1", True),
+    "auto_reply_random_rate": ("0.5", 0.5),
+    "auto_reply_cooldown": ("10", 10),
     "bash_enabled": ("0", False),
     "bash_shell": ("bash.exe", "bash.exe"),
     "bash_timeout": ("10", 10),
@@ -164,6 +168,20 @@ def test_invalid_bool_rejected(monkeypatch):
 def test_invalid_auto_reply_rejected(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_AUTO_REPLY", "2")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
+
+
+def test_invalid_auto_reply_random_rate_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_AUTO_REPLY_RANDOM_RATE", "1.1")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
+
+
+def test_invalid_auto_reply_cooldown_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_AUTO_REPLY_COOLDOWN", "-1")
     with pytest.raises(ValidationError):
         BotConfig(_env_file=None)
 

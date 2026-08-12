@@ -6,10 +6,27 @@
 
 import pytest
 
-from bot.core.utils.routing import decide_reply, keep_in_context, route_after_detect
+from bot.core.utils.routing import (
+    decide_reply,
+    is_explicit_request,
+    keep_in_context,
+    route_after_detect,
+)
 from object.satori import ChannelType
 
 # --- decide_reply ---
+
+
+def test_is_explicit_request_direct_true():
+    assert is_explicit_request(ChannelType.DIRECT, "bot1", "Bot", {}) is True
+
+
+def test_is_explicit_request_mention_true():
+    assert is_explicit_request(ChannelType.TEXT, "bot1", "Bot", {"bot1": "小助手"}) is True
+
+
+def test_is_explicit_request_group_non_mention_false():
+    assert is_explicit_request(ChannelType.TEXT, "bot1", "Bot", {}) is False
 
 @pytest.mark.parametrize("kind", ["file", "audio", "video"])
 def test_media_never_reply_even_direct_or_mention(kind):
