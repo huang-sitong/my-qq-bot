@@ -33,6 +33,14 @@ class _StubApi:
         self.sent.append((channel_id, content))
 
 
+class _FixedRandom:
+    def __init__(self, value):
+        self._value = value
+
+    def random(self):
+        return self._value
+
+
 def _make_handler(graph, bot_config=None, command_registry=None, command_services=None):
     return MessageHandler(
         client=object(),
@@ -399,7 +407,7 @@ def test_command_dispatches_in_group_channel():
     assert handler._api_client.sent == [("g1", "Pong.")]
 
 
-def test_auto_reply_injected_into_graph_state():
+def test_auto_reply_private_explicit_is_not_marked_auto_reply():
     graph = _StubGraph()
     config = BotConfig(_env_file=None, auto_reply=True)
     handler = _make_handler(graph, bot_config=config)
@@ -411,7 +419,70 @@ def test_auto_reply_injected_into_graph_state():
         "user_id": "u1",
         "thread_id": "llonebot::private:ch1",
     }))
+    assert graph.state["auto_reply"] is False
+
+
+def test_group_non_at_auto_reply_allowed_when_random_hits():
+    graph = _StubGraph()
+    config = BotConfig(
+        _env_file=None,
+        auto_reply=True,
+        auto_reply_random_rate=1.0,
+        auto_reply_cooldown=0,
+    )
+    handler = _make_handler(graph, bot_config=config)
+    handler._random = _FixedRandom(0.1)
+    event = EventBody(
+        id=10,
+        sn=10,
+        type="message-created",
+        platform="llonebot",
+        channel=Channel(id="g1", type=ChannelType.TEXT),
+        user=User(id="u2", name="tester"),
+        message=Message(id="m10", content="晚上吃什么"),
+    )
+    asyncio.run(handler._process({
+        "event": event,
+        "platform": "llonebot",
+        "guild_id": "g1",
+        "channel_id": "g1",
+        "user_id": "u2",
+        "thread_id": "llonebot:g1:g1",
+    }))
     assert graph.state["auto_reply"] is True
+    assert graph.state["has_text"] is True
+
+
+def test_auto_reply_cooldown_blocks_second_reply():
+    graph = _StubGraph()
+    config = BotConfig(
+        _env_file=None,
+        auto_reply=True,
+        auto_reply_random_rate=1.0,
+        auto_reply_cooldown=60,
+    )
+    handler = _make_handler(graph, bot_config=config)
+    handler._random = _FixedRandom(0.1)
+    handler._last_auto_reply_at["llonebot:g1:g1"] = 1e18
+
+    event = EventBody(
+        id=11,
+        sn=11,
+        type="message-created",
+        platform="llonebot",
+        channel=Channel(id="g1", type=ChannelType.TEXT),
+        user=User(id="u2", name="tester"),
+        message=Message(id="m11", content="晚上吃什么"),
+    )
+    asyncio.run(handler._process({
+        "event": event,
+        "platform": "llonebot",
+        "guild_id": "g1",
+        "channel_id": "g1",
+        "user_id": "u2",
+        "thread_id": "llonebot:g1:g1",
+    }))
+    assert graph.state["auto_reply"] is False
 
 
 def test_auto_reply_defaults_false_when_config_absent():

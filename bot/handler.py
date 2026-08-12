@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import random
+import time
 
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
@@ -13,6 +15,7 @@ from bot.core.commands import (
     run_command,
 )
 from bot.core.utils import parse_content
+from bot.core.utils.reply_policy import should_allow_auto_reply
 from bot.transport.http.client import SatoriApiClient
 from bot.transport.websocket.client import SatoriClient
 from object.satori import EventBody, LoginList
@@ -49,6 +52,8 @@ class MessageHandler:
         self._queue: asyncio.Queue[dict | None] = asyncio.Queue()
         self._locks: dict[str, asyncio.Lock] = {}
         self._worker_task: asyncio.Task[None] | None = None
+        self._last_auto_reply_at: dict[str, float] = {}
+        self._random = random.Random()
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -84,6 +89,31 @@ class MessageHandler:
             if self._command_services is not None:
                 self._command_services.bot_name = self._bot_name
             logger.info("Bot info set: id=%s name=%s", self._bot_id, self._bot_name)
+
+    def _auto_reply_allowed(
+        self,
+        *,
+        thread_id: str,
+        channel_type: int,
+        bot_id: str,
+        bot_name: str,
+        mentions: dict[str, str],
+    ) -> bool:
+        cfg = self._bot_config
+        if cfg is None:
+            return False
+        last_reply = self._last_auto_reply_at.get(thread_id, 0.0)
+        cooldown_elapsed = time.monotonic() - last_reply >= cfg.auto_reply_cooldown
+        return should_allow_auto_reply(
+            channel_type=channel_type,
+            mentions=mentions,
+            bot_id=bot_id,
+            bot_name=bot_name,
+            auto_reply_enabled=cfg.auto_reply,
+            cooldown_elapsed=cooldown_elapsed,
+            random_value=self._random.random(),
+            rate=cfg.auto_reply_random_rate,
+        )
 
     async def handle(self, event: EventBody) -> None:
         """Validate and enqueue an incoming message event."""
@@ -155,6 +185,14 @@ class MessageHandler:
         parsed = parse_content(raw_content)
         content_kind = parsed.kind.value
         image_srcs = [a.src for a in parsed.attachments if a.type == "img"]
+        has_text = parsed.has_text
+        auto_reply_allowed = self._auto_reply_allowed(
+            thread_id=thread_id,
+            channel_type=channel_type,
+            bot_id=self._bot_id or "",
+            bot_name=self._bot_name or "",
+            mentions=parsed.mentions,
+        )
 
         if (
             self._command_registry is not None
@@ -231,11 +269,12 @@ class MessageHandler:
                     "channel_type": channel_type,
                     "user_name": user_name,
                     "content_kind": content_kind,
+                    "has_text": has_text,
                     "llm_text": parsed.llm_text,
                     "clean_text": parsed.clean_text,
                     "mentions": parsed.mentions,
                     "image_srcs": image_srcs,
-                    "auto_reply": self._bot_config.auto_reply if self._bot_config is not None else False,
+                    "auto_reply": auto_reply_allowed,
                 },
                 {
                     "configurable": {"thread_id": thread_id},
@@ -250,6 +289,8 @@ class MessageHandler:
         reply_text = result.get("reply_text", "")
         if reply_text:
             await self._send_reply(channel_id, reply_text)
+        if reply_text and auto_reply_allowed:
+            self._last_auto_reply_at[thread_id] = time.monotonic()
 
     # ------------------------------------------------------------------
     # Reply sending
