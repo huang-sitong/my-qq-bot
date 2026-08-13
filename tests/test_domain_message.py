@@ -1,4 +1,4 @@
-from object import IncomingMessage, IndexTurnTask
+from domain import IncomingMessage, IndexTurnTask
 
 
 def test_incoming_message_is_immutable_domain_event():

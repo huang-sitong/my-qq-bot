@@ -11,7 +11,7 @@ import asyncio
 from bot.core.commands import Command, CommandServices, build_command_registry
 from bot.handler import MessageHandler
 from common import BotConfig
-from object.satori import Channel, ChannelType, EventBody, Message, User
+from domain.satori import Channel, ChannelType, EventBody, Message, User
 
 
 class _StubGraph:

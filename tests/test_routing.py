@@ -12,7 +12,7 @@ from bot.core.utils.routing import (
     keep_in_context,
     route_after_detect,
 )
-from object.satori import ChannelType
+from domain.satori import ChannelType
 
 # --- decide_reply ---
 

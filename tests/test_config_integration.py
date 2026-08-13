@@ -10,7 +10,7 @@ from bot.core.llm import setup_llm
 from bot.transport.http.client import SatoriApiClient
 from bot.transport.websocket.client import SatoriClient
 from common import BotConfig
-from object.satori.api import MESSAGE_CREATE, MessageCreateParams
+from domain.satori.api import MESSAGE_CREATE, MessageCreateParams
 
 
 class _FakeChatOpenAI:

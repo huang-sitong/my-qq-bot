@@ -1,7 +1,7 @@
 import asyncio
 
 from bot.core.rag.index_worker import IndexWorker
-from object import IndexTurnTask
+from domain import IndexTurnTask
 from tests.fakes import StubRagService
 
 

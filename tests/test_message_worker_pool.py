@@ -3,7 +3,7 @@
 import asyncio
 
 from bot.handler import MessageHandler
-from object.satori import Channel, ChannelType, EventBody, Message, User
+from domain.satori import Channel, ChannelType, EventBody, Message, User
 
 
 class _StubApi:

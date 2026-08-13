@@ -33,7 +33,8 @@ requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta:__legacy__"
 
 [tool.setuptools.packages.find]
-include = ["object*", "bot*"]
+where = ["src"]
+include = ["bot*", "common*", "domain*"]
 
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"
@@ -47,7 +48,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["."]
+pythonpath = ["src"]
 
 [tool.ruff]
 target-version = "py312"

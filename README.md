@@ -12,7 +12,7 @@ uv run python main.py         # 启动 bot
 
 ## 配置
 
-所有运行参数统一由 `common/config.py` 的 `BotConfig`（pydantic-settings）从 `.env` 读取，完整环境变量清单见 `.env-template`。核心项：
+所有运行参数统一由 `src/common/config.py` 的 `BotConfig`（pydantic-settings）从 `.env` 读取，完整环境变量清单见 `.env-template`。核心项：
 
 | 变量 | 说明 |
 |---|---|
@@ -44,4 +44,4 @@ uv run python -m pytest
 
 ## 架构
 
-见 `CLAUDE.md`（入口 `main.py` → `MessageHandler` → LangGraph，节点分 `llm_node` / `action_node` / `tools` / `subgraph`，RAG 索引在图内 `index_turn` 节点）。
+见 `CLAUDE.md`（入口 `main.py` → `MessageHandler` → 消息 worker → Router → Dispatcher；回复走最小 LangGraph，RAG 索引在后台 `IndexWorker`，上下文压缩在图外 `ContextCompactor`）。

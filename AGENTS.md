@@ -16,16 +16,16 @@ uv run python -m pytest  # run tests
 
 ```
 main.py                 # entrypoint — 装配 BotConfig / LLM / Graph / Handler / ContextCompactor / IndexWorker / RagService / MemoryStore
-common/                 # 共享配置 + 提示词（单一事实来源）
+src/common/             # 共享配置 + 提示词（单一事实来源）
   config.py             #   BotConfig pydantic-settings（env 校验、严格布尔 Flag）
   mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
   prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
-bot/
+src/bot/
   transport/            # websocket（Satori WS 事件）+ http（send_message / call_api；send_file 普通文件走 OneBot11 HTTP）
   core/
     graph.py            # LangGraph 组装 → (graph, checkpointer)；仅保留 reply 流水线
     ingress.py          # SatoriMessageIngress — EventBody 校验 → IncomingMessage（生成 event_id/trace_id）
-    router.py           # route_incoming — 协议无关路由（RouteDecision 数据对象在 object/bot/router.py）
+    router.py           # route_incoming — 协议无关路由（RouteDecision 数据对象在 src/domain/bot/router.py）
     dispatcher.py       # MessageDispatcher — RouteDecision → 命令/graph/context/system/media 流水线
     worker.py           # MessageWorkerPool — 消息队列 + thread lock + Router + Dispatcher
     compaction.py       # ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
@@ -35,12 +35,12 @@ bot/
     vision/             # VisionService — Ollama 视觉描述 + 多模态 data-url 下载
     utils/              # 纯函数：context(token 估算) / content_parser / routing(回复判定)
     mcp/                # client.load_mcp_tools（逐 server 降级）
-    skills/             # loader(SkillRegistry 扫描) + tools(load/unload 纯函数；Skill 数据对象在 object/bot/skill.py)
-    commands/           # 图外斜杠指令：parser / registry / builtin（数据模型在 object/bot/command.py）
+    skills/             # loader(SkillRegistry 扫描) + tools(load/unload 纯函数；Skill 数据对象在 src/domain/bot/skill.py)
+    commands/           # 图外斜杠指令：parser / registry / builtin（数据模型在 src/domain/bot/command.py）
     nodes/              # 图节点：llm_node(call_llm) / action_node(describe_image, skill_manager)；detect_intent/summarize/index_turn 保留 helper 不挂图
     tools/              # factory.build_tools + search_chat_history / user_memory / send_file 纯函数
   handler.py            # MessageHandler — 协议适配门面：EventBody → Ingress → WorkerPool
-object/                 # 领域/协议数据对象（懒加载）：bot/（state、message、identity、index_task、content、skill、command、router、bash）、satori/
+src/domain/             # 领域/协议数据对象（懒加载）：bot/（state、message、identity、index_task、content、skill、command、router、bash）、satori/
 db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
 
@@ -76,7 +76,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 ## Key patterns
 
-**Lazy-loading `object/`**：`object/__init__.py` 用 `__getattr__` + `_module_map` 按名懒加载子模块。新增领域数据对象或 Satori 模型/参数时同步 `__all__` 与 `_module_map`。
+**Lazy-loading `domain/`**：`src/domain/__init__.py` 用 `__getattr__` + `_module_map` 按名懒加载子模块。新增领域数据对象或 Satori 模型/参数时同步 `__all__` 与 `_module_map`。
 
 **Node DI**：`graph.py` 用 `functools.partial` 注入（非闭包）；节点文件均为独立 `async def(state, ...) -> dict`。
 
@@ -93,19 +93,19 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - 索引任务：graph 返回后 handler 构造 `IndexTurnTask` 入队 `IndexWorker`（独立 asyncio.Queue + 单 FIFO consumer）；reply 轮 2 条（用户+Bot）、context_only 1 条（仅用户）、图片 user_message 追加 `[图片]` 占位符；纯媒体但有 `reply_text` 时仍存 bot 回复，两者皆空才跳过。timestamp 为 ISO `YYYY-MM-DD HH:MM:SS`（字典序==时间序）；记录显式 sender/receiver（`sender_id/name`、`receiver_id/name`）。队列满/失败只降级丢任务，不阻塞消息 worker。
 - 嵌入：Ollama `qwen3-embedding`，Query/Document 共用 Instruct 前缀，按 `(model, 任务前缀, 角色, 原文)` 哈希落盘缓存（换模型/改 RETRIEVAL_TASK 自动失效）；嵌入/视觉 base URL 独立配置，`OLLAMA_BASE_URL` 仅作旧共用地址兼容回落
 - env：`BOT_RAG_ENABLED`/`BOT_EMBED_MODEL`/`BOT_EMBED_BASE_URL`/`BOT_EMBED_DIMENSIONS`/`BOT_EMBED_CACHE_ENABLED`/`BOT_EMBED_CACHE_MAX_ENTRIES`/`BOT_RAG_TOP_K`/`BOT_RAG_SCORE_THRESHOLD`/`BOT_RAG_RETENTION_PER_THREAD`/`BOT_RAG_MAX_AGENT_ROUNDS`；视觉 `BOT_VISION_ENABLED`/`BOT_VISION_MODEL`/`BOT_VISION_BASE_URL`/`BOT_VISION_MAX_IMAGES`/`BOT_VISION_TIMEOUT`；多模态 `BOT_LLM_MULTIMODAL`（0=本地视觉/1=主 LLM）；`OLLAMA_BASE_URL` 旧共用地址兼容回落
-- MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS_FILE`/`BOT_MCP_TOOL_NAME_PREFIX`；server 定义集中在可提交的 `config/mcp_servers.json`（`{"servers": {...}}`，密钥用 `${ENV_VAR}` 占位），加载 `common/mcp.py::load_mcp_servers_from_file`（相对路径按项目根解析、缺失/损坏降级空、插值缺变量→空串；env 必传、不读 os.environ）；main.py 用 `dotenv_values(find_dotenv())` 读 .env 内容做插值源，再 `client.py::load_mcp_tools` 加载；加载后注入 MCP_TOOL_HINT 引导
+- MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS_FILE`/`BOT_MCP_TOOL_NAME_PREFIX`；server 定义集中在可提交的 `config/mcp_servers.json`（`{"servers": {...}}`，密钥用 `${ENV_VAR}` 占位），加载 `src/common/mcp.py::load_mcp_servers_from_file`（相对路径按项目根解析、缺失/损坏降级空、插值缺变量→空串；env 必传、不读 os.environ）；main.py 用 `dotenv_values(find_dotenv())` 读 .env 内容做插值源，再 `client.py::load_mcp_tools` 加载；加载后注入 MCP_TOOL_HINT 引导
 
 **记忆工具**：注入 MemoryStore 后 call_llm 绑定 `remember/recall_user_memory` 工具 + MEMORY_TOOL_HINT，LLM 自行决定读写；`user_id` 经 InjectedState 注入，底层官方 AsyncSqliteStore 全 async。旧"图前全量注入 + 图外抽取"方案已移除。
 
-**技能模块**：`Skill` 纯数据对象在 `object/bot/skill.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：handler 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
+**技能模块**：`Skill` 纯数据对象在 `src/domain/bot/skill.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：handler 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
 
-**指令模块（图外斜杠指令）**：命令数据模型统一在 `object/bot/command.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`/`CommandServices`），`bot/core/commands` 只保留 parser/registry/builtin。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_node(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
+**指令模块（图外斜杠指令）**：命令数据模型统一在 `src/domain/bot/command.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`/`CommandServices`），`src/bot/core/commands` 只保留 parser/registry/builtin。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_node(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
 
 **Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 describe_image/skill_manager；detect_intent/summarize/index_turn 保留 helper 不挂图）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）· `subgraph/`（嵌套子图）。
 
 ## Gotchas
 
-- **`object/` 包**：setuptools `__legacy__` 把 `data_object` 改名 `object`。始终 `from object.*` 导入。
+- **`domain/` 包**：领域/协议数据对象统一在 `src/domain/`，包名避免与内置 `object` 混淆。始终 `from domain.*` 导入。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），Router/decide_reply 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
 - **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。

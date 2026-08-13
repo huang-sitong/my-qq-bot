@@ -20,7 +20,7 @@ import pytest
 import websockets
 
 from common import BotConfig
-from object.satori import EventBody  # show what the current model keeps/drops
+from domain.satori import EventBody  # show what the current model keeps/drops
 
 logging.basicConfig(level=logging.WARNING)
 

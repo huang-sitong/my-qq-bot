@@ -4,7 +4,7 @@ from bot.core.commands import CommandServices
 from bot.core.rag.index_worker import IndexWorker
 from bot.handler import MessageHandler
 from common import BotConfig
-from object.satori import Channel, ChannelType, EventBody, Message, User
+from domain.satori import Channel, ChannelType, EventBody, Message, User
 from tests.fakes import StubRagService
 
 
