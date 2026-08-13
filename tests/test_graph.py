@@ -117,63 +117,81 @@ def test_graph_input_message_appends_to_checkpoint(tmp_path):
         graph, checkpointer = await create_graph(
             llm, BotConfig(_env_file=None), db_dir=str(tmp_path)
         )
-        cfg = {"configurable": {"thread_id": "test:thread"}}
-        await graph.ainvoke(_initial_state(), cfg)
-        second = _initial_state()
-        second["messages"] = [HumanMessage(content="第二条")]
-        await graph.ainvoke(second, cfg)
-        snapshot = await graph.aget_state(cfg)
-        assert len(snapshot.values["messages"]) == 4
+        try:
+            cfg = {"configurable": {"thread_id": "test:thread"}}
+            await graph.ainvoke(_initial_state(), cfg)
+            second = _initial_state()
+            second["messages"] = [HumanMessage(content="第二条")]
+            await graph.ainvoke(second, cfg)
+            snapshot = await graph.aget_state(cfg)
+            assert len(snapshot.values["messages"]) == 4
+        finally:
+            await checkpointer.conn.close()
 
     asyncio.run(run())
 
 
 def test_graph_image_reply_includes_vision_description(tmp_path):
-    rag = StubRagService()
-    vision = FakeVisionService(["一只猫坐在窗台上"])
-    llm = ScriptedLLM([AIMessage(content="好可爱的猫！")])
-    graph, _ = asyncio.run(
-        create_graph(
+    async def run():
+        rag = StubRagService()
+        vision = FakeVisionService(["一只猫坐在窗台上"])
+        llm = ScriptedLLM([AIMessage(content="好可爱的猫！")])
+        graph, checkpointer = await create_graph(
             llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path),
             rag_service=rag, vision_service=vision,
         )
-    )
-    state = {
-        **_initial_state(),
-        "content_kind": "image",
-        "clean_text": "",
-        "llm_text": "[图片]",
-        "image_srcs": ["https://x/1.jpg"],
-        "messages": [HumanMessage(content="[图片]")],
-    }
-    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+        try:
+            state = {
+                **_initial_state(),
+                "content_kind": "image",
+                "clean_text": "",
+                "llm_text": "[图片]",
+                "image_srcs": ["https://x/1.jpg"],
+                "messages": [HumanMessage(content="[图片]")],
+            }
+            result = await graph.ainvoke(
+                state, {"configurable": {"thread_id": "test:thread"}}
+            )
 
-    assert result["reply_text"] == "好可爱的猫！"
-    humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
-    assert humans and humans[0].content == "[图片：一只猫坐在窗台上]"
-    assert rag.last_indexed is None
+            assert result["reply_text"] == "好可爱的猫！"
+            humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
+            assert humans and humans[0].content == "[图片：一只猫坐在窗台上]"
+            assert rag.last_indexed is None
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())
 
 
 def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
-    rag = StubRagService()
-    llm = ScriptedLLM([AIMessage(content="我看不到图")])
-    graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
-    )
-    state = {
-        **_initial_state(),
-        "content_kind": "image",
-        "clean_text": "",
-        "llm_text": "[图片]",
-        "image_srcs": ["https://x/1.jpg"],
-        "messages": [HumanMessage(content="[图片]")],
-    }
-    result = asyncio.run(graph.ainvoke(state, {"configurable": {"thread_id": "test:thread"}}))
+    async def run():
+        rag = StubRagService()
+        llm = ScriptedLLM([AIMessage(content="我看不到图")])
+        graph, checkpointer = await create_graph(
+            llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path),
+            rag_service=rag,
+        )
+        try:
+            state = {
+                **_initial_state(),
+                "content_kind": "image",
+                "clean_text": "",
+                "llm_text": "[图片]",
+                "image_srcs": ["https://x/1.jpg"],
+                "messages": [HumanMessage(content="[图片]")],
+            }
+            result = await graph.ainvoke(
+                state, {"configurable": {"thread_id": "test:thread"}}
+            )
 
-    assert result["reply_text"] == "我看不到图"
-    humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
-    assert humans and humans[0].content == "[图片]"  # 占位符保留
-    assert rag.last_indexed is None
+            assert result["reply_text"] == "我看不到图"
+            humans = [m for m in result["messages"] if isinstance(m, HumanMessage)]
+            assert humans and humans[0].content == "[图片]"  # 占位符保留
+            assert rag.last_indexed is None
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())
 
 
 # ----------------------------------------------------------------------

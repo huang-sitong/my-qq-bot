@@ -8,23 +8,23 @@ async def _ping(ctx):
 
 
 def _message(**overrides):
-    data = dict(
-        event_id="e1",
-        platform="llonebot",
-        guild_id="",
-        thread_id="llonebot::c1",
-        channel_id="c1",
-        channel_type=1,
-        user_id="u1",
-        user_name="张三",
-        raw_content="/ping",
-        content_kind="text",
-        has_text=True,
-        llm_text="/ping",
-        clean_text="/ping",
-        mentions={},
-        image_srcs=[],
-    )
+    data = {
+        "event_id": "e1",
+        "platform": "llonebot",
+        "guild_id": "",
+        "thread_id": "llonebot::c1",
+        "channel_id": "c1",
+        "channel_type": 1,
+        "user_id": "u1",
+        "user_name": "张三",
+        "raw_content": "/ping",
+        "content_kind": "text",
+        "has_text": True,
+        "llm_text": "/ping",
+        "clean_text": "/ping",
+        "mentions": {},
+        "image_srcs": [],
+    }
     data.update(overrides)
     return IncomingMessage(**data)
 
