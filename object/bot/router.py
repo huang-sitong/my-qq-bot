@@ -14,6 +14,8 @@ class RouteAction(str, Enum):
     COMMAND = "command"
     REPLY = "reply"
     CONTEXT_ONLY = "context_only"
+    SYSTEM = "system"
+    MEDIA = "media"
     IGNORE = "ignore"
 
 

@@ -8,6 +8,7 @@ import bot.core.skills as core_skills
 import bot.core.tools.run_bash as core_run_bash
 from object import (
     BashConfig,
+    BotIdentity,
     Command,
     CommandActor,
     CommandContext,
@@ -30,6 +31,12 @@ def test_data_objects_are_single_source_in_object():
     assert core_router.RouteDecision is RouteDecision
     assert core_skills.Skill is Skill
     assert core_run_bash.BashConfig is BashConfig
+
+
+def test_bot_identity_is_shared_domain_object():
+    identity = BotIdentity(id="bot1", name="小助手")
+    assert identity.id == "bot1"
+    assert identity.name == "小助手"
 
 
 def test_data_objects_remain_usable():

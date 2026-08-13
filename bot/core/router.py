@@ -1,8 +1,17 @@
 from bot.core.commands import CommandRegistry, parse_command
 from bot.core.utils.routing import decide_reply, keep_in_context
 from object.bot.command import CommandActor
+from object.bot.content import MessageKind
 from object.bot.message import IncomingMessage
 from object.bot.router import RouteAction, RouteDecision
+
+_CONVERSATION_EVENT_TYPES = {"message-created"}
+_MEDIA_KINDS = {
+    MessageKind.IMAGE.value,
+    MessageKind.FILE.value,
+    MessageKind.AUDIO.value,
+    MessageKind.VIDEO.value,
+}
 
 
 def route_incoming(
@@ -16,6 +25,9 @@ def route_incoming(
     auto_reply_allowed: bool = False,
     admin_ids: tuple[str, ...] = (),
 ) -> RouteDecision:
+    if message.event_type and message.event_type not in _CONVERSATION_EVENT_TYPES:
+        return RouteDecision(action=RouteAction.SYSTEM)
+
     if (
         command_enabled
         and command_registry is not None
@@ -51,6 +63,8 @@ def route_incoming(
         message.has_text,
     )
     if not keep:
+        if message.content_kind in _MEDIA_KINDS:
+            return RouteDecision(action=RouteAction.MEDIA)
         return RouteDecision(action=RouteAction.IGNORE)
     if should_respond:
         return RouteDecision(

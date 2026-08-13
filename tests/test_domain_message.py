@@ -18,9 +18,13 @@ def test_incoming_message_is_immutable_domain_event():
         clean_text="",
         mentions={},
         image_srcs=["https://x/1.jpg"],
+        event_type="message-created",
+        trace_id="trace-1",
     )
     assert msg.thread_id == "llonebot:g1:c1"
     assert msg.image_srcs == ["https://x/1.jpg"]
+    assert msg.event_type == "message-created"
+    assert msg.trace_id == "trace-1"
 
 
 def test_index_turn_task_is_immutable():

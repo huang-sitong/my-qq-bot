@@ -97,7 +97,7 @@ def test_group_auto_reply_is_reply():
     assert decision.action == RouteAction.REPLY
 
 
-def test_pure_media_is_ignored():
+def test_pure_media_routes_to_media_pipeline():
     decision = route_incoming(
         _message(
             channel_type=0,
@@ -110,4 +110,13 @@ def test_pure_media_is_ignored():
         ),
         auto_reply_allowed=False,
     )
-    assert decision.action == RouteAction.IGNORE
+    assert decision.action == RouteAction.MEDIA
+
+
+def test_non_conversation_event_routes_to_system_pipeline():
+    decision = route_incoming(
+        _message(event_type="login"),
+        command_registry=_registry(),
+        command_enabled=True,
+    )
+    assert decision.action == RouteAction.SYSTEM

@@ -1,6 +1,7 @@
 __all__ = [
     "Attachment",
     "BashConfig",
+    "BotIdentity",
     "BotState",
     "Command",
     "CommandActor",
@@ -20,6 +21,7 @@ __all__ = [
 _module_map = {
     "Attachment": "content",
     "BashConfig": "bash",
+    "BotIdentity": "identity",
     "BotState": "state",
     "Command": "command",
     "CommandActor": "command",

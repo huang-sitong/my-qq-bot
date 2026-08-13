@@ -2,7 +2,7 @@
 
 LLOneBot 投递的 ``event.channel.type`` 是 ``ChannelType``（IntEnum）实例，
 若原样注入 state，LangGraph checkpoint 会持久化该枚举，触发未注册类型
-反序列化警告（未来版本会升级为硬错误）。``handler._process`` 在入口用
+反序列化警告（未来版本会升级为硬错误）。``SatoriMessageIngress`` 在入口用
 ``int(...)`` 强制转换 —— 本测试锁定该行为，防止回归。
 """
 

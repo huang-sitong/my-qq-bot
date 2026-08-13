@@ -9,6 +9,7 @@ __all__ = [  # noqa: RUF022
     # bot
     "Attachment",
     "BashConfig",
+    "BotIdentity",
     "BotState",
     "Command",
     "CommandActor",
@@ -67,6 +68,7 @@ _module_map: dict[str, str] = {}
 _BOT_NAMES = {
     "Attachment",
     "BashConfig",
+    "BotIdentity",
     "BotState",
     "Command",
     "CommandActor",

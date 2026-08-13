@@ -18,3 +18,5 @@ class IncomingMessage:
     clean_text: str
     mentions: dict[str, str]
     image_srcs: list[str]
+    event_type: str = ""
+    trace_id: str = ""

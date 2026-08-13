@@ -24,7 +24,10 @@ bot/
   transport/            # websocket（Satori WS 事件）+ http（send_message / call_api；send_file 普通文件走 OneBot11 HTTP）
   core/
     graph.py            # LangGraph 组装 → (graph, checkpointer)；仅保留 reply 流水线
+    ingress.py          # SatoriMessageIngress — EventBody 校验 → IncomingMessage（生成 event_id/trace_id）
     router.py           # route_incoming — 协议无关路由（RouteDecision 数据对象在 object/bot/router.py）
+    dispatcher.py       # MessageDispatcher — RouteDecision → 命令/graph/context/system/media 流水线
+    worker.py           # MessageWorkerPool — 消息队列 + thread lock + Router + Dispatcher
     compaction.py       # ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
     llm.py              # ChatOpenAI 工厂（读 BASE_URL / API_KEY）
     memory.py           # MemoryStore — AsyncSqliteStore 按用户 kv 记忆
@@ -36,25 +39,26 @@ bot/
     commands/           # 图外斜杠指令：parser / registry / builtin（数据模型在 object/bot/command.py）
     nodes/              # 图节点：llm_node(call_llm) / action_node(describe_image, skill_manager)；detect_intent/summarize/index_turn 保留 helper 不挂图
     tools/              # factory.build_tools + search_chat_history / user_memory / send_file 纯函数
-  handler.py            # MessageHandler — Satori EventBody → IncomingMessage → 队列 → Router → 命令/graph/context_only
-object/                 # 领域/协议数据对象（懒加载）：bot/（state、message、index_task、content、skill、command、router、bash）、satori/
+  handler.py            # MessageHandler — 协议适配门面：EventBody → Ingress → WorkerPool
+object/                 # 领域/协议数据对象（懒加载）：bot/（state、message、identity、index_task、content、skill、command、router、bash）、satori/
 db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
 
 ## Data flow
 
 ```
-WS 事件 → EventBody → MessageHandler.handle() → parse_content → IncomingMessage → 消息队列
-  → worker 池（N 个 asyncio worker，按 thread_id 锁串行）→ _process
+WS 事件 → EventBody → MessageHandler.handle() → SatoriMessageIngress → IncomingMessage（event_id/trace_id）
+  → MessageWorkerPool 消息队列（N 个 asyncio worker，按 thread_id 锁串行）
   → Router.route_incoming() → RouteDecision
-    command   → 权限 → 命令 handler → 回复；不进图、不自动压缩、不产生 RAG 索引（clear/compact/context 图外直接读写 checkpoint）
-    ignore    → 结束
-    reply / context_only → ContextCompactor.compact_if_needed()（同一 thread lock 内同步）
-      reply        → graph.ainvoke
-                      → describe_image → call_llm → tools → skill_manager → call_llm（按需回环）→ END
-                   → 立即 send_message（handler 消费 result["reply_text"]，无 send_reply 节点）
-                   → enqueue IndexTurnTask → IndexWorker
-      context_only → graph.aupdate_state({"messages": [HumanMessage]}) → enqueue IndexTurnTask(bot_reply="")
+  → MessageDispatcher
+      command      → 权限 → 命令 handler → 回复；不进图、不自动压缩、不产生 RAG 索引
+      system/media/ignore → 结束
+      reply / context_only → ContextCompactor.compact_if_needed()（同一 thread lock 内同步）
+        reply        → graph.ainvoke
+                       → describe_image → call_llm → tools → skill_manager → call_llm（按需回环）→ END
+                    → 立即 send_message（Dispatcher 消费 result["reply_text"]，无 send_reply 节点）
+                    → enqueue IndexTurnTask → IndexWorker
+        context_only → graph.aupdate_state({"messages": [HumanMessage]}) → enqueue IndexTurnTask(bot_reply="")
 ```
 
 ## Databases
@@ -104,7 +108,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - **`object/` 包**：setuptools `__legacy__` 把 `data_object` 改名 `object`。始终 `from object.*` 导入。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），Router/decide_reply 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
-- **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本忽略；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。
+- **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。
 - **视觉节点双模式**：`llm_multimodal=0`（默认）把 `[图片]` 原位替换为 `[图片：描述]` 并写 vision_desc；`=1` 图片转 data URL 进主 LLM（本地视觉仅产 vision_desc）。`auto_reply=True` 图片轮跳过本地视觉：多模态主 LLM 直接看图，非多模态保留 `[图片]` 占位符且不产 vision_desc。多模态 content 块列表**一律经 `content_to_text` 归一化为字符串**（透传列表会在摘要/后台索引 `.strip()` 崩溃）；摘要格式化只取 text 块，绝不带 base64。VisionService 单张失败返回 `""` 不抛。`[图片：{desc}]` 由 describe_image 拼装供 LLM；后台索引 user_message 统一保留 `[图片]` 占位符。
 - **uv**：PyPI mirror = mirrors.aliyun.com（pyproject `[[tool.uv.index]]`）；Python >=3.12。
 - **`.env`**：`BASE_URL` + `API_KEY`（非 GO_*），`.env-template` 是文档化 schema。
