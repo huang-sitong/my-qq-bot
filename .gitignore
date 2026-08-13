@@ -5,7 +5,6 @@
 .pytest_cache
 .pytest_tmp
 .ruff_cache
-docs/superpowers
 # Python-generated files
 __pycache__/
 *.py[oc]
