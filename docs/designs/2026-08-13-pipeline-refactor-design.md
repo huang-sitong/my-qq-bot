@@ -94,6 +94,7 @@ START
 class IncomingMessage:
     event_id: str
     platform: str
+    guild_id: str
     thread_id: str
     channel_id: str
     channel_type: int
