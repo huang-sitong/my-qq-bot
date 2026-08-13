@@ -17,7 +17,9 @@ from bot import (
     setup_llm,
 )
 from bot.core.commands import CommandServices, build_command_registry
+from bot.core.compaction import ContextCompactor
 from bot.core.mcp import load_mcp_tools
+from bot.core.rag.index_worker import IndexWorker
 from bot.core.skills import SkillRegistry
 from common import (
     DEFAULT_PERSONA_PROMPT,
@@ -95,6 +97,14 @@ async def main():
         vision_service=vision_service, mcp_tools=mcp_tools, skill_registry=skill_registry,
         file_sender=api_client,
     )
+    compactor = None
+    if graph is not None and llm is not None:
+        compactor = ContextCompactor(
+            graph, llm, config, skill_registry=skill_registry,
+        )
+    index_worker = None
+    if rag_service is not None:
+        index_worker = IndexWorker(rag_service)
     command_services = CommandServices(
         version=_bot_version(),
         started_at=started_at,
@@ -106,6 +116,7 @@ async def main():
         rag_service=rag_service,
         vision_service=vision_service,
         memory_store=memory_store,
+        compactor=compactor,
         mcp_tool_names=tuple(tool.name for tool in mcp_tools),
         mcp_tool_count=len(mcp_tools),
     )
@@ -120,6 +131,8 @@ async def main():
         bot_config=config,
         command_registry=command_registry,
         command_services=command_services,
+        compactor=compactor,
+        index_worker=index_worker,
         worker_count=config.message_worker_count,
         queue_maxsize=config.message_queue_maxsize,
     )
@@ -130,6 +143,8 @@ async def main():
 
     # --- Start message worker ---
     await handler.start()
+    if index_worker is not None:
+        await index_worker.start()
 
     # --- Run ---
     try:
@@ -138,6 +153,8 @@ async def main():
         logger.info("Shutting down ...")
     finally:
         await handler.stop()
+        if index_worker is not None:
+            await index_worker.stop()
         await client.disconnect()
         await api_client.close()
         if rag_service is not None:

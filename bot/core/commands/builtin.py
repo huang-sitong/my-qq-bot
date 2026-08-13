@@ -5,7 +5,6 @@ from functools import partial
 
 from langchain_core.messages import RemoveMessage
 
-from bot.core.nodes import summarize_node
 from bot.core.utils import content_to_text, estimate_context_tokens
 from common.config import _parse_flag
 
@@ -116,26 +115,12 @@ async def _clear(ctx: CommandContext) -> CommandResult:
 
 
 async def _compact(ctx: CommandContext) -> CommandResult:
-    graph = ctx.services.graph
-    llm = ctx.services.llm
-    if graph is None or llm is None:
-        return CommandResult(text="当前未启用对话图或 LLM，无法压缩上下文。")
-    config = {"configurable": {"thread_id": ctx.thread_id}}
-    snapshot = await graph.aget_state(config)
-    state = snapshot.values if snapshot is not None else {}
-    if not state.get("messages"):
-        return CommandResult(text="当前没有可压缩的上下文。")
-    result = await summarize_node(
-        state,
-        llm=llm,
-        bot_config=ctx.config,
-        skill_registry=ctx.services.skill_registry,
-        force=True,
-    )
-    if not result:
+    compactor = ctx.services.compactor
+    if compactor is None:
+        return CommandResult(text="当前未启用上下文压缩。")
+    removed = await compactor.force_compact(ctx.thread_id)
+    if removed == 0:
         return CommandResult(text="当前上下文较少，无需压缩。")
-    await graph.aupdate_state(config, result)
-    removed = len(result.get("messages", []))
     return CommandResult(text=f"已提前压缩上下文，移除 {removed} 条历史消息。")
 
 

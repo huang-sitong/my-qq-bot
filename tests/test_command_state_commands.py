@@ -2,7 +2,7 @@
 
 import asyncio
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from bot.core.commands import (
     CommandActor,
@@ -10,6 +10,7 @@ from bot.core.commands import (
     CommandServices,
     build_command_registry,
 )
+from bot.core.compaction import ContextCompactor
 from bot.core.graph import create_graph
 from bot.core.skills import Skill, SkillRegistry
 from common import BotConfig
@@ -57,6 +58,7 @@ def test_clear_resets_context_and_skills_but_keeps_persona(tmp_path):
                 channel_type=1,
                 llm_text="加载翻译技能",
                 clean_text="加载翻译技能",
+                messages=[HumanMessage(content="加载翻译技能")],
             )
             result = await graph.ainvoke(state, cfg)
             assert result["active_skills"] == ["translate"]
@@ -101,6 +103,7 @@ def test_context_reports_context_usage(tmp_path):
                 channel_type=1,
                 llm_text="你好",
                 clean_text="你好",
+                messages=[HumanMessage(content="你好")],
             )
             await graph.ainvoke(state, cfg)
 
@@ -153,6 +156,7 @@ def test_compact_force_summarizes_checkpoint(tmp_path):
                     channel_type=1,
                     llm_text=text,
                     clean_text=text,
+                    messages=[HumanMessage(content=text)],
                 )
                 await graph.ainvoke(state, cfg)
             before = await graph.aget_state(cfg)
@@ -161,6 +165,7 @@ def test_compact_force_summarizes_checkpoint(tmp_path):
             services = CommandServices(
                 version="test", started_at=0.0, bot_name="",
                 llm=llm, graph=graph, checkpointer=checkpointer,
+                compactor=ContextCompactor(graph, llm, config),
             )
             registry = build_command_registry(services)
             reply = await registry.resolve("compact").handler(

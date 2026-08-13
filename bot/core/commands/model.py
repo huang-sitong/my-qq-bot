@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
     from langgraph.graph.state import CompiledStateGraph
 
+    from bot.core.compaction import ContextCompactor
     from bot.core.memory import MemoryStore
     from bot.core.rag.service import RagService
     from bot.core.skills import SkillRegistry
@@ -40,6 +41,7 @@ class CommandServices:
     rag_service: RagService | None = None
     vision_service: VisionService | None = None
     memory_store: MemoryStore | None = None
+    compactor: ContextCompactor | None = None
     mcp_tool_names: tuple[str, ...] = ()
     mcp_tool_count: int = 0
 

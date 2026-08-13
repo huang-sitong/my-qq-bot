@@ -43,7 +43,10 @@ def _tool_error_message(exc: Exception) -> str:
 
 def _route_after_llm(state: BotState) -> str:
     """call_llm 后路由：末条消息带 tool_calls → tools（ToolNode），否则 END。"""
-    last = state["messages"][-1]
+    messages = state.get("messages") or []
+    if not messages:
+        return END
+    last = messages[-1]
     return "tools" if getattr(last, "tool_calls", None) else END
 
 
