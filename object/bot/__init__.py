@@ -1,19 +1,39 @@
 __all__ = [
     "Attachment",
+    "BashConfig",
     "BotState",
+    "Command",
+    "CommandActor",
+    "CommandContext",
+    "CommandResult",
+    "CommandServices",
     "IncomingMessage",
     "IndexTurnTask",
     "MessageKind",
+    "ParsedCommand",
     "ParsedContent",
+    "RouteAction",
+    "RouteDecision",
+    "Skill",
 ]
 
 _module_map = {
-    "BotState": "state",
     "Attachment": "content",
+    "BashConfig": "bash",
+    "BotState": "state",
+    "Command": "command",
+    "CommandActor": "command",
+    "CommandContext": "command",
+    "CommandResult": "command",
+    "CommandServices": "command",
     "IncomingMessage": "message",
     "IndexTurnTask": "index_task",
     "MessageKind": "content",
+    "ParsedCommand": "command",
     "ParsedContent": "content",
+    "RouteAction": "router",
+    "RouteDecision": "router",
+    "Skill": "skill",
 }
 
 

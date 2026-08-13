@@ -1,75 +1,22 @@
-"""命令模型：与 Satori / CLI 无关的核心类型。"""
+"""命令模型兼容导出。
 
-from __future__ import annotations
+数据对象已统一到 ``object/bot/command.py``，本模块保留旧导入路径。
+"""
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from object.bot.command import (
+    Command,
+    CommandActor,
+    CommandContext,
+    CommandHandler,
+    CommandResult,
+    CommandServices,
+)
 
-if TYPE_CHECKING:
-    from langchain_openai import ChatOpenAI
-    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
-    from langgraph.graph.state import CompiledStateGraph
-
-    from bot.core.compaction import ContextCompactor
-    from bot.core.memory import MemoryStore
-    from bot.core.rag.service import RagService
-    from bot.core.skills import SkillRegistry
-    from bot.core.vision.service import VisionService
-    from common import BotConfig
-
-CommandHandler = Callable[["CommandContext"], Awaitable["CommandResult"]]
-
-
-@dataclass(frozen=True)
-class CommandActor:
-    user_id: str
-    name: str
-    is_admin: bool
-    is_cli: bool = False
-
-
-@dataclass
-class CommandServices:
-    version: str
-    started_at: float
-    bot_name: str
-    llm: ChatOpenAI | None = None
-    graph: CompiledStateGraph | None = None
-    checkpointer: AsyncSqliteSaver | None = None
-    skill_registry: SkillRegistry | None = None
-    rag_service: RagService | None = None
-    vision_service: VisionService | None = None
-    memory_store: MemoryStore | None = None
-    compactor: ContextCompactor | None = None
-    mcp_tool_names: tuple[str, ...] = ()
-    mcp_tool_count: int = 0
-
-
-@dataclass(frozen=True)
-class CommandContext:
-    raw: str
-    actor: CommandActor
-    platform: str
-    guild_id: str
-    channel_id: str
-    thread_id: str
-    channel_type: int
-    args: tuple[str, ...]
-    config: BotConfig
-    services: CommandServices
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    text: str
-    data: dict | None = None
-
-
-@dataclass(frozen=True)
-class Command:
-    name: str
-    description: str
-    usage: str
-    permission: str
-    handler: CommandHandler
+__all__ = [
+    "Command",
+    "CommandActor",
+    "CommandContext",
+    "CommandHandler",
+    "CommandResult",
+    "CommandServices",
+]

@@ -18,10 +18,11 @@ from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
 from bot.core.skills.tools import load_skill, unload_skill
-from bot.core.tools.run_bash import BashConfig, run_bash
+from bot.core.tools.run_bash import run_bash
 from bot.core.tools.search_chat_history import search_chat_history
 from bot.core.tools.send_file import send_file
 from bot.core.tools.user_memory import recall_user_memory, remember_user_memory
+from object.bot.bash import BashConfig
 
 logger = logging.getLogger(__name__)
 

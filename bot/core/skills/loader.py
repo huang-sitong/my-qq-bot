@@ -9,21 +9,14 @@ import_puzzles.py / draw_puzzle.py）——loader 不感知技能数据文件。
 
 import logging
 import re
-from dataclasses import dataclass
 from pathlib import Path
+
+from object.bot.skill import Skill
 
 logger = logging.getLogger(__name__)
 
 _NAME_RE = re.compile(r"[a-z0-9_-]+")
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*(?:\n|\Z)", re.DOTALL)
-
-
-@dataclass
-class Skill:
-    name: str
-    description: str
-    body: str
-
 
 def _parse_skill_md(path: Path) -> tuple[str, str, str] | None:
     """解析 SKILL.md → (name, description, body)；非法返回 None。"""

@@ -9,25 +9,13 @@
 import asyncio
 import logging
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
+
+from object.bot.bash import BashConfig
 
 logger = logging.getLogger(__name__)
 
 MAX_BASH_TIMEOUT = 3600
-
-
-@dataclass(frozen=True)
-class BashConfig:
-    """run_bash 工具配置（graph.py 从 BotConfig 组装，经闭包绑定进工具）。"""
-    enabled: bool = True
-    shell: str = "bash"
-    timeout: int = 30
-    max_output: int = 4000
-    allowed_roots: list[str] = field(default_factory=list)
-    project_root: Path = Path(".")
-
-
 # (label, pattern)——防御性深水，非完整保证；真正信任边界是 skill 内容与 LLM 行为。
 DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     ("删除根目录", r"\brm\s+-(?:rf|fr)\s+/(?:\s|;|$)"),

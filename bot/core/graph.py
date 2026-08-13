@@ -17,8 +17,8 @@ from bot.core.nodes import (
     skill_manager_node,
 )
 from bot.core.tools import build_tools
-from bot.core.tools.run_bash import BashConfig
 from common import BotConfig
+from object.bot.bash import BashConfig
 from object.bot.state import BotState
 
 logger = logging.getLogger(__name__)

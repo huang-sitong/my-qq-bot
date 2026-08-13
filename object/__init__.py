@@ -7,12 +7,22 @@ that imports only load the modules they actually use.
 # 分组注释是刻意结构（与下方 _module_map 平行同步），按 RUF022 全量字母序会打散分组
 __all__ = [  # noqa: RUF022
     # bot
-    "BotState",
     "Attachment",
+    "BashConfig",
+    "BotState",
+    "Command",
+    "CommandActor",
+    "CommandContext",
+    "CommandResult",
+    "CommandServices",
     "IncomingMessage",
     "IndexTurnTask",
     "MessageKind",
+    "ParsedCommand",
     "ParsedContent",
+    "RouteAction",
+    "RouteDecision",
+    "Skill",
     # satori — enums
     "ChannelType",
     "Direction",
@@ -55,12 +65,22 @@ __all__ = [  # noqa: RUF022
 _module_map: dict[str, str] = {}
 # 必须与上方 __all__ 的 # bot 组保持同步：新增 bot 导出名若漏加此集合，会被误映射到 "satori"
 _BOT_NAMES = {
-    "BotState",
     "Attachment",
+    "BashConfig",
+    "BotState",
+    "Command",
+    "CommandActor",
+    "CommandContext",
+    "CommandResult",
+    "CommandServices",
     "IncomingMessage",
     "IndexTurnTask",
     "MessageKind",
+    "ParsedCommand",
     "ParsedContent",
+    "RouteAction",
+    "RouteDecision",
+    "Skill",
 }
 for _name in __all__:
     _module_map[_name] = "bot" if _name in _BOT_NAMES else "satori"
