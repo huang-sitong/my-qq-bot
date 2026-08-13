@@ -14,14 +14,10 @@ from langgraph.prebuilt.tool_node import ToolInvocationError
 from bot.core.nodes import (
     call_llm_node,
     describe_image_node,
-    detect_intent,
-    index_turn_node,
     skill_manager_node,
-    summarize_node,
 )
 from bot.core.tools import build_tools
 from bot.core.tools.run_bash import BashConfig
-from bot.core.utils.routing import route_after_detect
 from common import BotConfig
 from object.bot.state import BotState
 
@@ -45,24 +41,10 @@ def _tool_error_message(exc: Exception) -> str:
     return "工具执行失败。"
 
 
-def _route_after_detect(state: BotState) -> str:
-    """Deterministic 3-way route（判定表单一来源见 bot.core.utils.routing）。
-
-    - should_respond → describe_image (vision for image turns, no-op for text) → call_llm
-    - non-replied text → summarize (context + compression + single-record index)
-    - non-replied media (image group non-@ / file / audio / video) → END
-    """
-    return route_after_detect(
-        state.get("should_respond", False),
-        state.get("content_kind", ""),
-        state.get("has_text", False),
-    ) or END
-
-
 def _route_after_llm(state: BotState) -> str:
-    """call_llm 后路由：末条消息带 tool_calls → tools（ToolNode），否则 → summarize。"""
+    """call_llm 后路由：末条消息带 tool_calls → tools（ToolNode），否则 END。"""
     last = state["messages"][-1]
-    return "tools" if getattr(last, "tool_calls", None) else "summarize"
+    return "tools" if getattr(last, "tool_calls", None) else END
 
 
 async def create_graph(
@@ -103,7 +85,6 @@ async def create_graph(
     use_bash = bash_config.enabled
 
     builder = StateGraph(BotState)
-    builder.add_node("detect_intent", detect_intent)
     builder.add_node(
         "call_llm", partial(
             call_llm_node,
@@ -117,11 +98,7 @@ async def create_graph(
             skill_registry=skill_registry,
         )
     )
-    builder.add_node("summarize", partial(
-        summarize_node, llm=llm, bot_config=config, skill_registry=skill_registry,
-    ))
     builder.add_node("skill_manager", partial(skill_manager_node, skill_registry=skill_registry))
-    builder.add_node("index_turn", partial(index_turn_node, rag_service=rag_service))
     builder.add_node("describe_image", partial(
         describe_image_node,
         vision_service=vision_service,
@@ -131,8 +108,7 @@ async def create_graph(
     ))
     builder.add_node("tools", ToolNode(tools, handle_tool_errors=_tool_error_message))
 
-    builder.add_edge(START, "detect_intent")
-    builder.add_conditional_edges("detect_intent", _route_after_detect)
+    builder.add_edge(START, "describe_image")
     builder.add_conditional_edges("call_llm", _route_after_llm)
     # 工具回环：每轮工具执行后先经 skill_manager 写回 active_skills，再重入 call_llm。
     # 逐轮接线（而非图末一次）保证每一轮 load_skill/unload_skill 调用都被处理——
@@ -140,8 +116,6 @@ async def create_graph(
     builder.add_edge("tools", "skill_manager")
     builder.add_edge("skill_manager", "call_llm")
     builder.add_edge("describe_image", "call_llm")
-    builder.add_edge("summarize", "index_turn")
-    builder.add_edge("index_turn", END)
 
     checkpoint_path = os.path.join(db_dir, "checkpoint.sqlite")
     conn = await aiosqlite.connect(checkpoint_path)
