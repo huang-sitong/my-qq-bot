@@ -1,6 +1,8 @@
 __all__ = [
     "Attachment",
     "BotState",
+    "IncomingMessage",
+    "IndexTurnTask",
     "MessageKind",
     "ParsedContent",
 ]
@@ -8,6 +10,8 @@ __all__ = [
 _module_map = {
     "BotState": "state",
     "Attachment": "content",
+    "IncomingMessage": "message",
+    "IndexTurnTask": "index_task",
     "MessageKind": "content",
     "ParsedContent": "content",
 }
