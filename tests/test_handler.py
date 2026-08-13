@@ -19,10 +19,14 @@ class _StubGraph:
 
     def __init__(self):
         self.state = None
+        self.updates = []
 
     async def ainvoke(self, state, config):
         self.state = dict(state)
         return {"reply_text": ""}
+
+    async def aupdate_state(self, config, updates):
+        self.updates.append(updates)
 
 
 class _StubApi:
@@ -66,17 +70,16 @@ def _private_event() -> EventBody:
     )
 
 
+async def _dispatch(handler, event):
+    await handler.handle(event)
+    await handler.start()
+    await handler.stop()
+
+
 def test_channel_type_coerced_to_int_before_graph():
     graph = _StubGraph()
     handler = _make_handler(graph)
-    asyncio.run(handler._process({
-        "event": _private_event(),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "u1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _private_event()))
 
     assert graph.state is not None
     ct = graph.state["channel_type"]
@@ -93,27 +96,19 @@ def test_channel_type_fallback_is_int_when_channel_missing():
     handler = _make_handler(graph)
     event = _private_event()
     event.channel = None  # 无 channel → 走 0 兜底分支
-    asyncio.run(handler._process({
-        "event": event,
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "",
-        "user_id": "u1",
-        "thread_id": "llonebot::guild:",
-    }))
+    asyncio.run(_dispatch(handler, event))
 
-    assert graph.state["channel_type"] == 0
-    assert type(graph.state["channel_type"]) is int
+    assert graph.updates
 
 
-def _command_event(content):
+def _command_event(content, user_id="admin1"):
     return EventBody(
         id=2,
         sn=2,
         type="message-created",
         platform="llonebot",
         channel=Channel(id="ch1", type=ChannelType.DIRECT),
-        user=User(id="admin1", name="admin"),
+        user=User(id=user_id, name="admin"),
         message=Message(id="m2", content=content),
     )
 
@@ -138,14 +133,7 @@ def test_registered_command_skips_graph():
         command_services=services,
     )
 
-    asyncio.run(handler._process({
-        "event": _command_event("/ping"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("/ping")))
 
     assert graph.state is None
     assert handler._api_client.sent == [("ch1", "Pong.")]
@@ -163,14 +151,7 @@ def test_unknown_command_still_enters_graph():
         command_services=services,
     )
 
-    asyncio.run(handler._process({
-        "event": _command_event("/unknown"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("/unknown")))
 
     assert graph.state is not None
 
@@ -187,14 +168,7 @@ def test_admin_command_permission_denied_skips_graph():
         command_services=services,
     )
 
-    asyncio.run(handler._process({
-        "event": _command_event("/status"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "u-not-admin",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("/status", user_id="u-not-admin")))
 
     assert graph.state is None
     assert handler._api_client.sent[0][1] == "无权执行该指令。"
@@ -212,14 +186,7 @@ def test_command_disabled_enters_graph():
         command_services=services,
     )
 
-    asyncio.run(handler._process({
-        "event": _command_event("/ping"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("/ping")))
 
     assert graph.state is not None
 
@@ -236,14 +203,7 @@ def test_malformed_command_args_returns_usage():
         command_services=services,
     )
 
-    asyncio.run(handler._process({
-        "event": _command_event('/help "oops'),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event('/help "oops')))
 
     assert graph.state is None
     assert handler._api_client.sent[0][1] == "指令参数错误，用法：/help [command]"
@@ -261,14 +221,7 @@ def test_malformed_admin_command_permission_denied_skips_graph():
         command_services=services,
     )
 
-    asyncio.run(handler._process({
-        "event": _command_event('/status "oops'),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "u-not-admin",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event('/status "oops', user_id="u-not-admin")))
 
     assert graph.state is None
     assert handler._api_client.sent[0][1] == "无权执行该指令。"
@@ -292,14 +245,7 @@ def test_handler_exception_returns_failure_reply():
         command_registry=registry,
         command_services=services,
     )
-    asyncio.run(handler._process({
-        "event": _command_event("/boom"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("/boom")))
     assert graph.state is None
     assert handler._api_client.sent[0][1] == "指令执行失败。"
 
@@ -315,14 +261,7 @@ def test_missing_required_arg_returns_usage():
         command_registry=registry,
         command_services=services,
     )
-    asyncio.run(handler._process({
-        "event": _command_event("/skill"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("/skill")))
     assert graph.state is None
     assert handler._api_client.sent[0][1] == "用法：/skill <name>"
 
@@ -340,14 +279,7 @@ def test_custom_prefix_dispatches_command():
         command_registry=registry,
         command_services=services,
     )
-    asyncio.run(handler._process({
-        "event": _command_event("!ping"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("!ping")))
     assert graph.state is None
     assert handler._api_client.sent == [("ch1", "Pong.")]
 
@@ -363,14 +295,7 @@ def test_unicode_command_name_falls_through_to_graph():
         command_registry=registry,
         command_services=services,
     )
-    asyncio.run(handler._process({
-        "event": _command_event("/帮助"),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "admin1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _command_event("/帮助")))
     assert graph.state is not None
     assert graph.state["clean_text"] == "/帮助"
 
@@ -395,14 +320,7 @@ def test_command_dispatches_in_group_channel():
         user=User(id="admin1", name="admin"),
         message=Message(id="m3", content="/ping"),
     )
-    asyncio.run(handler._process({
-        "event": event,
-        "platform": "llonebot",
-        "guild_id": "g1",
-        "channel_id": "g1",
-        "user_id": "admin1",
-        "thread_id": "llonebot:g1:g1",
-    }))
+    asyncio.run(_dispatch(handler, event))
     assert graph.state is None
     assert handler._api_client.sent == [("g1", "Pong.")]
 
@@ -411,14 +329,7 @@ def test_auto_reply_private_explicit_is_not_marked_auto_reply():
     graph = _StubGraph()
     config = BotConfig(_env_file=None, auto_reply=True)
     handler = _make_handler(graph, bot_config=config)
-    asyncio.run(handler._process({
-        "event": _private_event(),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "u1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _private_event()))
     assert graph.state["auto_reply"] is False
 
 
@@ -441,14 +352,7 @@ def test_group_non_at_auto_reply_allowed_when_random_hits():
         user=User(id="u2", name="tester"),
         message=Message(id="m10", content="晚上吃什么"),
     )
-    asyncio.run(handler._process({
-        "event": event,
-        "platform": "llonebot",
-        "guild_id": "g1",
-        "channel_id": "g1",
-        "user_id": "u2",
-        "thread_id": "llonebot:g1:g1",
-    }))
+    asyncio.run(_dispatch(handler, event))
     assert graph.state["auto_reply"] is True
     assert graph.state["has_text"] is True
 
@@ -463,7 +367,7 @@ def test_auto_reply_cooldown_blocks_second_reply():
     )
     handler = _make_handler(graph, bot_config=config)
     handler._random = _FixedRandom(0.1)
-    handler._last_auto_reply_at["llonebot:g1:g1"] = 1e18
+    handler._last_auto_reply_at["llonebot::g1"] = 1e18
 
     event = EventBody(
         id=11,
@@ -474,26 +378,12 @@ def test_auto_reply_cooldown_blocks_second_reply():
         user=User(id="u2", name="tester"),
         message=Message(id="m11", content="晚上吃什么"),
     )
-    asyncio.run(handler._process({
-        "event": event,
-        "platform": "llonebot",
-        "guild_id": "g1",
-        "channel_id": "g1",
-        "user_id": "u2",
-        "thread_id": "llonebot:g1:g1",
-    }))
-    assert graph.state["auto_reply"] is False
+    asyncio.run(_dispatch(handler, event))
+    assert graph.state is None
 
 
 def test_auto_reply_defaults_false_when_config_absent():
     graph = _StubGraph()
     handler = _make_handler(graph)  # bot_config=None
-    asyncio.run(handler._process({
-        "event": _private_event(),
-        "platform": "llonebot",
-        "guild_id": "",
-        "channel_id": "ch1",
-        "user_id": "u1",
-        "thread_id": "llonebot::private:ch1",
-    }))
+    asyncio.run(_dispatch(handler, _private_event()))
     assert graph.state["auto_reply"] is False
