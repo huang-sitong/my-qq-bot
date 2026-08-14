@@ -109,16 +109,19 @@ async def describe_image_node(
     max_images: int = 3,
     timeout: float = 60.0,
 ) -> dict:
-    """批量图片处理：逐条 HumanMessage 处理自己的图片，返回逐图描述。
+    """批量图片处理：只处理本轮图输入中的 HumanMessage，返回逐图描述。
 
     失败时降级为 [图片] 占位符（多模态全下载失败 → 文本只留占位符）。
+    ``vision_target_count`` 由 dispatcher 注入，限定不扫描历史 checkpoint 图片。
     ``vision_desc`` 为 ``list[ImageDescription]``，每个元素携带 ``image_src``，
     明确该描述对应哪一张图片。
     """
     messages = state.get("messages") or []
+    target_count = int(state.get("vision_target_count") or 0)
+    candidates = messages[-target_count:] if target_count > 0 else messages
     targets = [
         message
-        for message in messages
+        for message in candidates
         if isinstance(message, HumanMessage) and _message_image_srcs(message)
     ]
     if not targets:

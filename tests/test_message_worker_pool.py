@@ -305,6 +305,36 @@ def test_batch_marks_cooldown_when_any_message_auto_replies():
     asyncio.run(run())
 
 
+def test_batch_cooldown_applies_to_following_message():
+    async def run():
+        cfg = BotConfig(
+            _env_file=None,
+            auto_reply=True,
+            auto_reply_random_rate=1.0,
+            auto_reply_cooldown=60,
+        )
+        graph = _ReplyGraph()
+        api = _StubApi()
+        handler = MessageHandler(
+            client=object(),
+            graph=graph,
+            persona="p",
+            api_client=api,
+            bot_config=cfg,
+            batch_max=4,
+        )
+        await handler.handle(_event("m1", "g1", ChannelType.TEXT))
+        await handler.handle(_event("m2", "g1", ChannelType.TEXT))
+        await handler.start()
+        await handler._worker_pool._queue.join()
+        await handler.handle(_event('<img src="x.jpg"/>', "g1", ChannelType.TEXT))
+        await handler.stop()
+        assert graph.calls == [["m1", "m2"]]
+        assert api.sent == [("g1", "收到")]
+
+    asyncio.run(run())
+
+
 def test_batch_command_dispatch_error_does_not_drop_following_message():
     async def run():
         cfg = BotConfig(_env_file=None, command_enabled=True, admin_ids=["u1"])

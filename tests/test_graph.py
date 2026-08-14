@@ -38,6 +38,7 @@ def _initial_state() -> dict:
         "content_kind": "text",
         "llm_text": "还记得我们聊过 RAG 吗？",
         "clean_text": "还记得我们聊过 RAG 吗？",
+        "vision_target_count": 1,
     }
 
 
@@ -127,6 +128,52 @@ def test_graph_input_message_appends_to_checkpoint(tmp_path):
             await graph.ainvoke(second, cfg)
             snapshot = await graph.aget_state(cfg)
             assert len(snapshot.values["messages"]) == 4
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())
+
+
+def test_graph_does_not_reprocess_previous_image_on_later_turn(tmp_path):
+    async def run():
+        vision = FakeVisionService(["一只猫坐在窗台上"])
+        llm = ScriptedLLM([AIMessage(content="好可爱的猫！"), AIMessage(content="好的")])
+        graph, checkpointer = await create_graph(
+            llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
+            vision_service=vision,
+        )
+        try:
+            cfg = {"configurable": {"thread_id": "test:thread"}}
+            first = {
+                **_initial_state(),
+                "content_kind": "image",
+                "clean_text": "",
+                "llm_text": "[图片]",
+                "messages": [HumanMessage(
+                    content="[图片]",
+                    name="张三",
+                    additional_kwargs={
+                        "user_id": "u1",
+                        "image_srcs": ["https://x/1.jpg"],
+                    },
+                )],
+            }
+            await graph.ainvoke(first, cfg)
+
+            second = {
+                **_initial_state(),
+                "messages": [HumanMessage(
+                    content="第二条",
+                    name="张三",
+                    additional_kwargs={
+                        "user_id": "u1",
+                        "image_srcs": [],
+                    },
+                )],
+            }
+            await graph.ainvoke(second, cfg)
+
+            assert vision.calls == 1
         finally:
             await checkpointer.conn.close()
 

@@ -35,6 +35,7 @@ def _state(*messages, **overrides):
     return make_state(
         messages=list(messages),
         content_kind="image",
+        vision_target_count=len(messages),
         **overrides,
     )
 
@@ -132,6 +133,19 @@ def test_batch_describes_each_message_and_maps_each_image():
         ImageDescription("u1", "猫"),
         ImageDescription("u2", "狗"),
     ]
+
+
+def test_ignores_previous_turn_images_when_target_count_is_set():
+    fake = FakeVisionService(["旧图"])
+    old = _msg("[图片]", ["old"])
+    current = _msg("你好", [])
+    state = make_state(
+        messages=[old, current],
+        content_kind="image",
+        vision_target_count=1,
+    )
+    assert asyncio.run(describe_image_node(state, fake)) == {}
+    assert fake.calls == 0
 
 
 # --- 多模态模式（主 LLM 直接收图） ---

@@ -209,6 +209,7 @@ class MessageDispatcher:
             "llm_text": message.llm_text,
             "clean_text": message.clean_text,
             "mentions": message.mentions,
+            "vision_target_count": len(humans),
             "auto_reply": auto_reply_allowed,
             "messages": humans,
         }
