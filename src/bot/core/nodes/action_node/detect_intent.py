@@ -16,12 +16,11 @@ from langchain_core.messages import HumanMessage
 
 from bot.core.utils.routing import decide_reply, keep_in_context
 from domain.bot.state import BotState
-from domain.satori import ChannelType
 
 logger = logging.getLogger(__name__)
 
 
-async def detect_intent(state: BotState) -> dict:
+async def detect_intent(state: BotState, user_name: str = "") -> dict:
     """Deterministic routing: decide should_respond, build HumanMessage.
 
     The old LLM router is gone: group messages only get a reply on
@@ -32,7 +31,6 @@ async def detect_intent(state: BotState) -> dict:
     bot_id = state.get("bot_id", "")
     bot_name = state.get("bot_name", "")
     mentions = state.get("mentions", {})
-    user_name = state.get("user_name", "")
     content_kind = state.get("content_kind", "")
     auto_reply = state.get("auto_reply", False)
     has_text = state.get("has_text", False)
@@ -41,12 +39,18 @@ async def detect_intent(state: BotState) -> dict:
     should_respond = decide_reply(channel_type, content_kind, bot_id, bot_name, mentions, auto_reply)
 
     # 2) Build HumanMessage: handler 每轮必注入 llm_text（媒体->占位符、@ 已渲染）
+    #    发言者元数据随消息携带，不再作为图状态标量字段。
     content = state.get("llm_text", "")
-    is_group = channel_type != ChannelType.DIRECT
-    if is_group and user_name:
-        message = HumanMessage(content=content, name=user_name)
-    else:
-        message = HumanMessage(content=content)
+    kwargs = {
+        "user_id": state.get("user_id", ""),
+        "user_name": user_name,
+        "image_srcs": state.get("image_srcs", []),
+    }
+    message = HumanMessage(
+        content=content,
+        name=user_name or None,
+        additional_kwargs={k: v for k, v in kwargs.items() if v},
+    )
 
     # 3) Non-replied media must NOT enter context — its placeholder would
     #    pollute later @-mention turns. Keep them out of ``messages``.

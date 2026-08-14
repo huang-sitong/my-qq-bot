@@ -3,6 +3,7 @@
 import asyncio
 
 from bot.core.nodes import index_turn_node
+from domain.bot.vision import ImageDescription
 from tests.fakes import StubRagService, make_state
 
 
@@ -30,14 +31,24 @@ def test_non_replied_group_text_indexes_user_only():
 
 
 def test_image_with_vision_desc_indexes_placeholder_only():
-    indexed = _run(_img_state(vision_desc="一只橘猫", reply_text="图里是猫"), StubRagService())
+    indexed = _run(
+        _img_state(
+            vision_desc=[ImageDescription("u1", "一只橘猫")],
+            reply_text="图里是猫",
+        ),
+        StubRagService(),
+    )
     assert indexed["user_message"] == "[图片]"
     assert indexed["bot_reply"] == "图里是猫"
 
 
 def test_image_text_with_desc_indexes_placeholder_only():
     indexed = _run(
-        _img_state(clean_text="帮我看看这张图", vision_desc="一只橘猫", reply_text="是猫"),
+        _img_state(
+            clean_text="帮我看看这张图",
+            vision_desc=[ImageDescription("u1", "一只橘猫")],
+            reply_text="是猫",
+        ),
         StubRagService(),
     )
     assert indexed["user_message"] == "帮我看看这张图 [图片]"

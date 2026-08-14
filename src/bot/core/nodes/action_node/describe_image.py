@@ -17,6 +17,7 @@ from langchain_core.messages import HumanMessage
 from bot.core.utils import IMAGE_PLACEHOLDER
 from bot.core.vision.service import VisionService, download_images_as_data_urls
 from domain.bot.state import BotState
+from domain.bot.vision import ImageDescription
 
 
 def replace_placeholders(content: str, descriptions: list[str]) -> str:
@@ -65,6 +66,42 @@ def build_multimodal_content(text: str, data_urls: list[str]) -> list[dict]:
     return blocks
 
 
+def _message_image_srcs(message: HumanMessage) -> list[str]:
+    """从 HumanMessage 元数据取该消息自己的图片 URL。"""
+    return list(message.additional_kwargs.get("image_srcs") or [])
+
+
+def _message_auto_reply(message: HumanMessage, default: bool = False) -> bool:
+    """从 HumanMessage 元数据取该消息是否由自动回复策略触发。"""
+    return bool(message.additional_kwargs.get("auto_reply", default))
+
+
+def _copy_message_with_content(message: HumanMessage, content) -> HumanMessage:
+    """保留 id/name/additional_kwargs，只替换 content（供 reducer 原位更新）。"""
+    return HumanMessage(
+        content=content,
+        id=message.id,
+        name=message.name,
+        additional_kwargs=message.additional_kwargs or {},
+    )
+
+
+def _vision_result(
+    updates: list[HumanMessage],
+    descriptions: list[ImageDescription],
+    *,
+    has_content: bool,
+) -> dict:
+    """组装节点返回；全失败时返回空列表清掉陈旧 vision_desc。"""
+    if not has_content:
+        return {"vision_desc": []}
+    result: dict = {}
+    if updates:
+        result["messages"] = updates
+    result["vision_desc"] = descriptions
+    return result
+
+
 async def describe_image_node(
     state: BotState,
     vision_service: VisionService | None = None,
@@ -72,65 +109,93 @@ async def describe_image_node(
     max_images: int = 3,
     timeout: float = 60.0,
 ) -> dict:
-    """图片消息处理：多模态主 LLM 直接收图；纯文本 LLM 走本地视觉描述。
+    """批量图片处理：逐条 HumanMessage 处理自己的图片，返回逐图描述。
 
     失败时降级为 [图片] 占位符（多模态全下载失败 → 文本只留占位符）。
+    ``vision_desc`` 为 ``list[ImageDescription]``，每个元素携带 ``image_src``，
+    明确该描述对应哪一张图片。
     """
-    image_srcs = state.get("image_srcs") or []
-    if not image_srcs:
-        return {}
     messages = state.get("messages") or []
-    if not messages or not isinstance(messages[-1], HumanMessage):
+    targets = [
+        message
+        for message in messages
+        if isinstance(message, HumanMessage) and _message_image_srcs(message)
+    ]
+    if not targets:
         return {}
-    msg = messages[-1]
-    auto_reply = state.get("auto_reply", False)
-
-    # auto_reply 图片轮不走本地视觉模型：多模态由主 LLM 直接看图，
-    # 非多模态只保留占位符，并清空陈旧 vision_desc 防止污染 RAG 索引。
-    if auto_reply and not llm_multimodal:
-        return {"vision_desc": ""}
-
     if llm_multimodal:
-        return await _describe_multimodal(
-            msg, image_srcs, vision_service, max_images, timeout,
-            use_local_vision=not auto_reply,
+        return await _describe_all_multimodal(
+            targets, vision_service, max_images, timeout,
+            auto_reply_default=state.get("auto_reply", False),
         )
 
-    # 纯文本模式（现状）：本地视觉描述 → [图片：描述] 原位替换
+    # 纯文本模式（现状）：本地视觉描述 → [图片：描述] 原位替换；
+    # auto_reply 图片轮保留占位符并清空陈旧 vision_desc。
+    local_targets = [
+        message
+        for message in targets
+        if not _message_auto_reply(message, state.get("auto_reply", False))
+    ]
+    if not local_targets:
+        return {"vision_desc": []}
+    return await _describe_all_local(local_targets, vision_service)
+
+
+async def _describe_all_local(
+    messages: list[HumanMessage],
+    vision_service: VisionService | None,
+) -> dict:
+    """本地视觉模式：逐条消息描述，所有成功图片返回结构化描述。"""
     if vision_service is None:
         return {}
-    descriptions = await vision_service.describe_many(image_srcs)
-    new_content = replace_placeholders(msg.content, descriptions)
-    vision_desc = "；".join(d for d in descriptions if d)
-    if new_content == msg.content and not vision_desc:
-        return {"vision_desc": ""}  # 图片轮全失败：清空陈旧 vision_desc，防跨轮污染 RAG 索引
-    return {
-        "messages": [HumanMessage(content=new_content, id=msg.id)],
-        "vision_desc": vision_desc,
-    }
+    updates: list[HumanMessage] = []
+    descriptions: list[ImageDescription] = []
+    has_content = False
+    for message in messages:
+        image_srcs = _message_image_srcs(message)
+        descs = await vision_service.describe_many(image_srcs)
+        descriptions.extend(
+            ImageDescription(image_src=src, description=desc)
+            for src, desc in zip(image_srcs, descs)
+        )
+        new_content = replace_placeholders(message.content, descs)
+        if new_content != message.content:
+            updates.append(_copy_message_with_content(message, new_content))
+        if any(desc for desc in descs):
+            has_content = True
+    return _vision_result(updates, descriptions, has_content=has_content)
 
 
-async def _describe_multimodal(
-    msg: HumanMessage,
-    image_srcs: list[str],
+async def _describe_all_multimodal(
+    messages: list[HumanMessage],
     vision_service: VisionService | None,
     max_images: int,
     timeout: float,
-    use_local_vision: bool = True,
+    auto_reply_default: bool = False,
 ) -> dict:
-    """多模态模式：下载图片 → 原位替换为 content 数组；本地视觉仅产 vision_desc。"""
-    data_urls = await download_images_as_data_urls(
-        image_srcs, max_images=max_images, timeout=timeout,
-    )
-    vision_desc = ""
-    if use_local_vision and vision_service is not None:
-        descriptions = await vision_service.describe_many(image_srcs)
-        vision_desc = "；".join(d for d in descriptions if d)
-    # 图片全下载失败且无描述：清空陈旧 vision_desc，防跨轮污染 RAG 索引
-    if not any(data_urls) and not vision_desc:
-        return {"vision_desc": ""}
-    content = build_multimodal_content(msg.content, [u for u in data_urls if u])
-    return {
-        "messages": [HumanMessage(content=content, id=msg.id)],
-        "vision_desc": vision_desc,
-    }
+    """多模态模式：逐条下载图片 → 原位替换为 content 数组；本地视觉仅产 vision_desc。"""
+    updates: list[HumanMessage] = []
+    descriptions: list[ImageDescription] = []
+    has_content = False
+    for message in messages:
+        image_srcs = _message_image_srcs(message)
+        data_urls = await download_images_as_data_urls(
+            image_srcs, max_images=max_images, timeout=timeout,
+        )
+        visible_urls = [url for url in data_urls if url]
+        if (
+            not _message_auto_reply(message, auto_reply_default)
+            and vision_service is not None
+        ):
+            descs = await vision_service.describe_many(image_srcs)
+            descriptions.extend(
+                ImageDescription(image_src=src, description=desc)
+                for src, desc in zip(image_srcs, descs)
+            )
+            if any(desc for desc in descs):
+                has_content = True
+        if visible_urls:
+            content = build_multimodal_content(message.content, visible_urls)
+            updates.append(_copy_message_with_content(message, content))
+            has_content = True
+    return _vision_result(updates, descriptions, has_content=has_content)

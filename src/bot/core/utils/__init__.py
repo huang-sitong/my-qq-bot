@@ -13,6 +13,7 @@ from bot.core.utils.context import (
     estimate_context_tokens,
     format_messages_for_summary,
 )
+from bot.core.utils.messages import speaker_from_messages
 from domain.bot.content import Attachment, MessageKind, ParsedContent
 
 __all__ = [
@@ -29,5 +30,6 @@ __all__ = [
     "parse_attachments",
     "parse_content",
     "parse_mentions",
+    "speaker_from_messages",
     "to_llm_text",
 ]

@@ -7,7 +7,7 @@
 
 import asyncio
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
@@ -24,6 +24,12 @@ RECALL_CALL = AIMessage(content="", tool_calls=[
      "id": "call_c", "type": "tool_call"},
 ])
 
+USER_MSG = HumanMessage(
+    content="你好",
+    name="张三",
+    additional_kwargs={"user_id": "u1", "user_name": "张三"},
+)
+
 
 def _node(store):
     return ToolNode(build_tools(memory_store=store))
@@ -38,14 +44,14 @@ def test_memory_tools_work_with_real_store(tmp_path):
         runtime = Runtime()
 
         # 写入：真实 MemoryStore 经 ToolNode 执行 remember（惰性初始化 + async 路径）
-        remember_state = make_state(messages=[REMEMBER_CALL], user_id="u1")
+        remember_state = make_state(messages=[USER_MSG, REMEMBER_CALL])
         remember_result = await node.ainvoke(remember_state, runtime=runtime)
         remember_content = remember_result["messages"][0].content
         assert "已记住" in remember_content
         assert "工具执行失败。" not in remember_content
 
         # 检索：真实 MemoryStore 经 ToolNode 执行 recall，应命中刚写入的记忆
-        recall_state = make_state(messages=[RECALL_CALL], user_id="u1")
+        recall_state = make_state(messages=[USER_MSG, RECALL_CALL])
         recall_result = await node.ainvoke(recall_state, runtime=runtime)
         recall_content = recall_result["messages"][0].content
         assert "张三" in recall_content

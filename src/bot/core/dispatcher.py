@@ -23,7 +23,6 @@ from domain.bot.identity import BotIdentity
 from domain.bot.index_task import IndexTurnTask
 from domain.bot.message import IncomingMessage
 from domain.bot.router import RouteAction, RouteDecision
-from domain.satori import ChannelType
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +80,7 @@ class MessageDispatcher:
         if self._compactor is not None:
             await self._compactor.compact_if_needed(message.thread_id)
 
-        human = self._build_human_message(message)
+        human = self._build_human_message(message, auto_reply=auto_reply_allowed)
         if decision.action == RouteAction.CONTEXT_ONLY:
             thread_config = {"configurable": {"thread_id": message.thread_id}}
             await self.graph.aupdate_state(thread_config, {"messages": [human]})
@@ -89,6 +88,52 @@ class MessageDispatcher:
             return
 
         await self._run_reply_graph(message, human, auto_reply_allowed)
+
+    async def dispatch_batch(
+        self,
+        messages: list[IncomingMessage],
+        decisions: list[RouteDecision],
+        *,
+        auto_reply_flags: list[bool] | None = None,
+    ) -> None:
+        """合并投递一批同 thread 消息：整批只跑一次图、只回一条。
+
+        突发（burst）消息合并为一次 ``graph.ainvoke``（LLM 一次看到全部
+        消息、生成一条回复），或一次 ``aupdate_state``（context_only）；
+        压缩检查也只做一次。RAG 索引仍按每条消息逐条入队，bot 回复挂在
+        每条消息上。命令消息不经过这里——worker 已在其原位置单独执行。
+
+        HumanMessage 携带 user_id/user_name/image_srcs/auto_reply 元数据，
+        记忆、视觉与冷却语义按各自消息归属，不再依赖“最后一条消息”的标量字段。
+        """
+        flags = auto_reply_flags or [False] * len(messages)
+        keep = [
+            (m, d, flag)
+            for m, d, flag in zip(messages, decisions, flags)
+            if d.action in {RouteAction.REPLY, RouteAction.CONTEXT_ONLY}
+        ]
+        if not keep:
+            return
+        if self.graph is None:
+            return
+        first = keep[0][0]
+        if self._compactor is not None:
+            await self._compactor.compact_if_needed(first.thread_id)
+        humans = [
+            self._build_human_message(m, auto_reply=flag)
+            for m, _, flag in keep
+        ]
+        if any(d.action == RouteAction.REPLY for _, d, _ in keep):
+            await self._run_reply_graph_batch(
+                [m for m, _, _ in keep],
+                humans,
+                auto_reply_flags=[flag for _, _, flag in keep],
+            )
+            return
+        thread_config = {"configurable": {"thread_id": first.thread_id}}
+        await self.graph.aupdate_state(thread_config, {"messages": humans})
+        for m, _, _ in keep:
+            await self._enqueue_index(m, "")
 
     async def _execute_command(
         self,
@@ -124,17 +169,31 @@ class MessageDispatcher:
         if reply_text:
             await self._send_reply(message.channel_id, reply_text)
 
-    def _build_human_message(self, message: IncomingMessage) -> HumanMessage:
-        if message.channel_type != ChannelType.DIRECT and message.user_name:
-            return HumanMessage(content=message.llm_text, name=message.user_name)
-        return HumanMessage(content=message.llm_text)
+    def _build_human_message(
+        self,
+        message: IncomingMessage,
+        *,
+        auto_reply: bool = False,
+    ) -> HumanMessage:
+        kwargs = {
+            "user_id": message.user_id,
+            "user_name": message.user_name,
+            "image_srcs": message.image_srcs,
+        }
+        kwargs["auto_reply"] = auto_reply
+        return HumanMessage(
+            content=message.llm_text,
+            name=message.user_name or None,
+            additional_kwargs=kwargs,
+        )
 
     def _build_graph_input(
         self,
         message: IncomingMessage,
-        human: HumanMessage,
+        humans: list[HumanMessage],
         auto_reply_allowed: bool,
     ) -> dict:
+        """构造图输入；``humans`` 可含多条（burst 合并轮）。"""
         return {
             "thread_id": message.thread_id,
             "channel_id": message.channel_id,
@@ -144,17 +203,14 @@ class MessageDispatcher:
             "bot_name": self._identity.name,
             "bot_id": self._identity.id,
             "tool_rounds": 0,
-            "user_id": message.user_id,
             "channel_type": message.channel_type,
-            "user_name": message.user_name,
             "content_kind": message.content_kind,
             "has_text": message.has_text,
             "llm_text": message.llm_text,
             "clean_text": message.clean_text,
             "mentions": message.mentions,
-            "image_srcs": message.image_srcs,
             "auto_reply": auto_reply_allowed,
-            "messages": [human],
+            "messages": humans,
         }
 
     async def _run_reply_graph(
@@ -163,6 +219,19 @@ class MessageDispatcher:
         human: HumanMessage,
         auto_reply_allowed: bool,
     ) -> None:
+        await self._run_reply_graph_batch(
+            [message], [human], [auto_reply_allowed],
+        )
+
+    async def _run_reply_graph_batch(
+        self,
+        messages: list[IncomingMessage],
+        humans: list[HumanMessage],
+        auto_reply_flags: list[bool],
+    ) -> None:
+        """跑一次回复图；突发合并轮整批一条回复，RAG 索引逐条入队。"""
+        last = messages[-1]
+        auto_reply_allowed = any(auto_reply_flags)
         max_rounds = (
             self._bot_config.rag_max_agent_rounds
             if self._bot_config is not None
@@ -171,25 +240,26 @@ class MessageDispatcher:
         recursion_limit = 2 * max_rounds + 8
         try:
             result = await self.graph.ainvoke(
-                self._build_graph_input(message, human, auto_reply_allowed),
+                self._build_graph_input(last, humans, auto_reply_allowed),
                 {
-                    "configurable": {"thread_id": message.thread_id},
+                    "configurable": {"thread_id": last.thread_id},
                     "recursion_limit": recursion_limit,
                 },
             )
         except Exception:
             logger.exception(
                 "Graph invoke failed: trace=%s thread=%s",
-                message.trace_id, message.thread_id,
+                last.trace_id, last.thread_id,
             )
             return
 
         reply_text = result.get("reply_text", "")
         if reply_text:
-            await self._send_reply(message.channel_id, reply_text)
+            await self._send_reply(last.channel_id, reply_text)
         if reply_text and auto_reply_allowed and self._on_auto_reply_sent is not None:
-            self._on_auto_reply_sent(message.thread_id)
-        await self._enqueue_index(message, reply_text)
+            self._on_auto_reply_sent(last.thread_id)
+        for message in messages:
+            await self._enqueue_index(message, reply_text)
 
     async def _enqueue_index(self, message: IncomingMessage, reply_text: str) -> None:
         if self._index_worker is None:

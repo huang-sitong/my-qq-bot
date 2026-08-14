@@ -135,6 +135,7 @@ async def main():
         index_worker=index_worker,
         worker_count=config.message_worker_count,
         queue_maxsize=config.message_queue_maxsize,
+        batch_max=config.message_batch_max,
     )
 
     # --- Register event handlers ---

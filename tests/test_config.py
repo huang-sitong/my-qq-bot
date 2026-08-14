@@ -66,6 +66,7 @@ EXPECTED_DEFAULTS = {
     "bash_allowed_roots": [],
     "message_worker_count": 1,
     "message_queue_maxsize": 0,
+    "message_batch_max": 4,
 }
 
 
@@ -125,6 +126,7 @@ ENV_SAMPLES = {
     "bash_allowed_roots": ("C:/work, D:/tmp", ["C:/work", "D:/tmp"]),
     "message_worker_count": ("4", 4),
     "message_queue_maxsize": ("512", 512),
+    "message_batch_max": ("8", 8),
 }
 
 
@@ -286,6 +288,13 @@ def test_invalid_message_worker_count_rejected(monkeypatch):
 def test_invalid_message_queue_maxsize_rejected(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_MESSAGE_QUEUE_MAXSIZE", "-1")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
+
+
+def test_invalid_message_batch_max_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_MESSAGE_BATCH_MAX", "-1")
     with pytest.raises(ValidationError):
         BotConfig(_env_file=None)
 

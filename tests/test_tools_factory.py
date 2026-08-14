@@ -47,7 +47,9 @@ def test_llm_schema_excludes_injected_args():
 
     recall = by_name["recall_user_memory"]
     recall_props = recall.tool_call_schema.model_json_schema()["properties"]
-    assert "user_id" not in recall_props
+    assert "user_id" in recall_props
+    assert "user_name" in recall_props
+    assert "messages" not in recall_props
     assert "keyword" in recall_props
 
 
@@ -68,6 +70,8 @@ def test_llm_schema_has_param_descriptions():
     recall = by_name["recall_user_memory"]
     recall_props = recall.tool_call_schema.model_json_schema()["properties"]
     assert "模糊匹配" in recall_props["keyword"]["description"]
+    assert "显示昵称" in recall_props["user_name"]["description"]
+    assert "平台 ID" in recall_props["user_id"]["description"]
 
 
 """技能工具：registry 非空才注入；schema 无注入参数。"""

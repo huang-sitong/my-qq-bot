@@ -12,7 +12,7 @@ bot reply, 2 records) and non-replied group text (user only, 1 record —
 import logging
 
 from bot.core.rag.service import RagService
-from bot.core.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
+from bot.core.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text, speaker_from_messages
 from domain.bot.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,7 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
     if rag_service is None:
         return {}
     content = state.get("clean_text", "")
+    user_id, user_name = speaker_from_messages(state.get("messages"))
     # reply_text 可能是旧 checkpoint 残留的多模态 content 块列表 → 先归一化再 strip
     reply_text = content_to_text(state.get("reply_text", "")).strip()
     if (
@@ -37,8 +38,8 @@ async def index_turn_node(state: BotState, rag_service: RagService | None) -> di
         return {}
     await rag_service.index_turn(
         thread_id=state.get("thread_id", ""),
-        user_id=state.get("user_id", ""),
-        user_name=state.get("user_name", ""),
+        user_id=user_id,
+        user_name=user_name,
         bot_id=state.get("bot_id", ""),
         bot_name=state.get("bot_name", ""),
         user_message=content,

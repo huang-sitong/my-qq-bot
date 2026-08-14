@@ -85,6 +85,14 @@ class BotConfig(BaseSettings):
         ge=0,
         validation_alias="BOT_MESSAGE_QUEUE_MAXSIZE",
     )
+    # 同 thread 突发消息合并批处理上限：worker 取到一条消息后，机会式把队列里
+    # 紧随其后的同会话消息并入同一批（一次图调用/一次回复）。0 或 1 = 关闭合并，
+    # 维持逐条处理；负载越高队列积压越多，合并收益越大。
+    message_batch_max: int = Field(
+        default=4,
+        ge=0,
+        validation_alias="BOT_MESSAGE_BATCH_MAX",
+    )
 
     # --- LLM ---
     llm_base_url: str | None = Field(default=None, validation_alias="BASE_URL")

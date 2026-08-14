@@ -32,6 +32,7 @@ class MessageHandler:
         index_worker: IndexWorker | None = None,
         worker_count: int = 1,
         queue_maxsize: int = 0,
+        batch_max: int = 4,
     ) -> None:
         self.client = client
         self._api_client = api_client
@@ -57,6 +58,7 @@ class MessageHandler:
             identity=self._identity,
             worker_count=worker_count,
             queue_maxsize=queue_maxsize,
+            batch_max=batch_max,
         )
 
     @property

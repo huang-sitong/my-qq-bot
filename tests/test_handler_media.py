@@ -3,6 +3,7 @@
 import asyncio
 
 from bot.core.nodes import index_turn_node
+from domain.bot.vision import ImageDescription
 from tests.fakes import StubRagService, make_state
 
 
@@ -61,7 +62,7 @@ def test_index_turn_unescapes_entities():
 def test_index_turn_appends_image_placeholder_for_image():
     rag = StubRagService()
     _run(rag, clean_text="", reply_text="收到",
-         content_kind="image", vision_desc="一只猫")
+         content_kind="image", vision_desc=[ImageDescription("u1", "一只猫")])
     assert rag.last_indexed is not None
     assert rag.last_indexed["user_message"] == "[图片]"
 
@@ -77,6 +78,6 @@ def test_index_turn_text_ignores_stale_vision_desc():
     rag = StubRagService()
     # text 轮残留上一张图的 vision_desc → content_kind=="text" 过滤，不追加
     _run(rag, clean_text="晚上吃什么", reply_text="去吃火锅",
-         content_kind="text", vision_desc="一只猫")
+         content_kind="text", vision_desc=[ImageDescription("u1", "一只猫")])
     assert rag.last_indexed is not None
     assert rag.last_indexed["user_message"] == "晚上吃什么"

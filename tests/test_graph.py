@@ -21,7 +21,11 @@ SAMPLE = [
 def _initial_state() -> dict:
     # channel_type=1 (DIRECT) → Router 判 reply；graph 直接消费输入 HumanMessage
     return {
-        "messages": [HumanMessage(content="还记得我们聊过 RAG 吗？")],
+        "messages": [HumanMessage(
+            content="还记得我们聊过 RAG 吗？",
+            name="张三",
+            additional_kwargs={"user_id": "u1", "user_name": "张三"},
+        )],
         "thread_id": "test:thread",
         "channel_id": "private:u1",
         "persona": "你是{bot_name}",
@@ -30,8 +34,6 @@ def _initial_state() -> dict:
         "bot_name": "测试机器人",
         "bot_id": "bot1",
         "channel_type": 1,
-        "user_name": "张三",
-        "user_id": "u1",
         "tool_rounds": 0,
         "content_kind": "text",
         "llm_text": "还记得我们聊过 RAG 吗？",
@@ -146,8 +148,14 @@ def test_graph_image_reply_includes_vision_description(tmp_path):
                 "content_kind": "image",
                 "clean_text": "",
                 "llm_text": "[图片]",
-                "image_srcs": ["https://x/1.jpg"],
-                "messages": [HumanMessage(content="[图片]")],
+                "messages": [HumanMessage(
+                    content="[图片]",
+                    name="张三",
+                    additional_kwargs={
+                        "user_id": "u1",
+                        "image_srcs": ["https://x/1.jpg"],
+                    },
+                )],
             }
             result = await graph.ainvoke(
                 state, {"configurable": {"thread_id": "test:thread"}}
@@ -177,8 +185,14 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
                 "content_kind": "image",
                 "clean_text": "",
                 "llm_text": "[图片]",
-                "image_srcs": ["https://x/1.jpg"],
-                "messages": [HumanMessage(content="[图片]")],
+                "messages": [HumanMessage(
+                    content="[图片]",
+                    name="张三",
+                    additional_kwargs={
+                        "user_id": "u1",
+                        "image_srcs": ["https://x/1.jpg"],
+                    },
+                )],
             }
             result = await graph.ainvoke(
                 state, {"configurable": {"thread_id": "test:thread"}}

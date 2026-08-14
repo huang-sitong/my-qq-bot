@@ -1,6 +1,6 @@
 import asyncio
 
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool as make_tool
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
@@ -31,6 +31,15 @@ REMEMBER_CALL = AIMessage(content="", tool_calls=[
     {"name": "remember_user_memory", "args": {"key": "喜欢的食物", "value": "火锅"},
      "id": "call_3", "type": "tool_call"},
 ])
+RECALL_CALL_BY_NAME = AIMessage(content="", tool_calls=[
+    {"name": "recall_user_memory", "args": {"keyword": "食物", "user_name": "甲"},
+     "id": "call_name", "type": "tool_call"},
+])
+REMEMBER_CALL_BY_ID = AIMessage(content="", tool_calls=[
+    {"name": "remember_user_memory",
+     "args": {"key": "喜欢的食物", "value": "火锅", "user_id": "u2"},
+     "id": "call_id", "type": "tool_call"},
+])
 UNKNOWN_CALL = AIMessage(content="", tool_calls=[
     {"name": "no_such_tool", "args": {}, "id": "call_4", "type": "tool_call"},
 ])
@@ -42,7 +51,23 @@ SAMPLE = [
      "score": 0.8},
 ]
 
-DEFAULT_STATE = {"thread_id": "test:thread", "user_id": "u1"}
+DEFAULT_STATE = {"thread_id": "test:thread"}
+
+USER_MSG = HumanMessage(
+    content="我的信息",
+    name="张三",
+    additional_kwargs={"user_id": "u1", "user_name": "张三"},
+)
+USER_MSG_A = HumanMessage(
+    content="甲的消息",
+    name="甲",
+    additional_kwargs={"user_id": "user-a", "user_name": "甲"},
+)
+USER_MSG_B = HumanMessage(
+    content="乙的消息",
+    name="乙",
+    additional_kwargs={"user_id": "user-b", "user_name": "乙"},
+)
 
 
 def _node(*, rag=None, store=None):
@@ -90,15 +115,46 @@ def test_executes_search_by_time_window():
 def test_executes_recall_to_memory():
     store = StubMemoryStore()
     asyncio.run(store.store_memory("u1", "喜欢的食物", "火锅"))
-    result = _invoke(_node(store=store), {"messages": [RECALL_CALL], **DEFAULT_STATE})
+    result = _invoke(
+        _node(store=store),
+        {"messages": [USER_MSG, RECALL_CALL], **DEFAULT_STATE},
+    )
     assert "火锅" in result["messages"][0].content
 
 
 def test_executes_remember_to_memory():
     store = StubMemoryStore()
-    result = _invoke(_node(store=store), {"messages": [REMEMBER_CALL], **DEFAULT_STATE})
+    result = _invoke(
+        _node(store=store),
+        {"messages": [USER_MSG, REMEMBER_CALL], **DEFAULT_STATE},
+    )
     assert "已记住" in result["messages"][0].content
     assert asyncio.run(store.load_memories("u1")) == [{"key": "喜欢的食物", "value": "火锅"}]
+
+
+def test_memory_tool_resolves_user_name_from_batch_context():
+    store = StubMemoryStore()
+    asyncio.run(store.store_memory("user-a", "喜欢的食物", "火锅"))
+    result = _invoke(
+        _node(store=store),
+        {
+            "messages": [USER_MSG_A, USER_MSG_B, RECALL_CALL_BY_NAME],
+            **DEFAULT_STATE,
+        },
+    )
+    assert "火锅" in result["messages"][0].content
+
+
+def test_memory_tool_accepts_explicit_user_id():
+    store = StubMemoryStore()
+    result = _invoke(
+        _node(store=store),
+        {"messages": [USER_MSG, REMEMBER_CALL_BY_ID], **DEFAULT_STATE},
+    )
+    assert "已记住" in result["messages"][0].content
+    assert asyncio.run(store.load_memories("u2")) == [
+        {"key": "喜欢的食物", "value": "火锅"}
+    ]
 
 
 def test_unknown_tool_returns_error_message():

@@ -19,9 +19,8 @@ def test_uses_llm_text_when_present():
         llm_text="[图片]这是git",
         channel_type=0,
         bot_id="bot1",
-        user_name="张三",
     )
-    result = asyncio.run(detect_intent(state))
+    result = asyncio.run(detect_intent(state, user_name="张三"))
     msg = result["messages"][0]
     assert isinstance(msg, HumanMessage)
     assert msg.content == "[图片]这是git"
@@ -34,7 +33,6 @@ def test_image_only_empty_llm_text_is_preserved():
         content_kind="image",
         channel_type=1,  # DIRECT
         bot_id="bot1",
-        user_name="",
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is True
@@ -45,7 +43,6 @@ def test_absent_llm_text_yields_empty_content():
     state = make_state(
         channel_type=0,
         bot_id="bot1",
-        user_name="",
     )
     result = asyncio.run(detect_intent(state))
     assert result["should_respond"] is False

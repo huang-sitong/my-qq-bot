@@ -1,8 +1,9 @@
 """工具统一层：把内部纯函数 + MCP 工具归一为 BaseTool 列表。
 
 - 内部工具（RAG 检索、用户记忆）用 StructuredTool.from_function 包装：
-  服务依赖经闭包绑定，thread_id/user_id 经 InjectedState 从图 state 注入，
-  异常降级为占位文案「工具执行失败。」。
+  服务依赖经闭包绑定，thread_id/channel_id 经 InjectedState 从图 state 注入；
+  user_id/user_name 由 LLM 按上下文显式传入，缺失时回退最近一条 HumanMessage
+  元数据；异常降级为占位文案「工具执行失败。」。
 - MCP 工具（外部服务）已是 BaseTool，直接并入。
 
 InjectedState 是 InjectedToolArg 子类：LangChain 的 tool_call_schema 自动
@@ -13,6 +14,7 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
+from langchain_core.messages import BaseMessage
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import InjectedState
 from pydantic import Field
@@ -21,7 +23,11 @@ from bot.core.skills.tools import load_skill, unload_skill
 from bot.core.tools.run_bash import run_bash
 from bot.core.tools.search_chat_history import search_chat_history
 from bot.core.tools.send_file import send_file
-from bot.core.tools.user_memory import recall_user_memory, remember_user_memory
+from bot.core.tools.user_memory import (
+    recall_user_memory,
+    remember_user_memory,
+    resolve_memory_user_id,
+)
 from domain.bot.bash import BashConfig
 
 logger = logging.getLogger(__name__)
@@ -35,13 +41,14 @@ SEARCH_TOOL_DESCRIPTION = (
 )
 
 REMEMBER_TOOL_DESCRIPTION = (
-    "保存当前用户的持久性个人信息（名字、偏好、习惯、背景等）。"
-    "当用户提到新的持久事实时调用；更新已有记忆时直接以相同 key 覆盖。"
+    "保存用户的持久性个人信息（名字、偏好、习惯、背景等）。"
+    "默认保存当前发言者；批内涉及其他发言者时用 user_name 指定。"
+    "更新已有记忆时直接以相同 key 覆盖。"
 )
 
 RECALL_TOOL_DESCRIPTION = (
-    "检索当前用户的持久记忆（名字、偏好、习惯、背景等）。"
-    "当需要用户的个人信息、或回想之前提到过的用户事实时使用。"
+    "检索用户的持久记忆（名字、偏好、习惯、背景等）。"
+    "默认检索当前发言者；批内涉及其他发言者时用 user_name 指定。"
     "keyword 留空返回全部记忆，否则按 key/value 模糊匹配。"
 )
 
@@ -170,10 +177,23 @@ def _make_memory_tools(memory_store) -> list[BaseTool]:
         value: Annotated[str, Field(
             description="记忆内容，中文表述",
         )],
-        user_id: Annotated[str, InjectedState("user_id")] = "",
+        user_name: Annotated[str, Field(
+            description="目标用户的显示昵称；留空表示当前发言者",
+        )] = "",
+        user_id: Annotated[str, Field(
+            description="目标用户的平台 ID；仅在明确知道时填，通常留空由 user_name 解析",
+        )] = "",
+        messages: Annotated[list[BaseMessage] | None, InjectedState("messages")] = None,
     ) -> str:
         try:
-            return await remember_user_memory(key, value, memory_store, user_id)
+            resolved_id, error = resolve_memory_user_id(
+                user_id, user_name, messages
+            )
+            if error:
+                return error
+            return await remember_user_memory(
+                key, value, memory_store, resolved_id
+            )
         except Exception:
             logger.exception("remember_user_memory failed")
             return "工具执行失败。"
@@ -182,10 +202,21 @@ def _make_memory_tools(memory_store) -> list[BaseTool]:
         keyword: Annotated[str, Field(
             description="检索关键词，按 key/value 模糊匹配；留空返回全部记忆",
         )] = "",
-        user_id: Annotated[str, InjectedState("user_id")] = "",
+        user_name: Annotated[str, Field(
+            description="目标用户的显示昵称；留空表示当前发言者",
+        )] = "",
+        user_id: Annotated[str, Field(
+            description="目标用户的平台 ID；仅在明确知道时填，通常留空由 user_name 解析",
+        )] = "",
+        messages: Annotated[list[BaseMessage] | None, InjectedState("messages")] = None,
     ) -> str:
         try:
-            return await recall_user_memory(keyword, memory_store, user_id)
+            resolved_id, error = resolve_memory_user_id(
+                user_id, user_name, messages
+            )
+            if error:
+                return error
+            return await recall_user_memory(keyword, memory_store, resolved_id)
         except Exception:
             logger.exception("recall_user_memory failed")
             return "工具执行失败。"
