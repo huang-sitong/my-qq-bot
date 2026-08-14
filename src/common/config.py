@@ -94,6 +94,15 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_MESSAGE_BATCH_MAX",
     )
 
+    # --- Graph ---
+    # LangGraph 总节点执行上限（call_llm/tools/skill_manager 等每次执行都计 1）。
+    # 默认 128 远大于当前 rag_max_agent_rounds=12 的正常工具回环开销。
+    graph_recursion_limit: int = Field(
+        default=128,
+        gt=0,
+        validation_alias="BOT_GRAPH_RECURSION_LIMIT",
+    )
+
     # --- LLM ---
     llm_base_url: str | None = Field(default=None, validation_alias="BASE_URL")
     llm_api_key: str | None = Field(default=None, validation_alias="API_KEY")

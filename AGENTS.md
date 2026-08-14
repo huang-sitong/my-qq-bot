@@ -88,6 +88,8 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - checkpoint 只存 Human/AI/ToolMessage
 - `estimate_context_tokens` 复用同一函数，token 估算与实际注入不偏离（`now` 仅供测试）
 
+**图调用上限**：`dispatcher` 用 `BOT_GRAPH_RECURSION_LIMIT`（默认 128）作为 LangGraph `recursion_limit`，是 `call_llm`/`tools`/`skill_manager` 等全部节点执行的硬上限；`BOT_RAG_MAX_AGENT_ROUNDS` 只限制工具轮数，两者语义不同。
+
 **RAG（群聊历史检索）**：
 - LLM 主动触发：`search_chat_history` 绑定为工具，返回 tool_calls 时经 ToolNode 执行并回环；`tool_rounds` 达 `rag_max_agent_rounds` 强制收尾
 - 检索双模式：`hybrid_search`（dense ANN+score 阈值 + sparse BM25/jieba，RRF k=60 融合，当前群优先、不足跨群补齐）；属性检索（`search_by_user`，milvus expr 过滤：`person`/`content_keyword`/ISO 时间窗，thread_id=None 跨全部群）。`hours`/`start_time`/`end_time` 入口 `normalize_time` 规范化

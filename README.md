@@ -22,6 +22,7 @@ uv run python main.py         # 启动 bot
 | `BOT_MESSAGE_WORKER_COUNT` | 消息 worker 数；不同 thread 可并发，同一 thread 仍串行（默认 `1`） |
 | `BOT_MESSAGE_QUEUE_MAXSIZE` | 消息队列上限；`0` 无界，正整数满时入队阻塞形成背压 |
 | `BOT_MESSAGE_BATCH_MAX` | 同会话突发消息合并上限；一次图调用/一条回复处理多条（默认 `4`，`0/1` 关闭） |
+| `BOT_GRAPH_RECURSION_LIMIT` | LangGraph 图节点执行上限，工具回环会消耗该额度（默认 `128`） |
 | `BOT_RAG_ENABLED` | 群聊历史向量检索（默认开启；嵌入用 Ollama `qwen3-embedding`） |
 | `BOT_EMBED_BASE_URL` | 嵌入向量专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |
 | `BOT_VISION_BASE_URL` | 视觉模型专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |

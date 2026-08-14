@@ -233,12 +233,11 @@ class MessageDispatcher:
         """跑一次回复图；突发合并轮整批一条回复，RAG 索引逐条入队。"""
         last = messages[-1]
         auto_reply_allowed = any(auto_reply_flags)
-        max_rounds = (
-            self._bot_config.rag_max_agent_rounds
+        recursion_limit = (
+            self._bot_config.graph_recursion_limit
             if self._bot_config is not None
-            else 3
+            else 128
         )
-        recursion_limit = 2 * max_rounds + 8
         try:
             result = await self.graph.ainvoke(
                 self._build_graph_input(last, humans, auto_reply_allowed),
