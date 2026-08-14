@@ -77,6 +77,37 @@ def test_cache_mget_miss_returns_none(tmp_path):
     cache.close()
 
 
+def test_cache_concurrent_reads_and_writes_are_serialized(tmp_path):
+    cache = EmbeddingCache(db_path=str(tmp_path / "c.sqlite"))
+    errors = []
+
+    async def writer(i: int) -> None:
+        try:
+            await asyncio.to_thread(
+                cache.set, f"k{i % 10}", "m", f"text{i}", [float(i)]
+            )
+        except Exception as exc:
+            errors.append((type(exc).__name__, str(exc)))
+
+    async def reader() -> None:
+        try:
+            await asyncio.to_thread(cache.get, "k0")
+            await asyncio.to_thread(cache.mget, ["k0", "k1", "k2"])
+        except Exception as exc:
+            errors.append((type(exc).__name__, str(exc)))
+
+    async def run() -> None:
+        await asyncio.gather(
+            *[writer(i) for i in range(50)],
+            *[reader() for _ in range(50)],
+        )
+
+    asyncio.run(run())
+    assert errors == []
+    assert cache.get("k9") is not None
+    cache.close()
+
+
 # ----------------------------------------------------------------------
 # EmbeddingService 缓存行为
 # ----------------------------------------------------------------------

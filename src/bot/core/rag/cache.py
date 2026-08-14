@@ -50,6 +50,10 @@ class EmbeddingCache:
     # ------------------------------------------------------------------
 
     def get(self, key: str) -> list[float] | None:
+        with self._lock:
+            return self._get_unlocked(key)
+
+    def _get_unlocked(self, key: str) -> list[float] | None:
         row = self.conn.execute(
             "SELECT vector FROM embed_cache WHERE key = ?", (key,)
         ).fetchone()
@@ -69,7 +73,8 @@ class EmbeddingCache:
 
     def mget(self, keys: list[str]) -> list[list[float] | None]:
         """批量读取，返回与 ``keys`` 等长列表，未命中处为 None。"""
-        return [self.get(k) for k in keys]
+        with self._lock:
+            return [self._get_unlocked(k) for k in keys]
 
     def mset(
         self, pairs: list[tuple[str, str, str, list[float]]]
