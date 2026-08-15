@@ -20,6 +20,7 @@ class _StubGraph:
     def __init__(self):
         self.state = None
         self.updates = []
+        self.last_as_node = None
 
     async def ainvoke(self, state, config):
         self.state = dict(state)
@@ -28,7 +29,8 @@ class _StubGraph:
     async def aget_state(self, config):
         return None
 
-    async def aupdate_state(self, config, updates):
+    async def aupdate_state(self, config, updates, as_node=None):
+        self.last_as_node = as_node
         self.updates.append(updates)
 
 
@@ -96,6 +98,7 @@ def test_context_only_writes_checkpoint_and_indexes():
         await handler.stop()
         await worker.stop()
         assert graph.updates
+        assert graph.last_as_node == "describe_image"
         assert rag.last_indexed is not None
         assert rag.last_indexed["bot_reply"] == ""
 
@@ -158,6 +161,7 @@ def test_batch_context_only_single_checkpoint_update():
         await worker.stop()
         # 两条 context_only 合并为一次 aupdate_state，两条消息一起落 checkpoint
         assert len(graph.updates) == 1
+        assert graph.last_as_node == "describe_image"
         assert [m.content for m in graph.updates[0]["messages"]] == [
             "群聊发言一", "群聊发言二",
         ]

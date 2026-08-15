@@ -16,6 +16,7 @@ from bot.core.commands import (
     run_command,
 )
 from bot.core.compaction import ContextCompactor
+from bot.core.graph import EXTERNAL_UPDATE_NODE
 from bot.core.rag.index_worker import IndexWorker
 from bot.core.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
 from bot.transport.http.client import SatoriApiClient
@@ -83,7 +84,11 @@ class MessageDispatcher:
         human = self._build_human_message(message, auto_reply=auto_reply_allowed)
         if decision.action == RouteAction.CONTEXT_ONLY:
             thread_config = {"configurable": {"thread_id": message.thread_id}}
-            await self.graph.aupdate_state(thread_config, {"messages": [human]})
+            await self.graph.aupdate_state(
+                thread_config,
+                {"messages": [human]},
+                as_node=EXTERNAL_UPDATE_NODE,
+            )
             await self._enqueue_index(message, "")
             return
 
@@ -131,7 +136,11 @@ class MessageDispatcher:
             )
             return
         thread_config = {"configurable": {"thread_id": first.thread_id}}
-        await self.graph.aupdate_state(thread_config, {"messages": humans})
+        await self.graph.aupdate_state(
+            thread_config,
+            {"messages": humans},
+            as_node=EXTERNAL_UPDATE_NODE,
+        )
         for m, _, _ in keep:
             await self._enqueue_index(m, "")
 

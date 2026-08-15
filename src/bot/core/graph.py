@@ -24,6 +24,10 @@ from domain.bot.state import BotState
 
 logger = logging.getLogger(__name__)
 
+# 图外 aupdate_state 必须显式指定写入节点；describe_image 是消息进入图后的
+# 第一个状态写入节点，连续外部更新时不会让 LangGraph 出现 Ambiguous update。
+EXTERNAL_UPDATE_NODE = "describe_image"
+
 
 def _tool_error_message(exc: Exception) -> str:
     """ToolNode 异常降级回调：只记异常类名，返回占位文案。
