@@ -73,12 +73,16 @@ async def main():
     memory_store = MemoryStore(db_dir=config.db_dir)
     vision_service = None
     if config.vision_enabled:
-        vision_service = VisionService(
-            base_url=config.vision_base_url,
-            model=config.vision_model,
-            timeout=config.vision_timeout,
-            max_images=config.vision_max_images,
-        )
+        if not config.vision_base_url:
+            logger.warning("vision_enabled but vision_base_url is empty; disabling vision")
+        else:
+            vision_service = VisionService(
+                base_url=config.vision_base_url,
+                model=config.vision_model,
+                api_key=config.vision_api_key,
+                timeout=config.vision_timeout,
+                max_images=config.vision_max_images,
+            )
     mcp_tools = []
     if config.mcp_enabled:
         mcp_tools = await load_mcp_tools(
