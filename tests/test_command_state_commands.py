@@ -11,7 +11,7 @@ from bot.core.commands import (
     build_command_registry,
 )
 from bot.core.compaction import ContextCompactor
-from bot.core.graph import create_graph
+from bot.core.graph import EXTERNAL_UPDATE_NODE, create_graph
 from bot.core.skills import Skill, SkillRegistry
 from common import BotConfig
 from tests.fakes import ScriptedLLM, make_state
@@ -176,6 +176,68 @@ def test_compact_force_summarizes_checkpoint(tmp_path):
             after = await graph.aget_state(cfg)
             assert after.values["conversation_summary"] == "压缩后的摘要"
             assert len(after.values["messages"]) < len(before.values["messages"])
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())
+
+
+def test_clear_works_after_external_context_updates(tmp_path):
+    async def run():
+        graph, checkpointer = await create_graph(
+            ScriptedLLM([]),
+            BotConfig(_env_file=None),
+            db_dir=str(tmp_path),
+        )
+        try:
+            cfg = {"configurable": {"thread_id": "t1"}}
+            for text in ("旧一", "旧二"):
+                await graph.aupdate_state(
+                    cfg,
+                    {"messages": [HumanMessage(content=text)]},
+                    as_node=EXTERNAL_UPDATE_NODE,
+                )
+            services = CommandServices(
+                version="test", started_at=0.0, bot_name="",
+                graph=graph, checkpointer=checkpointer,
+            )
+            registry = build_command_registry(services)
+            reply = await registry.resolve("clear").handler(_ctx(services))
+
+            assert reply.text == "已清空当前会话上下文。"
+            snapshot = await graph.aget_state(cfg)
+            assert snapshot.values.get("messages", []) == []
+        finally:
+            await checkpointer.conn.close()
+
+    asyncio.run(run())
+
+
+def test_compact_works_after_external_context_updates(tmp_path):
+    async def run():
+        llm = ScriptedLLM([AIMessage(content="压缩后的摘要")])
+        config = BotConfig(
+            _env_file=None,
+            llm_context_window=1000,
+            summary_trigger_ratio=0.5,
+            summary_keep_ratio=0.01,
+        )
+        graph, checkpointer = await create_graph(llm, config, db_dir=str(tmp_path))
+        try:
+            cfg = {"configurable": {"thread_id": "t1"}}
+            for text in ("旧一", "旧二", "旧三"):
+                await graph.aupdate_state(
+                    cfg,
+                    {"messages": [HumanMessage(content=text)]},
+                    as_node=EXTERNAL_UPDATE_NODE,
+                )
+            compactor = ContextCompactor(graph, llm, config)
+            removed = await compactor.force_compact("t1")
+
+            assert removed > 0
+            snapshot = await graph.aget_state(cfg)
+            assert snapshot.values.get("conversation_summary") == "压缩后的摘要"
+            assert len(snapshot.values.get("messages", [])) < 3
         finally:
             await checkpointer.conn.close()
 

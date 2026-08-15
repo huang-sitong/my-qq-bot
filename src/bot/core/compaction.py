@@ -1,5 +1,6 @@
 import logging
 
+from bot.core.graph import EXTERNAL_UPDATE_NODE
 from bot.core.nodes import summarize_node
 from bot.core.utils import estimate_context_tokens
 
@@ -54,5 +55,7 @@ class ContextCompactor:
             return 0
         if not result:
             return 0
-        await self._graph.aupdate_state(thread_config, result)
+        await self._graph.aupdate_state(
+            thread_config, result, as_node=EXTERNAL_UPDATE_NODE,
+        )
         return len(result.get("messages", []))

@@ -5,6 +5,7 @@ from functools import partial
 
 from langchain_core.messages import RemoveMessage
 
+from bot.core.graph import EXTERNAL_UPDATE_NODE
 from bot.core.utils import content_to_text, estimate_context_tokens
 from common.config import _parse_flag
 
@@ -110,7 +111,9 @@ async def _clear(ctx: CommandContext) -> CommandResult:
         "active_skills": [],
         "tool_rounds": 0,
     }
-    await graph.aupdate_state(config, updates)
+    await graph.aupdate_state(
+        config, updates, as_node=EXTERNAL_UPDATE_NODE,
+    )
     return CommandResult(text="已清空当前会话上下文。")
 
 

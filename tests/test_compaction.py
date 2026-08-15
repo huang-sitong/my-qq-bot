@@ -16,7 +16,7 @@ class _FakeGraph:
     async def aget_state(self, config):
         return SimpleNamespace(values=self.values)
 
-    async def aupdate_state(self, config, updates):
+    async def aupdate_state(self, config, updates, as_node=None):
         self.updates.append(updates)
 
 
