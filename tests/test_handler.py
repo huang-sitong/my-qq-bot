@@ -25,7 +25,7 @@ class _StubGraph:
         self.state = dict(state)
         return {"reply_text": ""}
 
-    async def aupdate_state(self, config, updates):
+    async def aupdate_state(self, config, updates, as_node=None):
         self.updates.append(updates)
 
 
