@@ -40,6 +40,9 @@ class SatoriApiClient:
         if self._onebot11_http is None:
             self._onebot11_http = httpx.AsyncClient(
                 base_url=self._config.onebot11_api_base_url,
+                timeout=httpx.Timeout(
+                    self._config.onebot11_timeout, connect=10,
+                ),
             )
         return self._onebot11_http
 

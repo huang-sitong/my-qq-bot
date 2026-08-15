@@ -130,3 +130,16 @@ def test_send_file_rejects_missing_or_path_like_name(tmp_path):
             await client.close()
 
     asyncio.run(run())
+
+
+def test_onebot11_client_uses_configured_timeout():
+    client = SatoriApiClient(BotConfig(
+        _env_file=None,
+        onebot11_api_base_url="http://onebot.test",
+        onebot11_timeout=42,
+    ))
+    try:
+        assert client.onebot11_http.timeout.read == 42
+        assert client.onebot11_http.timeout.connect == 10
+    finally:
+        asyncio.run(client.close())

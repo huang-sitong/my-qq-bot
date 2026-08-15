@@ -68,6 +68,11 @@ class BotConfig(BaseSettings):
         default="http://localhost:3000",
         validation_alias="BOT_ONEBOT11_API_BASE_URL",
     )
+    onebot11_timeout: int = Field(
+        default=60,
+        gt=0,
+        validation_alias="BOT_ONEBOT11_TIMEOUT",
+    )
     api_platform: str = Field(
         default="llonebot",
         validation_alias="BOT_API_PLATFORM",

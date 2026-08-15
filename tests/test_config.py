@@ -17,6 +17,7 @@ EXPECTED_DEFAULTS = {
     "max_reconnect_delay": 30,
     "api_base_url": "http://localhost:5600",
     "onebot11_api_base_url": "http://localhost:3000",
+    "onebot11_timeout": 60,
     "api_platform": "llonebot",
     "llm_base_url": None,
     "llm_api_key": None,
@@ -79,6 +80,7 @@ ENV_SAMPLES = {
     "max_reconnect_delay": ("15", 15),
     "api_base_url": ("http://env", "http://env"),
     "onebot11_api_base_url": ("http://onebot.env", "http://onebot.env"),
+    "onebot11_timeout": ("42", 42),
     "api_platform": ("env", "env"),
     "llm_base_url": ("https://llm.env", "https://llm.env"),
     "llm_api_key": ("key", "key"),
@@ -316,6 +318,13 @@ def test_embed_config_does_not_leak_to_vision(monkeypatch):
 def test_invalid_bash_timeout_rejected(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_BASH_TIMEOUT", "0")
+    with pytest.raises(ValidationError):
+        BotConfig(_env_file=None)
+
+
+def test_invalid_onebot11_timeout_rejected(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_ONEBOT11_TIMEOUT", "0")
     with pytest.raises(ValidationError):
         BotConfig(_env_file=None)
 
