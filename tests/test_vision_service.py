@@ -1,4 +1,4 @@
-"""VisionService：图片下载 → base64 → Ollama /api/generate 生成描述。"""
+"""VisionService：图片下载 → data URL → OpenAI 兼容 /v1/chat/completions 生成描述。"""
 
 import asyncio
 import base64
@@ -10,7 +10,7 @@ from common import VISION_PROMPT
 
 # 公网字面 IP：字面 IP 的 getaddrinfo 不查 DNS，避免测试慢/不稳，也不触发 SSRF 阻断
 IMG = "http://1.2.3.4/download?appid=1&fileid=abc"
-GEN = "http://localhost:11434/api/generate"
+GEN = "http://localhost:11434/v1/chat/completions"
 
 
 class FakeResponse:
@@ -46,32 +46,58 @@ class FakeClient:
         return self.responses[url]
 
     async def post(self, url, json=None, **kwargs):
-        self.requests.append(("post", url, json))
+        self.requests.append(("post", url, json, kwargs))
         if url not in self.responses:
             raise httpx.HTTPError(f"no response for {url}")
         return self.responses[url]
 
 
-def _svc(client, max_images=3):
+def _svc(client, max_images=3, api_key=None):
     return VisionService(base_url="http://localhost:11434", model="qwen3-vl:2b",
-                         http=client, max_images=max_images)
+                         http=client, max_images=max_images, api_key=api_key)
 
 
 def test_describe_downloads_and_generates():
     png = b"\x89PNG\r\n\x1a\n"
     client = FakeClient({
         IMG: FakeResponse(content=png),
-        GEN: FakeResponse(json_data={"response": "一只猫坐在窗台上"}),
+        GEN: FakeResponse(json_data={"choices": [{"message": {"content": "一只猫坐在窗台上"}}]}),
     })
     svc = _svc(client)
     assert asyncio.run(svc.describe(IMG)) == "一只猫坐在窗台上"
     post = [r for r in client.requests if r[0] == "post"]
     assert len(post) == 1
-    payload = post[0][2]
+    url, payload, kwargs = post[0][1], post[0][2], post[0][3]
+    assert url == GEN
     assert payload["model"] == "qwen3-vl:2b"
     assert payload["stream"] is False
-    assert payload["prompt"] == VISION_PROMPT
-    assert payload["images"] == [base64.b64encode(png).decode("ascii")]
+    assert payload["messages"][0] == {"role": "system", "content": VISION_PROMPT}
+    assert payload["messages"][1]["content"][1] == {
+        "type": "image_url",
+        "image_url": {"url": f"data:image/jpeg;base64,{base64.b64encode(png).decode('ascii')}"},
+    }
+    assert "Authorization" not in (kwargs.get("headers") or {})
+
+
+def test_describe_sends_bearer_token():
+    png = b"\x89PNG\r\n\x1a\n"
+    client = FakeClient({
+        IMG: FakeResponse(content=png),
+        GEN: FakeResponse(json_data={"choices": [{"message": {"content": "图"}}]}),
+    })
+    svc = _svc(client, api_key="sk-vision")
+    asyncio.run(svc.describe(IMG))
+    post = [r for r in client.requests if r[0] == "post"][0]
+    assert post[3]["headers"]["Authorization"] == "Bearer sk-vision"
+
+
+def test_describe_missing_choices_returns_empty():
+    client = FakeClient({
+        IMG: FakeResponse(content=b"data"),
+        GEN: FakeResponse(json_data={"choices": []}),
+    })
+    svc = _svc(client)
+    assert asyncio.run(svc.describe(IMG)) == ""
 
 
 def test_describe_download_failure_returns_empty():
@@ -79,7 +105,7 @@ def test_describe_download_failure_returns_empty():
     assert asyncio.run(svc.describe(IMG)) == ""
 
 
-def test_describe_ollama_failure_returns_empty():
+def test_describe_api_failure_returns_empty():
     svc = _svc(FakeClient({
         IMG: FakeResponse(content=b"data"),
         GEN: FakeResponse(status=500),
@@ -97,7 +123,7 @@ def test_describe_many_caps_at_max_images():
         f"{IMG}1": FakeResponse(content=b"a"),
         f"{IMG}2": FakeResponse(content=b"b"),
         f"{IMG}3": FakeResponse(content=b"c"),
-        GEN: FakeResponse(json_data={"response": "图"}),
+        GEN: FakeResponse(json_data={"choices": [{"message": {"content": "图"}}]}),
     })
     svc = _svc(client, max_images=2)
     assert asyncio.run(svc.describe_many([f"{IMG}1", f"{IMG}2", f"{IMG}3"])) == ["图", "图"]
@@ -106,7 +132,7 @@ def test_describe_many_caps_at_max_images():
 def test_describe_many_partial_failure():
     client = FakeClient({
         f"{IMG}1": FakeResponse(content=b"a"),
-        GEN: FakeResponse(json_data={"response": "图"}),
+        GEN: FakeResponse(json_data={"choices": [{"message": {"content": "图"}}]}),
     })
     svc = _svc(client)
     assert asyncio.run(svc.describe_many([f"{IMG}1", f"{IMG}2"])) == ["图", ""]

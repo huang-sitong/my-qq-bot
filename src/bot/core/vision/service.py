@@ -1,8 +1,8 @@
-"""图片下载 + 本地 Ollama 视觉推理（qwen3-vl）。
+"""图片下载 + OpenAI 兼容视觉端点推理。
 
-图片以公网 URL（如腾讯多媒体 CDN）到达，Ollama 的 images 参数只收 base64，
-因此先下载 → base64 → POST {base_url}/api/generate 生成描述。
-失败不抛出：describe 返回 ""（调用方降级为 [图片] 占位符）。
+图片以公网 URL（如腾讯多媒体 CDN）到达，转成 data URL 后 POST
+{base_url}/v1/chat/completions 生成描述。失败不抛出：describe 返回 ""（调用方
+降级为 [图片] 占位符）。
 
 模块级 ``download_images_as_data_urls`` 复用同一套 SSRF 防护/体积限制，
 把图片下载成 data URL 供**多模态主 LLM** 直接消费（describe_image 多模态分支）。
@@ -108,6 +108,7 @@ class VisionService:
         self,
         base_url: str,
         model: str,
+        api_key: str | None = None,
         prompt: str = VISION_PROMPT,
         timeout: float = 60.0,
         max_images: int = 3,
@@ -115,6 +116,7 @@ class VisionService:
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.model = model
+        self.api_key = api_key
         self.prompt = prompt
         self.timeout = timeout
         self.max_images = max_images
@@ -125,10 +127,10 @@ class VisionService:
     async def describe(self, src: str) -> str:
         """下载一张图并返回描述；失败返回空串（不抛出）。"""
         try:
-            image_b64 = await self._download_base64(src)
-            if not image_b64:
+            image_data_url = await self._download_data_url(src)
+            if not image_data_url:
                 return ""
-            return await self._ollama_generate(image_b64)
+            return await self._openai_generate(image_data_url)
         except Exception:
             logger.warning("Vision describe failed for %s", src, exc_info=True)
             return ""
@@ -140,21 +142,36 @@ class VisionService:
             return []
         return list(await asyncio.gather(*(self.describe(s) for s in srcs)))
 
-    async def _download_base64(self, src: str) -> str:
-        data, _ = await _fetch_image_bytes(self._http, src)
-        return base64.b64encode(data).decode("ascii")
+    async def _download_data_url(self, src: str) -> str:
+        data, mime = await _fetch_image_bytes(self._http, src)
+        return f"data:{mime};base64,{base64.b64encode(data).decode('ascii')}"
 
-    async def _ollama_generate(self, image_b64: str) -> str:
+    async def _openai_generate(self, image_data_url: str) -> str:
         payload = {
             "model": self.model,
-            "prompt": self.prompt,
-            "images": [image_b64],
+            "messages": [
+                {"role": "system", "content": self.prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "请描述这张图片。"},
+                        {"type": "image_url", "image_url": {"url": image_data_url}},
+                    ],
+                },
+            ],
             "stream": False,
         }
-        resp = await self._http.post(f"{self.base_url}/api/generate", json=payload)
+        headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        resp = await self._http.post(
+            f"{self.base_url}/v1/chat/completions", json=payload, headers=headers
+        )
         resp.raise_for_status()
         data = resp.json()
-        return (data.get("response") or "").strip()
+        try:
+            return (data["choices"][0]["message"]["content"] or "").strip()
+        except (KeyError, IndexError, TypeError):
+            logger.warning("Unexpected OpenAI vision response shape: %s", data)
+            return ""
 
     async def close(self) -> None:
         if self._owns_http and self._http is not None:
