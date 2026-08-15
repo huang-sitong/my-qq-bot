@@ -110,6 +110,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 ## Gotchas
 
 - **`domain/` 包**：领域/协议数据对象统一在 `src/domain/`，包名避免与内置 `object` 混淆。始终 `from domain.*` 导入。
+- **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），Router/decide_reply 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
 - **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。
