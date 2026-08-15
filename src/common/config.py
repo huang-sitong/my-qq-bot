@@ -127,8 +127,8 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_LLM_REQUEST_TIMEOUT",
     )
     # 主 LLM 是否多模态（env BOT_LLM_MULTIMODAL，默认 0）：
-    # 1 → 图片直接进主 LLM（describe_image 不预描述，本地视觉仅作 RAG 索引）；
-    # 0 → 图片走本地视觉描述（纯文本 LLM 兜底）。失败方向永远偏纯文本——
+    # 1 → 图片直接进主 LLM（describe_image 不预描述，视觉服务仅作 RAG 索引）；
+    # 0 → 图片走视觉服务描述（纯文本 LLM 兜底）。失败方向永远偏纯文本——
     # 设错 0 只是退回现状；设错 1 会把图片块塞给不支持图片的 API。
     llm_multimodal: Flag = Field(
         default=False,
@@ -177,19 +177,19 @@ class BotConfig(BaseSettings):
         default="qwen3-embedding:0.6b",
         validation_alias="BOT_EMBED_MODEL",
     )
-    # 嵌入与视觉各自独立 URL：embed 未设置时回落旧 OLLAMA_BASE_URL；
-    # vision 走 OpenAI 兼容（回落 BASE_URL 主 LLM，见下方 model_validator）。
-    embed_base_url: str = Field(
-        default="http://localhost:11434",
+    # 嵌入与视觉各自独立 URL：embed/vision 未设置时回落主 LLM BASE_URL/API_KEY。
+    embed_base_url: str | None = Field(
+        default=None,
         validation_alias="BOT_EMBED_BASE_URL",
+    )
+    # OpenAI 兼容嵌入 API key；未设时回落主 LLM 的 API_KEY（同供应商零配置）
+    embed_api_key: str | None = Field(
+        default=None,
+        validation_alias="BOT_EMBED_API_KEY",
     )
     vision_base_url: str | None = Field(
         default=None,
         validation_alias="BOT_VISION_BASE_URL",
-    )
-    ollama_base_url: str = Field(
-        default="http://localhost:11434",
-        validation_alias="OLLAMA_BASE_URL",
     )
     embed_dimensions: int = Field(
         default=1024,
@@ -227,7 +227,7 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_RAG_MAX_AGENT_ROUNDS",
     )
 
-    # --- Vision (本地 Ollama 视觉模型，图片描述) ---
+    # --- Vision (OpenAI 兼容视觉 API，图片描述) ---
     vision_enabled: Flag = Field(
         default=True,
         validation_alias="BOT_VISION_ENABLED",
@@ -355,8 +355,10 @@ class BotConfig(BaseSettings):
     def _validate_summary_ratios(self) -> "BotConfig":
         if self.summary_keep_ratio > self.summary_trigger_ratio:
             raise ValueError("summary_keep_ratio must be <= summary_trigger_ratio")
-        if "embed_base_url" not in self.model_fields_set and self.ollama_base_url:
-            self.embed_base_url = self.ollama_base_url
+        if "embed_base_url" not in self.model_fields_set and self.llm_base_url:
+            self.embed_base_url = self.llm_base_url
+        if "embed_api_key" not in self.model_fields_set:
+            self.embed_api_key = self.llm_api_key
         # 视觉已切 OpenAI 兼容：base_url / api_key 未设时回落主 LLM（同供应商零配置）
         if "vision_base_url" not in self.model_fields_set and self.llm_base_url:
             self.vision_base_url = self.llm_base_url

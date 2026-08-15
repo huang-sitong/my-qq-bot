@@ -50,7 +50,7 @@ CURRENT_TIME_HINT = """当前时间：{time}（{weekday}，本地时区）。
 涉及“现在/最近/今天/昨天/最近N小时”等相对时间的表述时，以此时间为基准；
 调用 search_chat_history 的时间参数（hours、start_time、end_time）也按此时间计算。"""
 
-# 视觉描述提示词（VisionService 用，/api/generate 的 prompt）
+# 视觉描述提示词（VisionService 用，OpenAI 兼容视觉 API 的 system 提示）
 VISION_PROMPT = "请用中文简要描述这张图片的内容。"
 
 # 嵌入检索任务前缀（EmbeddingService 用，Query 与 Document 共用保持向量空间一致）

@@ -3,12 +3,12 @@
 双模式：
 - ``llm_multimodal=True``：主 LLM 直接看图。图片下载成 data URL，把
   HumanMessage 的 [图片] 占位符原位替换为多模态 content 数组（图片块交错插入）；
-  本地视觉（vision_service 非空）仅产出 ``vision_desc`` 供 RAG 索引，理解归主 LLM。
-- ``llm_multimodal=False``（默认）：现状——本地视觉生成描述，把 [图片] 原位替换
+  视觉服务（vision_service 非空）仅产出 ``vision_desc`` 供 RAG 索引，理解归主 LLM。
+- ``llm_multimodal=False``（默认）：现状——视觉服务生成描述，把 [图片] 原位替换
   为 [图片：描述]，``vision_desc`` 供 RAG 索引。
 
 视觉服务为 None 或非图片消息时 no-op（占位符保留，行为同旧版）。
-``auto_reply=True`` 时跳过本地视觉：多模态主 LLM 直接收图；非多模态只保留
+``auto_reply=True`` 时跳过视觉服务：多模态主 LLM 直接收图；非多模态只保留
 ``[图片]`` 占位符，且不产生 ``vision_desc``。
 """
 
@@ -132,7 +132,7 @@ async def describe_image_node(
             auto_reply_default=state.get("auto_reply", False),
         )
 
-    # 纯文本模式（现状）：本地视觉描述 → [图片：描述] 原位替换；
+    # 纯文本模式（现状）：视觉服务描述 → [图片：描述] 原位替换；
     # auto_reply 图片轮保留占位符并清空陈旧 vision_desc。
     local_targets = [
         message
@@ -148,7 +148,7 @@ async def _describe_all_local(
     messages: list[HumanMessage],
     vision_service: VisionService | None,
 ) -> dict:
-    """本地视觉模式：逐条消息描述，所有成功图片返回结构化描述。"""
+    """视觉服务模式：逐条消息描述，所有成功图片返回结构化描述。"""
     if vision_service is None:
         return {}
     updates: list[HumanMessage] = []
@@ -176,7 +176,7 @@ async def _describe_all_multimodal(
     timeout: float,
     auto_reply_default: bool = False,
 ) -> dict:
-    """多模态模式：逐条下载图片 → 原位替换为 content 数组；本地视觉仅产 vision_desc。"""
+    """多模态模式：逐条下载图片 → 原位替换为 content 数组；视觉服务仅产 vision_desc。"""
     updates: list[HumanMessage] = []
     descriptions: list[ImageDescription] = []
     has_content = False

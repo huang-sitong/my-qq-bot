@@ -50,7 +50,7 @@ def _patch_download(monkeypatch, urls_by_src):
     )
 
 
-# --- 纯文本模式（本地视觉） ---
+# --- 纯文本模式（视觉服务） ---
 
 def test_noop_when_vision_disabled():
     assert asyncio.run(

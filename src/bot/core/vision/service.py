@@ -102,7 +102,7 @@ async def download_images_as_data_urls(
 
 
 class VisionService:
-    """下载图片并调用本地 Ollama 视觉模型生成中文描述。"""
+    """下载图片并调用 OpenAI 兼容视觉模型生成中文描述。"""
 
     def __init__(
         self,
@@ -162,8 +162,13 @@ class VisionService:
             "stream": False,
         }
         headers = {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+        endpoint = (
+            self.base_url
+            if self.base_url.endswith("/v1")
+            else f"{self.base_url}/v1"
+        )
         resp = await self._http.post(
-            f"{self.base_url}/v1/chat/completions", json=payload, headers=headers
+            f"{endpoint}/chat/completions", json=payload, headers=headers
         )
         resp.raise_for_status()
         data = resp.json()

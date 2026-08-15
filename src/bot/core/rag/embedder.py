@@ -1,9 +1,9 @@
-"""Embedding 服务：封装 OllamaEmbeddings（原生 API），qwen3-embedding Instruct 格式。
+"""Embedding 服务：封装 OpenAI 兼容嵌入端点，qwen3-embedding Instruct 格式。
 
 qwen3-embedding 是对话模板模型，检索时需加 Instruct 前缀才能达到最佳区分度
 （当前无实机验证测试；缓存侧 text 列不带前缀见 tests/test_embed_cache.py）。
 嵌入结果按 (model, 任务前缀, 角色, 原始内容) 哈希写入磁盘缓存（EmbeddingCache），
-重复文本直接命中，不再重复调 Ollama；缓存 text 列只存原始内容（不带 Instruct 前缀）。
+重复文本直接命中，不再重复调嵌入 API；缓存 text 列只存原始内容（不带 Instruct 前缀）。
 """
 
 import asyncio
@@ -11,12 +11,21 @@ import hashlib
 import logging
 import os
 
-from langchain_ollama import OllamaEmbeddings
+from langchain_core.embeddings import Embeddings
+from langchain_openai import OpenAIEmbeddings
 
 from bot.core.rag.cache import EmbeddingCache
 from common import RETRIEVAL_TASK, BotConfig
 
 logger = logging.getLogger(__name__)
+
+
+def _embedding_base_url(base_url: str | None) -> str | None:
+    """把 OpenAI 兼容根地址归一化到 ``/v1``；已带 ``/v1`` 时原样返回。"""
+    if not base_url:
+        return None
+    stripped = base_url.rstrip("/")
+    return stripped if stripped.endswith("/v1") else f"{stripped}/v1"
 
 
 class EmbeddingService:
@@ -25,14 +34,16 @@ class EmbeddingService:
     def __init__(
         self,
         config: BotConfig,
-        embedder: OllamaEmbeddings | None = None,
+        embedder: Embeddings | None = None,
         cache: EmbeddingCache | None = None,
     ) -> None:
         self._config = config
-        self._embeddings = embedder or OllamaEmbeddings(
+        self._embeddings = embedder or OpenAIEmbeddings(
             model=config.embed_model,
-            base_url=config.embed_base_url,
+            api_key=config.embed_api_key,
+            base_url=_embedding_base_url(config.embed_base_url),
             dimensions=config.embed_dimensions,
+            check_embedding_ctx_length=False,
         )
         # 未显式注入缓存时，按配置自动创建（embed_cache_enabled 开关）
         if cache is None and getattr(config, "embed_cache_enabled", True):

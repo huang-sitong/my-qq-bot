@@ -1,6 +1,6 @@
 # qq-bot
 
-基于 Satori 协议的 QQ 聊天机器人：LangGraph 驱动的多轮对话，支持同会话突发消息批量合并、群聊历史 RAG 检索（milvus-lite）、用户持久记忆、图片视觉理解（本地 Ollama / 多模态主 LLM）、MCP 外部工具、Markdown 技能与图外斜杠命令。
+基于 Satori 协议的 QQ 聊天机器人：LangGraph 驱动的多轮对话，支持同会话突发消息批量合并、群聊历史 RAG 检索（milvus-lite）、用户持久记忆、图片视觉理解（OpenAI 兼容视觉 / 多模态主 LLM）、MCP 外部工具、Markdown 技能与图外斜杠命令。
 
 ## 快速开始
 
@@ -18,15 +18,15 @@ uv run python main.py         # 启动 bot
 |---|---|
 | `BASE_URL` / `API_KEY` | 主 LLM OpenAI 兼容端点 |
 | `BOT_LLM_MODEL` | 主 LLM 模型名（默认 `deepseek-v4-flash`） |
-| `BOT_LLM_MULTIMODAL` | `1` 时图片直接进主 LLM；`0` 走本地视觉（`BOT_VISION_MODEL`，默认 Ollama `qwen3-vl:2b`） |
+| `BOT_LLM_MULTIMODAL` | `1` 时图片直接进主 LLM；`0` 走视觉描述服务（`BOT_VISION_MODEL`，默认 `qwen3-vl:2b`） |
 | `BOT_MESSAGE_WORKER_COUNT` | 消息 worker 数；不同 thread 可并发，同一 thread 仍串行（默认 `1`） |
 | `BOT_MESSAGE_QUEUE_MAXSIZE` | 消息队列上限；`0` 无界，正整数满时入队阻塞形成背压 |
 | `BOT_MESSAGE_BATCH_MAX` | 同会话突发消息合并上限；一次图调用/一条回复处理多条（默认 `4`，`0/1` 关闭） |
 | `BOT_GRAPH_RECURSION_LIMIT` | LangGraph 图节点执行上限，工具回环会消耗该额度（默认 `128`） |
-| `BOT_RAG_ENABLED` | 群聊历史向量检索（默认开启；嵌入用 Ollama `qwen3-embedding`） |
-| `BOT_EMBED_BASE_URL` | 嵌入向量专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |
-| `BOT_VISION_BASE_URL` | 视觉模型专用 Ollama 地址（默认本地；未设置时回落 `OLLAMA_BASE_URL`） |
-| `OLLAMA_BASE_URL` | 旧共用 Ollama 地址，作为嵌入/视觉的兼容回落 |
+| `BOT_RAG_ENABLED` | 群聊历史向量检索（默认开启；嵌入用 OpenAI 兼容 Embedding API） |
+| `BOT_EMBED_BASE_URL` | 嵌入专用 OpenAI 兼容地址；未设置时回落 `BASE_URL` |
+| `BOT_EMBED_API_KEY` | 嵌入专用 API key；未设置时回落 `API_KEY` |
+| `BOT_VISION_BASE_URL` | 视觉专用 OpenAI 兼容地址；未设置时回落 `BASE_URL` |
 | `BOT_AUTO_REPLY` | 群聊非@消息自动回复总开关（默认关，可经 `/auto_reply` 运行时改） |
 | `BOT_AUTO_REPLY_RANDOM_RATE` | auto_reply 非@消息的随机回复概率，默认 `0.3` |
 | `BOT_AUTO_REPLY_COOLDOWN` | 同一会话两次 auto_reply 的最小间隔秒数，默认 `30` |

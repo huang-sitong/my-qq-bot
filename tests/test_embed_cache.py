@@ -1,7 +1,9 @@
-"""EmbeddingCache + EmbeddingService 嵌入缓存：命中跳过 Ollama、批量、禁用、淘汰。"""
+"""EmbeddingCache + EmbeddingService 嵌入缓存：命中跳过嵌入 API、批量、禁用、淘汰。"""
 
 import asyncio
 import threading
+
+from langchain_openai import OpenAIEmbeddings
 
 from bot.core.rag.cache import EmbeddingCache
 from bot.core.rag.embedder import EmbeddingService
@@ -197,3 +199,32 @@ def test_embed_query_serializes_underlying_embedder():
         await asyncio.gather(first, second)
 
     asyncio.run(run())
+
+
+def test_embedding_service_builds_openai_compatible_client():
+    config = BotConfig(
+        _env_file=None,
+        embed_model="embed-model",
+        embed_base_url="https://embed.example",
+        embed_api_key="sk-embed",
+        embed_dimensions=4,
+        embed_cache_enabled=False,
+    )
+    svc = EmbeddingService(config, cache=None)
+    assert isinstance(svc._embeddings, OpenAIEmbeddings)
+    assert svc._embeddings.model == "embed-model"
+    assert svc._embeddings.openai_api_base == "https://embed.example/v1"
+    assert svc._embeddings.dimensions == 4
+    assert svc._embeddings.check_embedding_ctx_length is False
+
+
+def test_embedding_service_keeps_v1_base_url():
+    config = BotConfig(
+        _env_file=None,
+        embed_base_url="https://embed.example/v1/",
+        embed_api_key="sk-embed",
+        embed_dimensions=4,
+        embed_cache_enabled=False,
+    )
+    svc = EmbeddingService(config, cache=None)
+    assert svc._embeddings.openai_api_base == "https://embed.example/v1"

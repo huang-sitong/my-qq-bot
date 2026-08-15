@@ -33,10 +33,10 @@ EXPECTED_DEFAULTS = {
     "persona_prompt": DEFAULT_PERSONA_PROMPT,
     "rag_enabled": True,
     "embed_model": "qwen3-embedding:0.6b",
-    "embed_base_url": "http://localhost:11434",
+    "embed_base_url": None,
+    "embed_api_key": None,
     "vision_base_url": None,
     "vision_api_key": None,
-    "ollama_base_url": "http://localhost:11434",
     "embed_dimensions": 1024,
     "embed_cache_enabled": True,
     "embed_cache_max_entries": 20_000,
@@ -96,8 +96,8 @@ ENV_SAMPLES = {
     "rag_enabled": ("0", False),
     "embed_model": ("model", "model"),
     "embed_base_url": ("http://embed", "http://embed"),
+    "embed_api_key": ("ekey", "ekey"),
     "vision_base_url": ("http://vision", "http://vision"),
-    "ollama_base_url": ("http://ollama", "http://ollama"),
     "embed_dimensions": ("8", 8),
     "embed_cache_enabled": ("0", False),
     "embed_cache_max_entries": ("10", 10),
@@ -252,18 +252,34 @@ def test_bash_allowed_roots_stripped_and_deduped(monkeypatch):
 def test_embed_and_vision_urls_use_specific_env(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_EMBED_BASE_URL", "http://embed.local")
+    monkeypatch.setenv("BOT_EMBED_API_KEY", "sk-embed")
     monkeypatch.setenv("BOT_VISION_BASE_URL", "http://vision.local")
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy.local")
+    monkeypatch.setenv("BOT_VISION_API_KEY", "sk-vision")
     config = BotConfig(_env_file=None)
     assert config.embed_base_url == "http://embed.local"
+    assert config.embed_api_key == "sk-embed"
     assert config.vision_base_url == "http://vision.local"
+    assert config.vision_api_key == "sk-vision"
 
 
-def test_embed_url_falls_back_to_ollama(monkeypatch):
+def test_embed_url_and_key_fall_back_to_main_llm(monkeypatch):
     _clear_config_env(monkeypatch)
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy.local")
+    monkeypatch.setenv("BASE_URL", "https://llm.example.com/v1")
+    monkeypatch.setenv("API_KEY", "sk-main")
     config = BotConfig(_env_file=None)
-    assert config.embed_base_url == "http://legacy.local"
+    assert config.embed_base_url == "https://llm.example.com/v1"
+    assert config.embed_api_key == "sk-main"
+
+
+def test_embed_explicit_url_and_key_win_over_fallback(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BASE_URL", "https://llm.example.com/v1")
+    monkeypatch.setenv("API_KEY", "sk-main")
+    monkeypatch.setenv("BOT_EMBED_BASE_URL", "https://embed.example.com/v1")
+    monkeypatch.setenv("BOT_EMBED_API_KEY", "sk-embed")
+    config = BotConfig(_env_file=None)
+    assert config.embed_base_url == "https://embed.example.com/v1"
+    assert config.embed_api_key == "sk-embed"
 
 
 def test_vision_url_and_key_fall_back_to_main_llm(monkeypatch):
@@ -286,11 +302,13 @@ def test_vision_explicit_url_and_key_win_over_fallback(monkeypatch):
     assert config.vision_api_key == "sk-vision"
 
 
-def test_embed_url_does_not_leak_to_vision(monkeypatch):
+def test_embed_config_does_not_leak_to_vision(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("BOT_EMBED_BASE_URL", "http://embed.local")
+    monkeypatch.setenv("BOT_EMBED_API_KEY", "sk-embed")
     config = BotConfig(_env_file=None)
     assert config.embed_base_url == "http://embed.local"
+    assert config.embed_api_key == "sk-embed"
     assert config.vision_base_url is None
     assert config.vision_api_key is None
 

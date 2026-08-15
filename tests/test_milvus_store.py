@@ -2,7 +2,7 @@
 
 覆盖：add_texts 写库、search_dense / search_sparse、线程隔离（expr）、
 expr 过滤（人名 / 时间窗）、prune 淘汰、dense score 语义。
-测试注入 FakeEmbedder（确定性向量），不连 Ollama。
+测试注入 FakeEmbedder（确定性向量），不连真实嵌入 API。
 """
 
 import asyncio

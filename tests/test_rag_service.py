@@ -1,6 +1,6 @@
 """RagService 编排测试：index_turn 配对、hybrid_search 委托 / 阈值 / 跨群补齐。
 
-注入 FakeMilvusStore（记录调用），不碰真实 milvus / Ollama。
+注入 FakeMilvusStore（记录调用），不碰真实 milvus / 嵌入 API。
 """
 
 import asyncio

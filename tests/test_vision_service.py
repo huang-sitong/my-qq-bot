@@ -87,8 +87,22 @@ def test_describe_sends_bearer_token():
     })
     svc = _svc(client, api_key="sk-vision")
     asyncio.run(svc.describe(IMG))
-    post = [r for r in client.requests if r[0] == "post"][0]
+    post = next(r for r in client.requests if r[0] == "post")
     assert post[3]["headers"]["Authorization"] == "Bearer sk-vision"
+
+
+def test_describe_v1_base_url_avoids_double_v1():
+    url = "https://vision.example/v1/chat/completions"
+    client = FakeClient({
+        IMG: FakeResponse(content=b"data"),
+        url: FakeResponse(json_data={"choices": [{"message": {"content": "图"}}]}),
+    })
+    svc = VisionService(
+        base_url="https://vision.example/v1", model="qwen3-vl:2b", http=client
+    )
+    assert asyncio.run(svc.describe(IMG)) == "图"
+    post = next(r for r in client.requests if r[0] == "post")
+    assert post[1] == url
 
 
 def test_describe_missing_choices_returns_empty():
