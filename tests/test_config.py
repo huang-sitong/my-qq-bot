@@ -34,7 +34,8 @@ EXPECTED_DEFAULTS = {
     "rag_enabled": True,
     "embed_model": "qwen3-embedding:0.6b",
     "embed_base_url": "http://localhost:11434",
-    "vision_base_url": "http://localhost:11434",
+    "vision_base_url": None,
+    "vision_api_key": None,
     "ollama_base_url": "http://localhost:11434",
     "embed_dimensions": 1024,
     "embed_cache_enabled": True,
@@ -106,6 +107,7 @@ ENV_SAMPLES = {
     "rag_max_agent_rounds": ("2", 2),
     "vision_enabled": ("0", False),
     "vision_model": ("model", "model"),
+    "vision_api_key": ("vkey", "vkey"),
     "vision_max_images": ("2", 2),
     "vision_timeout": ("10", 10),
     "mcp_enabled": ("1", True),
@@ -257,12 +259,31 @@ def test_embed_and_vision_urls_use_specific_env(monkeypatch):
     assert config.vision_base_url == "http://vision.local"
 
 
-def test_embed_and_vision_urls_fallback_to_ollama(monkeypatch):
+def test_embed_url_falls_back_to_ollama(monkeypatch):
     _clear_config_env(monkeypatch)
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://legacy.local")
     config = BotConfig(_env_file=None)
     assert config.embed_base_url == "http://legacy.local"
-    assert config.vision_base_url == "http://legacy.local"
+
+
+def test_vision_url_and_key_fall_back_to_main_llm(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BASE_URL", "https://llm.example.com/v1")
+    monkeypatch.setenv("API_KEY", "sk-main")
+    config = BotConfig(_env_file=None)
+    assert config.vision_base_url == "https://llm.example.com/v1"
+    assert config.vision_api_key == "sk-main"
+
+
+def test_vision_explicit_url_and_key_win_over_fallback(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BASE_URL", "https://llm.example.com/v1")
+    monkeypatch.setenv("API_KEY", "sk-main")
+    monkeypatch.setenv("BOT_VISION_BASE_URL", "https://vision.example.com/v1")
+    monkeypatch.setenv("BOT_VISION_API_KEY", "sk-vision")
+    config = BotConfig(_env_file=None)
+    assert config.vision_base_url == "https://vision.example.com/v1"
+    assert config.vision_api_key == "sk-vision"
 
 
 def test_embed_url_does_not_leak_to_vision(monkeypatch):
@@ -270,7 +291,8 @@ def test_embed_url_does_not_leak_to_vision(monkeypatch):
     monkeypatch.setenv("BOT_EMBED_BASE_URL", "http://embed.local")
     config = BotConfig(_env_file=None)
     assert config.embed_base_url == "http://embed.local"
-    assert config.vision_base_url == "http://localhost:11434"
+    assert config.vision_base_url is None
+    assert config.vision_api_key is None
 
 
 def test_invalid_bash_timeout_rejected(monkeypatch):

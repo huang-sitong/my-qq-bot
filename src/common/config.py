@@ -177,13 +177,14 @@ class BotConfig(BaseSettings):
         default="qwen3-embedding:0.6b",
         validation_alias="BOT_EMBED_MODEL",
     )
-    # 嵌入与视觉各自独立 URL；两者都未设置时回落到旧 OLLAMA_BASE_URL。
+    # 嵌入与视觉各自独立 URL：embed 未设置时回落旧 OLLAMA_BASE_URL；
+    # vision 走 OpenAI 兼容（回落 BASE_URL 主 LLM，见下方 model_validator）。
     embed_base_url: str = Field(
         default="http://localhost:11434",
         validation_alias="BOT_EMBED_BASE_URL",
     )
-    vision_base_url: str = Field(
-        default="http://localhost:11434",
+    vision_base_url: str | None = Field(
+        default=None,
         validation_alias="BOT_VISION_BASE_URL",
     )
     ollama_base_url: str = Field(
@@ -234,6 +235,11 @@ class BotConfig(BaseSettings):
     vision_model: str = Field(
         default="qwen3-vl:2b",
         validation_alias="BOT_VISION_MODEL",
+    )
+    # OpenAI 兼容视觉 API key；未设时回落主 LLM 的 API_KEY（同供应商零配置）
+    vision_api_key: str | None = Field(
+        default=None,
+        validation_alias="BOT_VISION_API_KEY",
     )
     vision_max_images: int = Field(
         default=3,
@@ -351,6 +357,9 @@ class BotConfig(BaseSettings):
             raise ValueError("summary_keep_ratio must be <= summary_trigger_ratio")
         if "embed_base_url" not in self.model_fields_set and self.ollama_base_url:
             self.embed_base_url = self.ollama_base_url
-        if "vision_base_url" not in self.model_fields_set and self.ollama_base_url:
-            self.vision_base_url = self.ollama_base_url
+        # 视觉已切 OpenAI 兼容：base_url / api_key 未设时回落主 LLM（同供应商零配置）
+        if "vision_base_url" not in self.model_fields_set and self.llm_base_url:
+            self.vision_base_url = self.llm_base_url
+        if "vision_api_key" not in self.model_fields_set:
+            self.vision_api_key = self.llm_api_key
         return self
