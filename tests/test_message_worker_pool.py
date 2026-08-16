@@ -447,3 +447,20 @@ def test_worker_uses_queue_factory():
         assert created and created[0].qsize() == 0
 
     asyncio.run(run())
+
+
+def test_worker_metrics_expose_processing_and_stage_timing():
+    async def run():
+        graph = _OrderedGraph()
+        handler = _make_handler(graph, worker_count=1, batch_max=1)
+        await handler.start()
+        await handler.handle(_event("m1", "g1"))
+        await handler.stop()
+        metrics = handler._worker_pool.metrics
+        assert metrics["processed"] == 1
+        assert metrics["queue_size"] == 0
+        assert "avg_processing_seconds" in metrics
+        assert "avg_route_seconds" in metrics
+        assert "avg_dispatch_seconds" in metrics
+
+    asyncio.run(run())
