@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import time
 from importlib.metadata import PackageNotFoundError, version
 
@@ -23,6 +22,7 @@ from common import (
     DEFAULT_PERSONA_PROMPT,
     BotConfig,
 )
+from common.database import DatabaseManager
 from common.logging import TraceIdFilter
 from common.mcp import load_mcp_servers_from_file
 from knowledge.index_worker import IndexWorker
@@ -56,7 +56,8 @@ async def main():
     env_vars = dotenv_values(env_file) if env_file else {}
 
     # Ensure db directory exists
-    os.makedirs(config.db_dir, exist_ok=True)
+    db_manager = DatabaseManager(config.db_dir)
+    db_manager.ensure_ready()
 
     client = SatoriClient(config)
     api_client = SatoriApiClient(config)
@@ -171,6 +172,7 @@ async def main():
         if vision_service is not None:
             await vision_service.close()
         await memory_store.close()
+        db_manager.close()
         logger.info("Bye.")
 
 
