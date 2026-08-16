@@ -19,6 +19,7 @@ from bot.core.dispatcher import MessageDispatcher
 from bot.core.router import route_incoming
 from bot.core.utils.reply_policy import should_allow_auto_reply
 from common.logging import trace_context
+from common.queue import InMemoryMessageQueue
 from conversation.identity import BotIdentity
 from conversation.message import IncomingMessage
 from conversation.router import RouteAction, RouteDecision
@@ -57,7 +58,7 @@ class MessageWorkerPool:
         self._identity = identity or BotIdentity()
         self._worker_count = worker_count
         self._batch_max = max(batch_max, 0)
-        self._queue: MessageQueue = (queue_factory or asyncio.Queue)(
+        self._queue: MessageQueue = (queue_factory or InMemoryMessageQueue)(
             maxsize=queue_maxsize
         )
         self._locks: dict[str, asyncio.Lock] = {}
