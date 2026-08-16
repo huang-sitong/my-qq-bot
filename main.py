@@ -32,7 +32,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s [trace=%(trace_id)s]",
 )
-logging.getLogger().addFilter(TraceIdFilter())
+
+for _handler in logging.getLogger().handlers:
+    _handler.addFilter(TraceIdFilter())
 logger = logging.getLogger("bot")
 
 
