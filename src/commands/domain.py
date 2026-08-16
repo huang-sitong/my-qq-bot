@@ -1,7 +1,7 @@
 """命令层领域数据对象。
 
 这里只存放数据结构和命令 handler 的类型契约；解析、注册、权限、执行逻辑
-仍由 ``bot.core.commands`` 负责。
+仍由 ``commands`` 负责。
 """
 
 from __future__ import annotations

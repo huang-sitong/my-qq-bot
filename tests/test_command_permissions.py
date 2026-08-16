@@ -2,7 +2,7 @@
 
 import asyncio
 
-from bot.core.commands import (
+from commands import (
     Command,
     CommandActor,
     CommandContext,

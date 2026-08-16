@@ -261,7 +261,7 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
 # 注意：AsyncSqliteSaver 的 asyncio.Lock 绑定首个事件循环（同 test_memory_store
 # 约定），跨轮/跨线程 ainvoke 必须放在单个 asyncio.run 内——与真实 bot 单 loop 一致。
 
-from bot.core.skills import Skill, SkillRegistry
+from skill import Skill, SkillRegistry
 
 SKILL_LOAD_CALLS = [
     {"name": "load_skill", "args": {"skill_name": "translate"},

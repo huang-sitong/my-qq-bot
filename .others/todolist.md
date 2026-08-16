@@ -11,7 +11,7 @@
 - [x] 定义 `MessageQueue` 端口，`MessageWorkerPool` 依赖抽象队列而不是直接 `asyncio.Queue`
 - [x] 定义 RAG/文件发送等端口，核心流程面向接口
 - [x] 定义记忆/视觉等端口，核心流程面向接口
-- [x] 将 `CommandServices` 从 domain 移到 application 层（保留兼容导出）
+- [x] 将 `CommandServices` 从 domain 移到 application 层
 
 ## 阶段 2：事件驱动与可靠性
 - [x] 增加 `event_id` 幂等去重，防止重复事件导致重复回复/重复索引
@@ -27,8 +27,8 @@
     - [x] vision -> vision
     - [x] skills -> skill
     - [x] commands -> commands
-- [x] 将 `src/domain` 按上下文拆分：commands/skill/vision/knowledge/conversation 领域模型均已迁移，`domain` 保留兼容导出
-- [x] 保留旧导入路径作为兼容层，逐步迁移
+- [x] 将 `src/domain` 按上下文拆分：commands/skill/vision/knowledge/conversation 领域模型均已迁移，`domain` 仅保留 Satori
+- [x] 彻底移除旧导入兼容层，统一使用新上下文包
 
 ## 阶段 4：状态与资源治理
 - [x] 清理 `thread_id` 对应的 lock / auto_reply 状态，避免长期运行无界增长

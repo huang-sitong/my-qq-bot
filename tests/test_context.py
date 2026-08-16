@@ -91,7 +91,7 @@ def test_summary_trim_accepts_callable_counter():
 
 """技能层：索引 + 激活正文注入；估算与实际注入一致。"""
 
-from bot.core.skills import Skill, SkillRegistry
+from skill import Skill, SkillRegistry
 
 
 def test_skill_index_and_active_layers_injected():

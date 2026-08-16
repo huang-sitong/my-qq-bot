@@ -1,27 +1,29 @@
-"""领域数据对象统一从 ``domain`` 导出，旧 bot.core 路径保留兼容。"""
+"""领域数据对象统一从各限界上下文导出。"""
 
 from pathlib import Path
 
-import bot.core.commands as core_commands
-import bot.core.router as core_router
-import bot.core.skills as core_skills
-import bot.core.tools.run_bash as core_run_bash
-from domain import (
-    BashConfig,
-    BotIdentity,
+import commands as core_commands
+import conversation.bash as core_run_bash
+import conversation.router as core_router
+import skill as core_skills
+from commands import (
     Command,
     CommandActor,
     CommandContext,
     CommandResult,
     CommandServices,
     ParsedCommand,
+)
+from conversation import (
+    BashConfig,
+    BotIdentity,
     RouteAction,
     RouteDecision,
-    Skill,
 )
+from skill import Skill
 
 
-def test_data_objects_are_single_source_in_object():
+def test_data_objects_are_single_source_in_contexts():
     assert core_commands.Command is Command
     assert core_commands.CommandActor is CommandActor
     assert core_commands.CommandContext is CommandContext

@@ -8,8 +8,8 @@ LLOneBot 投递的 ``event.channel.type`` 是 ``ChannelType``（IntEnum）实例
 
 import asyncio
 
-from bot.core.commands import Command, CommandServices, build_command_registry
 from bot.handler import MessageHandler
+from commands import Command, CommandServices, build_command_registry
 from common import BotConfig
 from domain.satori import Channel, ChannelType, EventBody, Message, User
 

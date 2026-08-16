@@ -3,7 +3,7 @@
 
 import asyncio
 
-from bot.core.skills import Skill, SkillRegistry, load_skill, unload_skill
+from skill import Skill, SkillRegistry, load_skill, unload_skill
 
 
 def _registry():

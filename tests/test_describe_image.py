@@ -8,8 +8,8 @@ from bot.core.nodes.action_node.describe_image import (
     build_multimodal_content,
     describe_image_node,
 )
-from domain.bot.vision import ImageDescription
 from tests.fakes import FakeVisionService, make_state
+from vision.domain import ImageDescription
 
 
 class _PerCallVision:

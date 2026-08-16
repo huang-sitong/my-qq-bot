@@ -2,8 +2,8 @@
 
 import asyncio
 
-from bot.core.commands import CommandServices, build_command_registry
 from bot.handler import MessageHandler
+from commands import CommandServices, build_command_registry
 from common import BotConfig
 from conversation.router import RouteAction
 from domain.satori import Channel, ChannelType, EventBody, Message, User

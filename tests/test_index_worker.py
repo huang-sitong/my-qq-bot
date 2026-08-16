@@ -1,6 +1,6 @@
 import asyncio
 
-from domain import IndexTurnTask
+from knowledge.domain import IndexTurnTask
 from knowledge.index_worker import IndexWorker
 from tests.fakes import StubRagService
 

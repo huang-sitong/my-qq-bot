@@ -11,7 +11,7 @@ import logging
 import re
 from pathlib import Path
 
-from domain.bot.skill import Skill
+from .domain import Skill
 
 logger = logging.getLogger(__name__)
 

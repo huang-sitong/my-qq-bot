@@ -1,6 +1,6 @@
-from bot.core.commands import Command, CommandRegistry
 from bot.core.router import RouteAction, route_incoming
-from domain import IncomingMessage
+from commands import Command, CommandRegistry
+from conversation.message import IncomingMessage
 
 
 async def _ping(ctx):

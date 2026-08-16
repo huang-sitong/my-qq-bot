@@ -3,8 +3,8 @@
 import asyncio
 
 from bot.core.nodes import index_turn_node
-from domain.bot.vision import ImageDescription
 from tests.fakes import StubRagService, make_state
+from vision.domain import ImageDescription
 
 
 def _run(state, rag):

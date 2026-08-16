@@ -79,7 +79,7 @@ Satori 事件 -> MessageHandler -> Ingress -> MessageWorkerPool
 - `src/bot/core/dispatcher.py` — 命令 / 上下文 / 回复图分发
 - `src/bot/core/graph.py` — 最小 LangGraph 对话与工具回环
 - `src/bot/core/compaction.py` — 图外上下文压缩
-- `src/domain/` — 领域/协议数据对象
-- 旧的 `bot.transport`、`bot.core.rag`、`bot.core.skills`、`bot.core.vision`、`bot.core.commands` 等路径保留为兼容层
+- `src/domain/` — Satori 协议数据对象
+- 旧的 `bot.transport`、`bot.core.rag`、`bot.core.skills`、`bot.core.vision`、`bot.core.commands`、`domain.bot` 等兼容层已彻底移除
 
 更完整的架构约定和开发细节见 `AGENTS.md`。

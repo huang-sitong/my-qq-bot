@@ -2,7 +2,7 @@
 
 import pytest
 
-from bot.core.commands import Command, CommandRegistry, CommandResult
+from commands import Command, CommandRegistry, CommandResult
 
 
 async def _ok(ctx):

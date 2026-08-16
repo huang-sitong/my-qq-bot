@@ -1,7 +1,7 @@
 """锁定领域类型经 domain 包 lazy-loading 导出，且为 conversation.content 的真实类。"""
 
 import conversation.content as content_module
-from domain import Attachment, MessageKind, ParsedContent
+from conversation import Attachment, MessageKind, ParsedContent
 
 
 def test_message_kind_values():

@@ -1,103 +1,49 @@
-"""Top-level re-exports for the ``domain`` package.
+"""Satori 协议领域模型导出。
 
-Uses the same lazy-loading ``__getattr__`` pattern as the sub-packages so
-that imports only load the modules they actually use.
+``domain`` 现在只保留协议相关的共享模型；业务领域模型已按限界上下文拆分到
+``commands`` / ``conversation`` / ``skill`` / ``knowledge`` / ``memory`` / ``vision``。
 """
 
-# 分组注释是刻意结构（与下方 _module_map 平行同步），按 RUF022 全量字母序会打散分组
-__all__ = [  # noqa: RUF022
-    # bot
-    "Attachment",
-    "BashConfig",
-    "BotIdentity",
-    "BotState",
-    "Command",
-    "CommandActor",
-    "CommandContext",
-    "CommandResult",
-    "CommandServices",
-    "ImageDescription",
-    "IncomingMessage",
-    "IndexTurnTask",
-    "MessageKind",
-    "ParsedCommand",
-    "ParsedContent",
-    "RouteAction",
-    "RouteDecision",
-    "Skill",
-    # satori — enums
-    "ChannelType",
-    "Direction",
-    "LoginStatus",
-    "Order",
-    # satori — models
+__all__ = [
+    "MESSAGE_CREATE",
+    "MESSAGE_GET",
+    "MESSAGE_LIST",
     "Argv",
     "BidiList",
     "Button",
     "Channel",
+    "ChannelType",
+    "Direction",
     "Emoji",
+    "Endpoint",
+    "EventBody",
     "Friend",
     "Guild",
     "GuildMember",
     "GuildRole",
     "Login",
-    "Message",
-    "PageList",
-    "User",
-    # satori — events
-    "EventBody",
     "LoginList",
-    "Signal",
-    # satori — api (commonly used endpoints + params)
-    "Endpoint",
-    "MESSAGE_CREATE",
-    "MESSAGE_GET",
-    "MESSAGE_LIST",
+    "LoginStatus",
+    "Message",
     "MessageCreateParams",
     "MessageGetParams",
     "MessageListParams",
+    "Order",
+    "PageList",
+    "Signal",
+    "User",
 ]
 
-# fmt: off
-# ---------------------------------------------------------------------------
-# Auto-generated: map every public name to the sub-package that owns it.
-# ``__getattr__`` delegates to the sub-package, which in turn lazy-loads
-# from the correct sub-module.
-# ---------------------------------------------------------------------------
-_module_map: dict[str, str] = {}
-# 必须与上方 __all__ 的 # bot 组保持同步：新增 bot 导出名若漏加此集合，会被误映射到 "satori"
-_BOT_NAMES = {
-    "Attachment",
-    "BashConfig",
-    "BotIdentity",
-    "BotState",
-    "Command",
-    "CommandActor",
-    "CommandContext",
-    "CommandResult",
-    "CommandServices",
-    "ImageDescription",
-    "IncomingMessage",
-    "IndexTurnTask",
-    "MessageKind",
-    "ParsedCommand",
-    "ParsedContent",
-    "RouteAction",
-    "RouteDecision",
-    "Skill",
-}
-for _name in __all__:
-    _module_map[_name] = "bot" if _name in _BOT_NAMES else "satori"
+_module_map: dict[str, str] = {name: "satori" for name in __all__}
 
 
 def __getattr__(name: str):
-    """Lazy-load *name* from the appropriate sub-package."""
-    sub_pkg = _module_map.get(name)
-    if sub_pkg is None:
+    module_name = _module_map.get(name)
+    if module_name is None:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     import importlib
 
-    module = importlib.import_module(f".{sub_pkg}", __package__)
+    module = importlib.import_module(f".{module_name}", __package__)
     return getattr(module, name)
 
 

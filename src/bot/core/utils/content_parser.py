@@ -8,7 +8,7 @@ LLOneBot 只发送 ``content`` 字符串（无结构化 ``elements`` 数组）�
 - ``to_llm_text``：媒体→``[图片]`` 等占位符、@→``@昵称(id)``/``所有成员``、链接→``内容 (href)``、其余标签全剥，供 LLM 用（注：``<a@b.com>``/``<https://...>`` 等非元素尖括号序列同样被剥除）
 - ``parse_mentions``：只数顶层 at 提及 ``{id: 昵称}``（引用/转发子树不计），供路由判定用
 
-类型定义（MessageKind/Attachment/ParsedContent）见 ``domain.bot.content``。
+类型定义（MessageKind/Attachment/ParsedContent）见 ``conversation.content``。
 """
 
 import html

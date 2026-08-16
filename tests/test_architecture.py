@@ -1,4 +1,6 @@
-"""架构改造后的包结构与兼容层测试。"""
+"""架构改造后的包结构与兼容层移除测试。"""
+
+import pytest
 
 import commands
 import conversation
@@ -19,23 +21,18 @@ def test_new_bounded_context_packages_are_importable():
     assert conversation.IncomingMessage is not None
 
 
-def test_old_compatibility_paths_still_work():
-    from bot.core.commands import CommandServices as OldCommandServices
-    from bot.core.memory import MemoryStore as OldMemoryStore
-    from bot.core.rag import RagService as OldRagService
-    from bot.core.skills import SkillRegistry as OldSkillRegistry
-    from bot.core.vision import VisionService as OldVisionService
-    from bot.transport.http.client import SatoriApiClient as OldApiClient
-    from bot.transport.websocket.client import SatoriClient as OldClient
-    from domain.bot.message import IncomingMessage as OldIncomingMessage
-    from domain.bot.router import RouteDecision as OldRouteDecision
-
-    assert OldCommandServices is commands.CommandServices
-    assert OldMemoryStore is memory.MemoryStore
-    assert OldRagService is knowledge.RagService
-    assert OldSkillRegistry is skill.SkillRegistry
-    assert OldVisionService is vision.VisionService
-    assert OldApiClient is protocol.SatoriApiClient
-    assert OldClient is protocol.SatoriClient
-    assert OldIncomingMessage is conversation.IncomingMessage
-    assert OldRouteDecision is conversation.RouteDecision
+def test_old_compatibility_paths_are_removed():
+    with pytest.raises(ImportError):
+        import bot.transport
+    with pytest.raises(ImportError):
+        import bot.core.rag
+    with pytest.raises(ImportError):
+        import bot.core.skills
+    with pytest.raises(ImportError):
+        import bot.core.vision
+    with pytest.raises(ImportError):
+        import bot.core.commands
+    with pytest.raises(ImportError):
+        import bot.core.memory  # noqa: F401
+    with pytest.raises(ImportError):
+        import domain.bot  # noqa: F401
