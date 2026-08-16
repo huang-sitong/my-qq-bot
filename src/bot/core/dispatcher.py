@@ -299,6 +299,7 @@ class MessageDispatcher:
             bot_name=self._identity.name,
             user_message=user_message,
             bot_reply=reply_text,
+            trace_id=message.trace_id,
         )
 
     async def _send_reply(self, channel_id: str, content: str) -> None:

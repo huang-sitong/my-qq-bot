@@ -10,3 +10,4 @@ class IndexTurnTask:
     bot_name: str
     user_message: str
     bot_reply: str
+    trace_id: str = ""

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from common.logging import trace_context
 from knowledge.domain import IndexTurnTask
 
 logger = logging.getLogger(__name__)
@@ -32,15 +33,16 @@ class IndexWorker:
             try:
                 if task is None:
                     return
-                await self._rag_service.index_turn(
-                    thread_id=task.thread_id,
-                    user_id=task.user_id,
-                    user_name=task.user_name,
-                    bot_id=task.bot_id,
-                    bot_name=task.bot_name,
-                    user_message=task.user_message,
-                    bot_reply=task.bot_reply,
-                )
+                with trace_context(task.trace_id):
+                    await self._rag_service.index_turn(
+                        thread_id=task.thread_id,
+                        user_id=task.user_id,
+                        user_name=task.user_name,
+                        bot_id=task.bot_id,
+                        bot_name=task.bot_name,
+                        user_message=task.user_message,
+                        bot_reply=task.bot_reply,
+                    )
             except Exception:
                 logger.exception("RAG index task failed for thread %s", task.thread_id)
             finally:
