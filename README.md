@@ -33,7 +33,7 @@ uv run python main.py         # 启动 bot
 | `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS_FILE` | MCP 外部工具（可选；server 定义在 `config/mcp_servers.json`） |
 | `BOT_COMMAND_ENABLED` / `BOT_COMMAND_PREFIX` / `BOT_ADMIN_IDS` | 图外斜杠命令、前缀与管理员 ID |
 | `BOT_SKILLS_ENABLED` / `BOT_SKILLS_DIR` | Markdown 技能模块（扫描 `skills/<name>/SKILL.md`） |
-| `BOT_BASH_ENABLED` / `BOT_BASH_SHELL` | 技能脚本执行工具与 shell 路径（默认 Git Bash） |
+| `BOT_BASH_ENABLED` / `BOT_BASH_SHELL` | 技能脚本执行工具与 shell 路径（Windows Git Bash / WSL/Linux bash，默认 `bash`） |
 
 ## 运行时数据
 

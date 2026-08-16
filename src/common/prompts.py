@@ -33,7 +33,7 @@ MCP_TOOL_HINT = """你可以调用外部工具获取联网或实时信息（如�
 - 已拿到工具结果时直接基于结果组织回答，避免冗余调用。"""
 
 # bash 工具提示（call_llm 动态注入，仅 bash 启用时）
-BASH_TOOL_HINT = """你可以用 run_bash 在服务器上执行 bash 命令（Git Bash，Windows）。
+BASH_TOOL_HINT = """你可以用 run_bash 在服务器上执行 bash 命令（Windows Git Bash / WSL/Linux bash）。
 - 主要用于运行技能（skill）中的脚本、配置技能所需环境（安装依赖/创建虚拟环境/设置环境变量等）。
 - 技能正文会说明脚本路径与执行步骤，按正文在对应目录（cwd）下执行。
 - 工作目录仅限白名单根目录内；危险命令会被拦截；输出截断；超时退出。

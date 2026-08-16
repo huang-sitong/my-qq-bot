@@ -63,7 +63,7 @@ UNLOAD_SKILL_TOOL_DESCRIPTION = (
 )
 
 BASH_TOOL_DESCRIPTION = (
-    "在 bot 宿主上执行 bash 命令（Git Bash，Windows）。"
+    "在 bot 宿主上执行 bash 命令（Windows Git Bash / WSL/Linux bash）。"
     "主要用于运行技能（skill）中的脚本、配置技能所需环境"
     "（安装依赖/创建虚拟环境/设置环境变量等）。\n"
     "- command：要执行的 bash 命令字符串"

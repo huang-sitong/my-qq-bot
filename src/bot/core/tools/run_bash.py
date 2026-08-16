@@ -1,5 +1,5 @@
 # bot/core/tools/run_bash.py
-"""run_bash 工具纯函数：在 bot 宿主（Windows + Git Bash）执行 bash 命令。
+"""run_bash 工具纯函数：在 bot 宿主（Windows Git Bash / WSL/Linux bash）执行 bash 命令。
 
 主要用途：运行 skill 里的脚本 + skill 内环境配置（装依赖/建虚拟环境等）。
 三道护栏按序执行：① 危险命令拦截（正则黑名单）② cwd 白名单（resolve 防逃逸）
@@ -8,7 +8,9 @@
 
 import asyncio
 import logging
+import os
 import re
+import shutil
 from pathlib import Path
 
 from domain.bot.bash import BashConfig
@@ -39,9 +41,19 @@ def _is_blocked(command: str) -> str | None:
     return None
 
 
+_WINDOWS_ABS_RE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def _coerce_absolute(path: Path) -> Path:
+    """Windows 盘符路径在 POSIX 上不是绝对路径，统一提升为绝对路径便于白名单判断。"""
+    if not path.is_absolute() and _WINDOWS_ABS_RE.match(str(path)):
+        return Path("/") / path
+    return path
+
+
 def _allowed_roots(cfg: BashConfig) -> list[Path]:
     roots = [cfg.project_root.resolve()]
-    roots += [Path(r).resolve() for r in cfg.allowed_roots]
+    roots += [_coerce_absolute(Path(r)).resolve() for r in cfg.allowed_roots]
     return roots
 
 
@@ -50,13 +62,36 @@ def _resolve_cwd(cwd: str, cfg: BashConfig) -> Path:
     if not cwd.strip():
         return cfg.project_root.resolve()
     path = Path(cwd.strip())
-    if not path.is_absolute():
+    if not path.is_absolute() and not _WINDOWS_ABS_RE.match(str(path)):
         path = cfg.project_root / path
-    return path.resolve()
+    return _coerce_absolute(path).resolve()
 
 
 def _within_roots(path: Path, roots: list[Path]) -> bool:
     return any(path == root or path.is_relative_to(root) for root in roots)
+
+
+def _resolve_shell(shell: str) -> str:
+    """解析实际使用的 bash。
+
+    默认 ``bash`` 在 Linux/WSL 可直接使用；在 Windows 上如果 PATH 里没有 bash，
+    再尝试常见的 Git Bash 安装路径，提升开箱即用的兼容性。
+    """
+    if shell != "bash":
+        return shell
+    if shutil.which("bash"):
+        return shell
+    if os.name == "nt":
+        candidates = [
+            r"C:/Program Files/Git/bin/bash.exe",
+            r"C:/Program Files/Git/usr/bin/bash.exe",
+            r"C:/Program Files (x86)/Git/bin/bash.exe",
+            r"C:/Program Files (x86)/Git/usr/bin/bash.exe",
+        ]
+        for candidate in candidates:
+            if Path(candidate).is_file():
+                return candidate
+    return shell
 
 
 def _decode(raw: bytes) -> str:
@@ -89,18 +124,19 @@ async def run_bash(
         return f"工作目录 {path} 不在允许的根目录内。允许：{shown}"
 
     effective_timeout = cfg.timeout if timeout is None else timeout
+    shell = _resolve_shell(cfg.shell)
 
     # cwd 用 subprocess 参数设置、不拼进命令串（规避 MSYS 路径 munging）。
     # 走模块属性访问 asyncio.create_subprocess_exec——测试 monkeypatch 依赖此写法。
     proc = await asyncio.create_subprocess_exec(
-        cfg.shell, "-c", command,
+        shell, "-c", command,
         cwd=str(path), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
     )
     try:
         stdout_data, _ = await asyncio.wait_for(proc.communicate(), timeout=effective_timeout)
     except TimeoutError:
         try:
-            proc.kill()  # 尽力回收；Windows 下 bash 子进程树清理是后续增强点
+            proc.kill()  # 尽力回收；WSL/Windows 下 bash 子进程树清理是后续增强点
         except OSError:
             pass
         return f"命令超时（> {effective_timeout} 秒），已终止。"

@@ -322,7 +322,7 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_AUTO_REPLY_COOLDOWN",
     )
 
-    # --- Bash 工具（skill 脚本执行；Git Bash） ---
+    # --- Bash 工具（skill 脚本执行；Windows Git Bash / WSL/Linux bash） ---
     bash_enabled: Flag = Field(
         default=True,
         validation_alias="BOT_BASH_ENABLED",

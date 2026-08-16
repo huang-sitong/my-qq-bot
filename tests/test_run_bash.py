@@ -1,4 +1,4 @@
-"""run_bash 工具纯函数测试（不真跑 Git Bash：monkeypatch asyncio.create_subprocess_exec）。"""
+"""run_bash 工具纯函数测试（不真跑 Git Bash / WSL/Linux bash：monkeypatch asyncio.create_subprocess_exec）。"""
 
 import asyncio
 
