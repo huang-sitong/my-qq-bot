@@ -144,6 +144,7 @@ async def main():
         batch_max=config.message_batch_max,
         dedup_size=config.message_dedup_size,
     )
+    command_services.metrics_provider = lambda: handler._worker_pool.metrics
 
     # --- Register event handlers ---
     client.on("message-created")(handler.handle)

@@ -146,6 +146,20 @@ def test_status_returns_safe_runtime_info():
     assert "API_KEY" not in result.text
 
 
+def test_status_includes_metrics_when_provider_set():
+    services = _services()
+    services.metrics_provider = lambda: {
+        "queue_size": 3,
+        "processed": 10,
+        "dropped_duplicates": 2,
+    }
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "status")
+    assert "队列深度：3" in result.text
+    assert "已处理消息：10" in result.text
+    assert "丢弃重复：2" in result.text
+
+
 def test_auto_reply_shows_state():
     services = _services()
     registry = build_command_registry(services)

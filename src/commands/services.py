@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -36,3 +37,4 @@ class CommandServices:
     compactor: ContextCompactor | None = None
     mcp_tool_names: tuple[str, ...] = ()
     mcp_tool_count: int = 0
+    metrics_provider: Callable[[], dict] | None = None

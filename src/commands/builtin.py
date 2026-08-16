@@ -78,6 +78,11 @@ async def _status(ctx: CommandContext) -> CommandResult:
         f"记忆：{'开启' if services.memory_store is not None else '关闭'}",
         f"自动回复：{'开启' if cfg.auto_reply else '关闭'}",
     ]
+    if services.metrics_provider is not None:
+        metrics = services.metrics_provider()
+        lines.append(f"队列深度：{metrics.get('queue_size', 0)}")
+        lines.append(f"已处理消息：{metrics.get('processed', 0)}")
+        lines.append(f"丢弃重复：{metrics.get('dropped_duplicates', 0)}")
     return CommandResult(text="\n".join(lines))
 
 
