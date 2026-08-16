@@ -22,6 +22,7 @@ uv run python main.py         # 启动 bot
 | `BOT_MESSAGE_WORKER_COUNT` | 消息 worker 数；不同 thread 可并发，同一 thread 仍串行（默认 `1`） |
 | `BOT_MESSAGE_QUEUE_MAXSIZE` | 消息队列上限；`0` 无界，正整数满时入队阻塞形成背压 |
 | `BOT_MESSAGE_BATCH_MAX` | 同会话突发消息合并上限；一次图调用/一条回复处理多条（默认 `4`，`0/1` 关闭） |
+| `BOT_MESSAGE_DEDUP_SIZE` | event_id 幂等去重窗口；`0` 关闭（默认 `10000`） |
 | `BOT_GRAPH_RECURSION_LIMIT` | LangGraph 图节点执行上限，工具回环会消耗该额度（默认 `128`） |
 | `BOT_RAG_ENABLED` | 群聊历史向量检索（默认开启；嵌入用 OpenAI 兼容 Embedding API） |
 | `BOT_EMBED_BASE_URL` | 嵌入专用 OpenAI 兼容地址；未设置时回落 `BASE_URL` |

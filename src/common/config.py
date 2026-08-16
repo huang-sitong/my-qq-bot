@@ -98,6 +98,13 @@ class BotConfig(BaseSettings):
         ge=0,
         validation_alias="BOT_MESSAGE_BATCH_MAX",
     )
+    # event_id 幂等去重窗口大小；0 表示关闭去重。默认 10000 可在 WebSocket
+    # 重放/重复事件时避免重复回复和重复 RAG 索引，同时限制内存占用。
+    message_dedup_size: int = Field(
+        default=10000,
+        ge=0,
+        validation_alias="BOT_MESSAGE_DEDUP_SIZE",
+    )
 
     # --- Graph ---
     # LangGraph 总节点执行上限（call_llm/tools/skill_manager 等每次执行都计 1）。

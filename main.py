@@ -142,7 +142,7 @@ async def main():
         worker_count=config.message_worker_count,
         queue_maxsize=config.message_queue_maxsize,
         batch_max=config.message_batch_max,
-        dedup_size=10000,
+        dedup_size=config.message_dedup_size,
     )
 
     # --- Register event handlers ---
