@@ -110,3 +110,5 @@ class MemoryStore:
                 await self._conn.close()
                 self._conn = None
                 self._store = None
+
+__all__ = ["MemoryStore"]
