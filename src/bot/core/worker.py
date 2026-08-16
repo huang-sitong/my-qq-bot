@@ -76,6 +76,8 @@ class MessageWorkerPool:
         self._processed_count = 0
         self._dropped_count = 0
         self._processing_seconds = 0.0
+        self._stage_seconds: dict[str, float] = {"route": 0.0, "dispatch": 0.0}
+        self._stage_counts: dict[str, int] = {"route": 0, "dispatch": 0}
 
     @property
     def worker_tasks(self) -> list[asyncio.Task[None]]:
@@ -108,6 +110,16 @@ class MessageWorkerPool:
             "avg_processing_seconds": (
                 self._processing_seconds / self._processed_count
                 if self._processed_count
+                else 0.0
+            ),
+            "avg_route_seconds": (
+                self._stage_seconds["route"] / self._stage_counts["route"]
+                if self._stage_counts["route"]
+                else 0.0
+            ),
+            "avg_dispatch_seconds": (
+                self._stage_seconds["dispatch"] / self._stage_counts["dispatch"]
+                if self._stage_counts["dispatch"]
                 else 0.0
             ),
         }
@@ -192,12 +204,19 @@ class MessageWorkerPool:
     async def _process(self, message: IncomingMessage) -> None:
         """Route and dispatch a single normalized incoming message."""
         self._processed_count += 1
+        route_start = time.perf_counter()
         decision, auto_reply_allowed = self._route(message)
+        self._stage_seconds["route"] += time.perf_counter() - route_start
+        self._stage_counts["route"] += 1
+
+        dispatch_start = time.perf_counter()
         await self._dispatcher.dispatch(
             message,
             decision,
             auto_reply_allowed=auto_reply_allowed,
         )
+        self._stage_seconds["dispatch"] += time.perf_counter() - dispatch_start
+        self._stage_counts["dispatch"] += 1
 
     async def _process_batch(self, messages: list[IncomingMessage]) -> None:
         """按原位置增量处理一批同 thread 消息。
@@ -213,6 +232,7 @@ class MessageWorkerPool:
             nonlocal segment
             if not segment:
                 return
+            dispatch_start = time.perf_counter()
             try:
                 await self._dispatcher.dispatch_batch(
                     [m for m, _, _ in segment],
@@ -225,9 +245,12 @@ class MessageWorkerPool:
                     segment[0][0].thread_id,
                 )
             finally:
+                self._stage_seconds["dispatch"] += time.perf_counter() - dispatch_start
+                self._stage_counts["dispatch"] += 1
                 segment = []
 
         for message in messages:
+            route_start = time.perf_counter()
             try:
                 decision, allowed = self._route(message)
             except Exception:
@@ -235,8 +258,12 @@ class MessageWorkerPool:
                     "Message routing failed for thread %s", message.thread_id
                 )
                 continue
+            finally:
+                self._stage_seconds["route"] += time.perf_counter() - route_start
+                self._stage_counts["route"] += 1
             if decision.action == RouteAction.COMMAND:
                 await flush()
+                dispatch_start = time.perf_counter()
                 try:
                     await self._dispatcher.dispatch(
                         message, decision, auto_reply_allowed=allowed,
@@ -245,6 +272,9 @@ class MessageWorkerPool:
                     logger.exception(
                         "Command dispatch failed for thread %s", message.thread_id
                     )
+                finally:
+                    self._stage_seconds["dispatch"] += time.perf_counter() - dispatch_start
+                    self._stage_counts["dispatch"] += 1
             else:
                 segment.append((message, decision, allowed))
         await flush()

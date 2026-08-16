@@ -34,7 +34,7 @@
 - [x] 清理 `thread_id` 对应的 lock / auto_reply 状态，避免长期运行无界增长
 - [x] 统一数据库生命周期与所有权（main.py 统一创建/关闭，各库 owner 已在 AGENTS 明确）
 - [x] 增加可观测性指标（队列深度、丢弃数、活跃 thread 数）
-- [x] 增加处理耗时指标（平均处理耗时已在 worker metrics 中；per-stage 仍可按需细化）
+- [x] 增加处理耗时指标（总耗时 + route/dispatch 分阶段平均耗时）
 
 ## 验证
 - [x] 基线测试通过（518 passed, 1 skipped）
