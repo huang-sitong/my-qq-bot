@@ -1,5 +1,4 @@
-from bot.core.rag.embedder import EmbeddingService
-from bot.core.rag.milvus import MilvusStore
-from bot.core.rag.service import RagService
+"""兼容层：知识/RAG 上下文已迁移到 ``knowledge``。"""
+from knowledge import EmbeddingService, MilvusStore, RagService
 
 __all__ = ["EmbeddingService", "MilvusStore", "RagService"]

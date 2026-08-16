@@ -5,7 +5,7 @@ import asyncio
 from bot.core.commands import CommandServices, build_command_registry
 from bot.handler import MessageHandler
 from common import BotConfig
-from domain.bot.router import RouteAction
+from conversation.router import RouteAction
 from domain.satori import Channel, ChannelType, EventBody, Message, User
 
 
@@ -368,5 +368,82 @@ def test_batch_command_dispatch_error_does_not_drop_following_message():
         await handler.stop()
         assert graph.calls == [["hello"]]
         assert api.sent == [("g1", "收到")]
+
+    asyncio.run(run())
+
+
+def test_duplicate_event_id_is_dropped():
+    async def run():
+        graph = _OrderedGraph()
+        handler = MessageHandler(
+            client=object(),
+            graph=graph,
+            persona="你是{bot_name}",
+            api_client=_StubApi(),
+            worker_count=1,
+            batch_max=1,
+            dedup_size=100,
+        )
+        await handler.start()
+        event = _event("m1", "g1")
+        await handler.handle(event)
+        await handler.handle(event)
+        await handler.stop()
+        assert graph.calls == [["m1"]]
+
+    asyncio.run(run())
+
+
+def test_worker_uses_queue_factory():
+    class _FakeQueue:
+        def __init__(self, maxsize):
+            self.maxsize = maxsize
+            self.inner = asyncio.Queue(maxsize=maxsize)
+
+        async def put(self, item):
+            await self.inner.put(item)
+
+        def put_nowait(self, item):
+            self.inner.put_nowait(item)
+
+        async def get(self):
+            return await self.inner.get()
+
+        def get_nowait(self):
+            return self.inner.get_nowait()
+
+        def task_done(self):
+            self.inner.task_done()
+
+        async def join(self):
+            await self.inner.join()
+
+        def qsize(self):
+            return self.inner.qsize()
+
+    created = []
+
+    def factory(maxsize):
+        q = _FakeQueue(maxsize)
+        created.append(q)
+        return q
+
+    async def run():
+        graph = _OrderedGraph()
+        handler = _make_handler(graph, worker_count=1, batch_max=1)
+        handler._worker_pool = type(handler._worker_pool)(
+            handler._dispatcher,
+            bot_config=handler._worker_pool._bot_config,
+            command_registry=handler._worker_pool._command_registry,
+            identity=handler._worker_pool._identity,
+            worker_count=1,
+            queue_maxsize=0,
+            batch_max=1,
+            queue_factory=factory,
+        )
+        await handler.start()
+        await handler.handle(_event("m1", "g1"))
+        await handler.stop()
+        assert created and created[0].qsize() == 0
 
     asyncio.run(run())

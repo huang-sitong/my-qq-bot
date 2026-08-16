@@ -66,12 +66,19 @@ Satori 事件 -> MessageHandler -> Ingress -> MessageWorkerPool
 主要模块：
 
 - `main.py` — 装配 config / LLM / graph / handler / compactor / IndexWorker / RagService / MemoryStore
+- `src/protocol/` — Satori/OneBot 协议接入（WS/HTTP 收发）
+- `src/bot/core/` — 消息流水线、LangGraph 会话编排、工具执行等核心流程
+- `src/commands/` — 图外斜杠命令上下文
+- `src/skill/` — 技能管理上下文
+- `src/knowledge/` — 群聊历史 hybrid search 与后台索引（RAG）
+- `src/memory/` — 用户长期记忆上下文
+- `src/vision/` — 图片理解上下文
 - `src/bot/core/worker.py` — 消息队列、per-thread 串行与批量合并
 - `src/bot/core/router.py` — 确定性回复判定
 - `src/bot/core/dispatcher.py` — 命令 / 上下文 / 回复图分发
 - `src/bot/core/graph.py` — 最小 LangGraph 对话与工具回环
-- `src/bot/core/rag/` — 群聊历史 hybrid search 与后台索引
 - `src/bot/core/compaction.py` — 图外上下文压缩
 - `src/domain/` — 领域/协议数据对象
+- 旧的 `bot.transport`、`bot.core.rag`、`bot.core.skills`、`bot.core.vision`、`bot.core.commands` 等路径保留为兼容层
 
 更完整的架构约定和开发细节见 `AGENTS.md`。

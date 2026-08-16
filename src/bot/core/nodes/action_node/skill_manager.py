@@ -8,7 +8,7 @@ import logging
 
 from langchain_core.messages import AIMessage
 
-from domain.bot.state import BotState
+from conversation.state import BotState
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,4 @@
-"""Bot 身份领域数据对象。"""
+"""兼容层：Bot 身份领域对象已迁移到 ``conversation.identity``。"""
+from conversation.identity import BotIdentity
 
-from dataclasses import dataclass
-
-
-@dataclass
-class BotIdentity:
-    id: str = ""
-    name: str = ""
+__all__ = ["BotIdentity"]

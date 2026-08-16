@@ -12,13 +12,17 @@ import asyncio
 import logging
 import random
 import time
+from collections import deque
+from collections.abc import Callable
 
 from bot.core.dispatcher import MessageDispatcher
 from bot.core.router import route_incoming
 from bot.core.utils.reply_policy import should_allow_auto_reply
-from domain.bot.identity import BotIdentity
-from domain.bot.message import IncomingMessage
-from domain.bot.router import RouteAction, RouteDecision
+from common.logging import trace_context
+from conversation.identity import BotIdentity
+from conversation.message import IncomingMessage
+from conversation.router import RouteAction, RouteDecision
+from domain.ports import MessageQueue
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +46,10 @@ class MessageWorkerPool:
         worker_count: int = 1,
         queue_maxsize: int = 0,
         batch_max: int = 4,
+        queue_factory: Callable[[int], MessageQueue] | None = None,
+        dedup_size: int = 0,
+        idle_ttl: float = 3600,
+        cleanup_interval: float = 300,
     ) -> None:
         self._dispatcher = dispatcher
         self._bot_config = bot_config
@@ -49,13 +57,25 @@ class MessageWorkerPool:
         self._identity = identity or BotIdentity()
         self._worker_count = worker_count
         self._batch_max = max(batch_max, 0)
-        self._queue: asyncio.Queue[IncomingMessage | None] = asyncio.Queue(
+        self._queue: MessageQueue = (queue_factory or asyncio.Queue)(
             maxsize=queue_maxsize
         )
         self._locks: dict[str, asyncio.Lock] = {}
         self._worker_tasks: list[asyncio.Task[None]] = []
         self._last_auto_reply_at: dict[str, float] = {}
         self._random = random.Random()
+        self._dedup_enabled = dedup_size > 0
+        self._seen_event_ids: set[str] = set()
+        self._seen_event_order: deque[str] = deque(
+            maxlen=dedup_size if self._dedup_enabled else 0
+        )
+        self._idle_ttl = idle_ttl
+        self._cleanup_interval = cleanup_interval
+        self._lock_last_used: dict[str, float] = {}
+        self._last_cleanup_at = 0.0
+        self._processed_count = 0
+        self._dropped_count = 0
+        self._processing_seconds = 0.0
 
     @property
     def worker_tasks(self) -> list[asyncio.Task[None]]:
@@ -77,6 +97,21 @@ class MessageWorkerPool:
     def random(self, value: random.Random) -> None:
         self._random = value
 
+    @property
+    def metrics(self) -> dict[str, int | float]:
+        """返回轻量运行时指标，便于 /status 或监控系统采集。"""
+        return {
+            "queue_size": self._queue.qsize(),
+            "processed": self._processed_count,
+            "dropped_duplicates": self._dropped_count,
+            "active_threads": len(self._locks),
+            "avg_processing_seconds": (
+                self._processing_seconds / self._processed_count
+                if self._processed_count
+                else 0.0
+            ),
+        }
+
     async def start(self) -> None:
         """Start the configured number of background message workers."""
         self._worker_tasks = [
@@ -94,8 +129,26 @@ class MessageWorkerPool:
             self._worker_tasks = []
         logger.info("Message worker stopped")
 
-    async def enqueue(self, message: IncomingMessage) -> None:
+    async def enqueue(self, message: IncomingMessage) -> bool:
+        """Enqueue a normalized message, optionally dropping duplicate ``event_id``.
+
+        Dedup is disabled by default (``dedup_size=0``) for backward
+        compatibility; set ``dedup_size > 0`` to enable a bounded idempotency
+        window. Returns ``True`` when the message is accepted, ``False`` when it
+        is recognized as a duplicate and ignored.
+        """
+        if self._dedup_enabled:
+            if message.event_id in self._seen_event_ids:
+                self._dropped_count += 1
+                logger.debug("Duplicate event ignored: %s", message.event_id)
+                return False
+            if len(self._seen_event_order) >= self._seen_event_order.maxlen:
+                old = self._seen_event_order.popleft()
+                self._seen_event_ids.discard(old)
+            self._seen_event_order.append(message.event_id)
+            self._seen_event_ids.add(message.event_id)
         await self._queue.put(message)
+        return True
 
     def mark_reply_sent(self, thread_id: str) -> None:
         self._last_auto_reply_at[thread_id] = time.monotonic()
@@ -138,6 +191,7 @@ class MessageWorkerPool:
 
     async def _process(self, message: IncomingMessage) -> None:
         """Route and dispatch a single normalized incoming message."""
+        self._processed_count += 1
         decision, auto_reply_allowed = self._route(message)
         await self._dispatcher.dispatch(
             message,
@@ -152,6 +206,7 @@ class MessageWorkerPool:
         的改动因此会作用于其后的消息。每个 segment 单独容错，单条失败不会
         丢弃批内其余消息。
         """
+        self._processed_count += len(messages)
         segment: list[tuple[IncomingMessage, RouteDecision, bool]] = []
 
         async def flush() -> None:
@@ -194,6 +249,24 @@ class MessageWorkerPool:
                 segment.append((message, decision, allowed))
         await flush()
 
+    def _maybe_cleanup(self) -> None:
+        """Periodically drop idle thread locks and auto-reply timestamps.
+
+        Prevents ``_locks`` / ``_last_auto_reply_at`` from growing without bound
+        when the bot talks to many different channels over a long period.
+        """
+        now = time.monotonic()
+        if now - self._last_cleanup_at < self._cleanup_interval:
+            return
+        self._last_cleanup_at = now
+        for thread_id in list(self._locks):
+            lock = self._locks[thread_id]
+            last_used = self._lock_last_used.get(thread_id, 0.0)
+            if not lock.locked() and now - last_used > self._idle_ttl:
+                del self._locks[thread_id]
+                self._lock_last_used.pop(thread_id, None)
+                self._last_auto_reply_at.pop(thread_id, None)
+
     async def _worker(self) -> None:
         """Background worker: dequeue and process messages (possibly batched).
 
@@ -219,6 +292,7 @@ class MessageWorkerPool:
                         current.thread_id, asyncio.Lock()
                     )
                     async with lock:
+                        self._lock_last_used[current.thread_id] = time.monotonic()
                         batch = [current]
                         while len(batch) < self._batch_max:
                             try:
@@ -229,19 +303,24 @@ class MessageWorkerPool:
                                 pending.append(nxt)
                                 break
                             batch.append(nxt)
+                        start = time.perf_counter()
                         try:
                             if len(batch) > 1:
-                                await self._process_batch(batch)
+                                with trace_context(batch[0].trace_id):
+                                    await self._process_batch(batch)
                             else:
-                                await self._process(current)
+                                with trace_context(current.trace_id):
+                                    await self._process(current)
                         except Exception:
                             logger.exception(
                                 "Message processing failed for thread %s",
                                 current.thread_id,
                             )
                         finally:
+                            self._processing_seconds += time.perf_counter() - start
                             for _ in batch:
                                 self._queue.task_done()
+                    self._maybe_cleanup()
             except asyncio.CancelledError:
                 raise
             except Exception:

@@ -5,7 +5,7 @@ detect_intent 与 graph._route_after_detect 共同消费，消除双处同步。
 纯函数：不 import langgraph；route_after_detect 返回 None 表示 END，由 graph 映射。
 """
 
-from domain.bot.content import MessageKind
+from conversation.content import MessageKind
 from domain.satori import ChannelType
 
 # 永不回复的媒体类型（file/audio/video，即使私聊/@ 也盖不过）

@@ -16,21 +16,23 @@ from bot import (
     create_graph,
     setup_llm,
 )
-from bot.core.commands import CommandServices, build_command_registry
 from bot.core.compaction import ContextCompactor
 from bot.core.mcp import load_mcp_tools
-from bot.core.rag.index_worker import IndexWorker
-from bot.core.skills import SkillRegistry
+from commands import CommandServices, build_command_registry
 from common import (
     DEFAULT_PERSONA_PROMPT,
     BotConfig,
 )
+from common.logging import TraceIdFilter
 from common.mcp import load_mcp_servers_from_file
+from knowledge.index_worker import IndexWorker
+from skill import SkillRegistry
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s [trace=%(trace_id)s]",
 )
+logging.getLogger().addFilter(TraceIdFilter())
 logger = logging.getLogger("bot")
 
 
@@ -140,6 +142,7 @@ async def main():
         worker_count=config.message_worker_count,
         queue_maxsize=config.message_queue_maxsize,
         batch_max=config.message_batch_max,
+        dedup_size=10000,
     )
 
     # --- Register event handlers ---

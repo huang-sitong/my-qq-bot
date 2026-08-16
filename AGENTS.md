@@ -20,8 +20,8 @@ src/common/             # 共享配置 + 提示词（单一事实来源）
   config.py             #   BotConfig pydantic-settings（env 校验、严格布尔 Flag）
   mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
   prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
+src/protocol/           # Satori/OneBot 协议接入：websocket + http（send_message / call_api / send_file）
 src/bot/
-  transport/            # websocket（Satori WS 事件）+ http（send_message / call_api；send_file 普通文件走 OneBot11 HTTP）
   core/
     graph.py            # LangGraph 组装 → (graph, checkpointer)；仅保留 reply 流水线
     ingress.py          # SatoriMessageIngress — EventBody 校验 → IncomingMessage（生成 event_id/trace_id）
@@ -30,17 +30,17 @@ src/bot/
     worker.py           # MessageWorkerPool — 消息队列 + thread lock + Router + Dispatcher
     compaction.py       # ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
     llm.py              # ChatOpenAI 工厂（读 BASE_URL / API_KEY）
-    memory.py           # MemoryStore — AsyncSqliteStore 按用户 kv 记忆
-    rag/                # 群聊历史向量检索：embedder(OpenAI 兼容) / cache / service / milvus / index_worker
-    vision/             # VisionService — OpenAI 兼容视觉描述 + 多模态 data-url 下载
     utils/              # 纯函数：context(token 估算) / content_parser / routing(回复判定)
     mcp/                # client.load_mcp_tools（逐 server 降级）
-    skills/             # loader(SkillRegistry 扫描) + tools(load/unload 纯函数；Skill 数据对象在 src/domain/bot/skill.py)
-    commands/           # 图外斜杠指令：parser / registry / builtin（数据模型在 src/domain/bot/command.py）
     nodes/              # 图节点：llm_node(call_llm) / action_node(describe_image, skill_manager)；detect_intent/summarize/index_turn 保留 helper 不挂图
     tools/              # factory.build_tools + search_chat_history / user_memory / send_file 纯函数
   handler.py            # MessageHandler — 协议适配门面：EventBody → Ingress → WorkerPool
-src/domain/             # 领域/协议数据对象（懒加载）：bot/（state、message、identity、index_task、content、skill、command、router、bash）、satori/
+src/commands/           # 图外斜杠指令上下文：parser / registry / builtin / services
+src/skill/              # 技能管理上下文：SkillRegistry + load/unload 工具
+src/knowledge/          # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker
+src/memory/             # 用户长期记忆上下文：MemoryStore
+src/vision/             # 视觉理解上下文：VisionService + 图片下载
+src/domain/             # 共享领域/协议数据对象（懒加载）：bot/、satori/
 db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
 

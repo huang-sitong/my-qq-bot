@@ -5,8 +5,8 @@ import json
 
 import httpx
 
-from bot.transport.http.client import SatoriApiClient
 from common import BotConfig
+from protocol.http.client import SatoriApiClient
 
 
 def _client_with_transport(handler) -> SatoriApiClient:

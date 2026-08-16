@@ -5,9 +5,9 @@ import threading
 
 from langchain_openai import OpenAIEmbeddings
 
-from bot.core.rag.cache import EmbeddingCache
-from bot.core.rag.embedder import EmbeddingService
 from common import BotConfig
+from knowledge.cache import EmbeddingCache
+from knowledge.embedder import EmbeddingService
 
 
 class CountingEmbedder:

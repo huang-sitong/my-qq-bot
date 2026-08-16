@@ -1,12 +1,4 @@
-from dataclasses import dataclass
+"""兼容层：RAG 索引任务领域模型已迁移到 ``knowledge.domain``。"""
+from knowledge.domain import IndexTurnTask
 
-
-@dataclass(frozen=True)
-class IndexTurnTask:
-    thread_id: str
-    user_id: str
-    user_name: str
-    bot_id: str
-    bot_name: str
-    user_message: str
-    bot_reply: str
+__all__ = ["IndexTurnTask"]

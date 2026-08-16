@@ -14,7 +14,7 @@ from bot.core.utils.context import (
     format_messages_for_summary,
 )
 from bot.core.utils.messages import speaker_from_messages
-from domain.bot.content import Attachment, MessageKind, ParsedContent
+from conversation.content import Attachment, MessageKind, ParsedContent
 
 __all__ = [
     "IMAGE_PLACEHOLDER",

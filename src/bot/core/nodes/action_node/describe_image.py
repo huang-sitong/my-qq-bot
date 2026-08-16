@@ -15,9 +15,10 @@
 from langchain_core.messages import HumanMessage
 
 from bot.core.utils import IMAGE_PLACEHOLDER
-from bot.core.vision.service import VisionService, download_images_as_data_urls
-from domain.bot.state import BotState
-from domain.bot.vision import ImageDescription
+from conversation.state import BotState
+from domain.ports import VisionServicePort
+from vision.domain import ImageDescription
+from vision.service import download_images_as_data_urls
 
 
 def replace_placeholders(content: str, descriptions: list[str]) -> str:
@@ -104,7 +105,7 @@ def _vision_result(
 
 async def describe_image_node(
     state: BotState,
-    vision_service: VisionService | None = None,
+    vision_service: VisionServicePort | None = None,
     llm_multimodal: bool = False,
     max_images: int = 3,
     timeout: float = 60.0,
@@ -146,7 +147,7 @@ async def describe_image_node(
 
 async def _describe_all_local(
     messages: list[HumanMessage],
-    vision_service: VisionService | None,
+    vision_service: VisionServicePort | None,
 ) -> dict:
     """视觉服务模式：逐条消息描述，所有成功图片返回结构化描述。"""
     if vision_service is None:
@@ -171,7 +172,7 @@ async def _describe_all_local(
 
 async def _describe_all_multimodal(
     messages: list[HumanMessage],
-    vision_service: VisionService | None,
+    vision_service: VisionServicePort | None,
     max_images: int,
     timeout: float,
     auto_reply_default: bool = False,

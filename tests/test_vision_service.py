@@ -5,8 +5,8 @@ import base64
 
 import httpx
 
-from bot.core.vision.service import _MAX_IMAGE_BYTES, VisionService
 from common import VISION_PROMPT
+from vision.service import _MAX_IMAGE_BYTES, VisionService
 
 # 公网字面 IP：字面 IP 的 getaddrinfo 不查 DNS，避免测试慢/不稳，也不触发 SSRF 阻断
 IMG = "http://1.2.3.4/download?appid=1&fileid=abc"

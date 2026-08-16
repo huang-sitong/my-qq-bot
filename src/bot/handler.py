@@ -2,16 +2,16 @@ import logging
 
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
-from bot.core.commands import CommandRegistry, CommandServices
 from bot.core.compaction import ContextCompactor
 from bot.core.dispatcher import MessageDispatcher
 from bot.core.ingress import SatoriMessageIngress
-from bot.core.rag.index_worker import IndexWorker
 from bot.core.worker import MessageWorkerPool
-from bot.transport.http.client import SatoriApiClient
-from bot.transport.websocket.client import SatoriClient
-from domain.bot.identity import BotIdentity
+from commands import CommandRegistry, CommandServices
+from conversation.identity import BotIdentity
 from domain.satori import EventBody, LoginList
+from knowledge.index_worker import IndexWorker
+from protocol.http.client import SatoriApiClient
+from protocol.websocket.client import SatoriClient
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,8 @@ class MessageHandler:
         worker_count: int = 1,
         queue_maxsize: int = 0,
         batch_max: int = 4,
+        queue_factory=None,
+        dedup_size: int = 0,
     ) -> None:
         self.client = client
         self._api_client = api_client
@@ -59,6 +61,8 @@ class MessageHandler:
             worker_count=worker_count,
             queue_maxsize=queue_maxsize,
             batch_max=batch_max,
+            queue_factory=queue_factory,
+            dedup_size=dedup_size,
         )
 
     @property

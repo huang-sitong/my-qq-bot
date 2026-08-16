@@ -5,9 +5,9 @@ import asyncio
 from bot.core.dispatcher import MessageDispatcher
 from bot.core.graph import create_graph
 from common import BotConfig
-from domain.bot.identity import BotIdentity
-from domain.bot.message import IncomingMessage
-from domain.bot.router import RouteAction, RouteDecision
+from conversation.identity import BotIdentity
+from conversation.message import IncomingMessage
+from conversation.router import RouteAction, RouteDecision
 from tests.fakes import ScriptedLLM
 
 

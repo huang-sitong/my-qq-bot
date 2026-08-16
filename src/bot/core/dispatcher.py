@@ -8,22 +8,21 @@ import logging
 
 from langchain_core.messages import HumanMessage
 
-from bot.core.commands import (
+from bot.core.compaction import ContextCompactor
+from bot.core.graph import EXTERNAL_UPDATE_NODE
+from bot.core.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
+from commands import (
     CommandContext,
     CommandRegistry,
     CommandServices,
     can_run,
     run_command,
 )
-from bot.core.compaction import ContextCompactor
-from bot.core.graph import EXTERNAL_UPDATE_NODE
-from bot.core.rag.index_worker import IndexWorker
-from bot.core.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
-from bot.transport.http.client import SatoriApiClient
-from domain.bot.identity import BotIdentity
-from domain.bot.index_task import IndexTurnTask
-from domain.bot.message import IncomingMessage
-from domain.bot.router import RouteAction, RouteDecision
+from conversation.identity import BotIdentity
+from conversation.message import IncomingMessage
+from conversation.router import RouteAction, RouteDecision
+from domain.ports import MessageSender, RagIndexer
+from knowledge.domain import IndexTurnTask
 
 logger = logging.getLogger(__name__)
 
@@ -36,12 +35,12 @@ class MessageDispatcher:
         *,
         graph,
         persona: str,
-        api_client: SatoriApiClient,
+        api_client: MessageSender,
         bot_config=None,
         command_registry: CommandRegistry | None = None,
         command_services: CommandServices | None = None,
         compactor: ContextCompactor | None = None,
-        index_worker: IndexWorker | None = None,
+        index_worker: RagIndexer | None = None,
         identity: BotIdentity | None = None,
         on_auto_reply_sent=None,
     ) -> None:

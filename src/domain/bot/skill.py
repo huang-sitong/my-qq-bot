@@ -1,10 +1,4 @@
-"""技能领域数据对象。"""
+"""兼容层：技能领域模型已迁移到 ``skill.domain``。"""
+from skill.domain import Skill
 
-from dataclasses import dataclass
-
-
-@dataclass
-class Skill:
-    name: str
-    description: str
-    body: str
+__all__ = ["Skill"]

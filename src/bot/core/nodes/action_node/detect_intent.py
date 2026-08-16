@@ -15,7 +15,7 @@ import logging
 from langchain_core.messages import HumanMessage
 
 from bot.core.utils.routing import decide_reply, keep_in_context
-from domain.bot.state import BotState
+from conversation.state import BotState
 
 logger = logging.getLogger(__name__)
 

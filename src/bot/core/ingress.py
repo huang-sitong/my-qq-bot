@@ -4,7 +4,7 @@ from collections.abc import Callable
 from uuid import uuid4
 
 from bot.core.utils import parse_content
-from domain.bot.message import IncomingMessage
+from conversation.message import IncomingMessage
 from domain.satori import EventBody
 
 

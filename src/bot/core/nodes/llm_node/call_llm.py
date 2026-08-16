@@ -12,7 +12,7 @@ from common import (
     MEMORY_TOOL_HINT,
     BotConfig,
 )
-from domain.bot.state import BotState
+from conversation.state import BotState
 
 logger = logging.getLogger(__name__)
 

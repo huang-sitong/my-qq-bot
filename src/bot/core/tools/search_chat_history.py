@@ -6,7 +6,7 @@ rag_service 与 thread_id 由 factory 包装层在调用时注入，LLM 无需�
 
 import logging
 
-from bot.core.rag.service import RagService, normalize_time
+from knowledge.service import RagService, normalize_time
 
 logger = logging.getLogger(__name__)
 

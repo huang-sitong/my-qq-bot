@@ -1,17 +1,17 @@
-"""指令模块：图外斜杠指令注册与分发。"""
-
-from domain.bot.command import (
+"""兼容层：指令上下文已迁移到 ``commands``。"""
+from commands import (
     Command,
     CommandActor,
     CommandContext,
+    CommandRegistry,
     CommandResult,
     CommandServices,
     ParsedCommand,
+    build_command_registry,
+    can_run,
+    parse_command,
+    run_command,
 )
-
-from .builtin import build_command_registry
-from .parser import parse_command
-from .registry import CommandRegistry, can_run, run_command
 
 __all__ = [
     "Command",
