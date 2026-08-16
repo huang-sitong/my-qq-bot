@@ -38,3 +38,18 @@ def test_index_turn_task_is_immutable():
         bot_reply="收到",
     )
     assert task.bot_reply == "收到"
+    assert task.trace_id == ""
+
+
+def test_index_turn_task_carries_trace_id():
+    task = IndexTurnTask(
+        thread_id="t1",
+        user_id="u1",
+        user_name="张三",
+        bot_id="bot1",
+        bot_name="小助手",
+        user_message="你好",
+        bot_reply="收到",
+        trace_id="trace-123",
+    )
+    assert task.trace_id == "trace-123"
