@@ -11,6 +11,14 @@ from typing import Any, Protocol
 
 from knowledge.domain import IndexTurnTask
 
+__all__ = [
+    "MessageQueue",
+    "MessageSender",
+    "RagIndexer",
+    "UserMemoryStore",
+    "VisionServicePort",
+]
+
 
 class MessageQueue(Protocol):
     """异步消息队列的最小端口。
