@@ -30,3 +30,5 @@ def trace_context(trace_id: str) -> Iterator[None]:
         yield
     finally:
         _trace_id_var.reset(token)
+
+__all__ = ["TraceIdFilter", "trace_context"]

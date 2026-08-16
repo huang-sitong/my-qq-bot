@@ -40,3 +40,5 @@ class DatabaseManager:
 
         当前各存储服务自行管理连接；这里保留扩展点，后续可统一等待/关闭。
         """
+
+__all__ = ["DatabaseManager"]

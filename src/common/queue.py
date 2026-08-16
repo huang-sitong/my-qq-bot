@@ -36,3 +36,5 @@ class InMemoryMessageQueue:
 
     def qsize(self) -> int:
         return self._queue.qsize()
+
+__all__ = ["InMemoryMessageQueue"]

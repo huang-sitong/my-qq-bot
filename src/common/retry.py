@@ -41,3 +41,5 @@ async def retry_async[T, **P](
             await asyncio.sleep(delay)
     assert last_exc is not None
     raise last_exc
+
+__all__ = ["retry_async"]
