@@ -3,7 +3,6 @@
 存放消息接入、路由、Bot 状态等核心会话领域对象。
 """
 
-from .bash import BashConfig
 from .content import Attachment, MessageKind, ParsedContent
 from .identity import BotIdentity
 from .message import IncomingMessage
@@ -12,7 +11,6 @@ from .state import BotState
 
 __all__ = [
     "Attachment",
-    "BashConfig",
     "BotIdentity",
     "BotState",
     "IncomingMessage",

@@ -13,8 +13,8 @@ from langgraph.prebuilt.tool_node import ToolInvocationError
 
 from common import BotConfig
 from common.paths import PROJECT_ROOT
-from conversation.bash import BashConfig
 from conversation.state import BotState
+from domain.bash import BashConfig
 from execution.tools import build_tools
 from orchestration.nodes import (
     call_llm_node,
@@ -23,12 +23,6 @@ from orchestration.nodes import (
 )
 
 logger = logging.getLogger(__name__)
-
-# 图外 aupdate_state 必须显式指定写入节点；describe_image 是消息进入图后的
-# 第一个状态写入节点，连续外部更新时不会让 LangGraph 出现 Ambiguous update。
-from common.constants import EXTERNAL_UPDATE_NODE
-
-__all__ = ["EXTERNAL_UPDATE_NODE"]
 
 
 def _tool_error_message(exc: Exception) -> str:

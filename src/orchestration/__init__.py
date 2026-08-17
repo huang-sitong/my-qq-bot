@@ -4,10 +4,9 @@
 """
 
 from .compaction import ContextCompactor
-from .graph import EXTERNAL_UPDATE_NODE, create_graph
+from .graph import create_graph
 
 __all__ = [
-    "EXTERNAL_UPDATE_NODE",
     "ContextCompactor",
     "create_graph",
 ]

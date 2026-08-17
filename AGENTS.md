@@ -23,9 +23,9 @@ src/common/             # 共享配置 + 提示词（单一事实来源）
   prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
 src/protocol/           # Satori/OneBot 协议接入：websocket + http（send_message / call_api / send_file）
 src/orchestration/     # 会话编排：LangGraph 工作流组装 + 图节点 + 上下文压缩服务
-  graph.py              #   create_graph → (graph, checkpointer)；EXTERNAL_UPDATE_NODE
+  graph.py              #   create_graph → (graph, checkpointer)
   compaction.py         #   ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
-  nodes/                #   llm_node(call_llm) / action_node(describe_image, skill_manager)；detect_intent/summarize/index_turn 保留 helper 不挂图
+  nodes/                #   llm_node(call_llm) / action_node(describe_image, skill_manager) / summarize helper
 src/execution/          # 工具执行：内部工具纯函数 + factory.build_tools + MCP 外部工具加载
   tools/                #   factory + search_chat_history / user_memory / send_file / run_bash
   mcp/                  #   load_mcp_tools（逐 server 降级）
@@ -44,7 +44,7 @@ src/skill/              # 技能管理上下文：SkillRegistry + load/unload �
 src/knowledge/          # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker
 src/memory/             # 用户长期记忆上下文：MemoryStore
 src/vision/             # 视觉理解上下文：VisionService + 图片下载
-src/domain/             # 共享领域/协议数据对象（懒加载）：satori/ + 跨上下文 DTO（media/tasks）
+src/domain/             # 共享领域/协议数据对象（懒加载）：satori/ + 跨上下文 DTO（media/tasks/bash）
 db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
 
@@ -109,12 +109,12 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **指令模块（图外斜杠指令）**：命令数据模型统一在 `src/commands/domain.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`），应用服务容器 `CommandServices` 在 `src/commands/services.py`；`src/commands` 包含 parser/registry/builtin/services。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_node(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
 
-**Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 describe_image/skill_manager；detect_intent/summarize/index_turn 保留 helper 不挂图）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）· `subgraph/`（嵌套子图）。
+**Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 describe_image/skill_manager；`summarize_node` 作为压缩 helper 供 ContextCompactor 复用）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）。
 
 ## Gotchas
 
 - **`domain/` 包**：领域/协议数据对象统一在 `src/domain/`，包名避免与内置 `object` 混淆。始终 `from domain.*` 导入。
-- **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
+- **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`，统一从 `common.constants` 导入）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），Router/decide_reply 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
 - **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。

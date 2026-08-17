@@ -1,7 +1,7 @@
 """共享领域模型导出。
 
 - Satori 协议相关模型位于 ``domain.satori``
-- 跨上下文共享 DTO 位于 ``domain.tasks`` / ``domain.media``
+- 跨上下文共享 DTO 位于 ``domain.tasks`` / ``domain.media`` / ``domain.bash``
 - 端口抽象位于 ``domain.ports``
 
 业务领域模型按限界上下文拆分到
@@ -13,6 +13,7 @@ __all__ = [
     "MESSAGE_GET",
     "MESSAGE_LIST",
     "Argv",
+    "BashConfig",
     "BidiList",
     "Button",
     "Channel",
@@ -41,6 +42,7 @@ __all__ = [
 ]
 
 _module_map: dict[str, str] = {name: "satori" for name in __all__}
+_module_map["BashConfig"] = "bash"
 _module_map["ImageDescription"] = "media"
 _module_map["IndexTurnTask"] = "tasks"
 

@@ -3,8 +3,8 @@
 from pathlib import Path
 
 import commands as core_commands
-import conversation.bash as core_run_bash
 import conversation.router as core_router
+import domain.bash as core_run_bash
 import knowledge.domain as core_knowledge_domain
 import skill as core_skills
 import vision as core_vision
@@ -17,12 +17,11 @@ from commands import (
     ParsedCommand,
 )
 from conversation import (
-    BashConfig,
     BotIdentity,
     RouteAction,
     RouteDecision,
 )
-from domain import ImageDescription, IndexTurnTask
+from domain import BashConfig, ImageDescription, IndexTurnTask
 from skill import Skill
 
 

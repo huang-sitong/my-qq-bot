@@ -1,4 +1,4 @@
-"""Bash 工具配置数据对象。"""
+"""Bash 工具配置领域对象。"""
 
 from dataclasses import dataclass, field
 from pathlib import Path

@@ -1,8 +1,7 @@
 """确定性回复判定（LLM router 已移除后的唯一判定表）。
 
-detect_intent 与 graph._route_after_detect 共同消费，消除双处同步。
 群聊 @ 判定按顶层 at 提及集合（``{id: 昵称}``，parse_mentions 产出）。
-纯函数：不 import langgraph；route_after_detect 返回 None 表示 END，由 graph 映射。
+纯函数，不 import langgraph；供 bot/core/router 与 reply_policy 消费。
 """
 
 from conversation.content import MessageKind
@@ -41,12 +40,3 @@ def decide_reply(channel_type: int, content_kind: str, bot_id: str,
 def keep_in_context(should_respond: bool, content_kind: str, has_text: bool = False) -> bool:
     """回复轮必入上下文；非回复文本/图文混合入上下文；纯媒体不入。"""
     return should_respond or content_kind == MessageKind.TEXT.value or has_text
-
-
-def route_after_detect(should_respond: bool, content_kind: str, has_text: bool = False) -> str | None:
-    """回复 → describe_image；可入上下文的非回复文本/图文混合 → summarize；其余 END。"""
-    if should_respond:
-        return "describe_image"
-    if content_kind == MessageKind.TEXT.value or has_text:
-        return "summarize"
-    return None

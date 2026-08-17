@@ -1,7 +1,7 @@
-"""路由判定单一来源：是否回复 / 是否入上下文 / detect_intent 后三路路径。
+"""路由判定单一来源：是否回复 / 是否入上下文。
 
-锁定 context.utils.routing 的完整判定表——detect_intent 与 graph 共同消费，
-此处是唯一权威，行为若偏离这里即为回归。
+锁定 context.utils.routing 的完整判定表，此处是唯一权威，
+行为若偏离这里即为回归。
 """
 
 import pytest
@@ -10,7 +10,6 @@ from context.utils.routing import (
     decide_reply,
     is_explicit_request,
     keep_in_context,
-    route_after_detect,
 )
 from domain.satori import ChannelType
 
@@ -116,26 +115,3 @@ def test_keep_mixed_image_text_without_reply():
 
 def test_not_keep_pure_image_without_text():
     assert keep_in_context(False, "image", has_text=False) is False
-
-
-# --- route_after_detect ---
-
-def test_reply_routes_to_describe_image():
-    assert route_after_detect(True, "text") == "describe_image"
-
-
-def test_reply_image_routes_to_describe_image():
-    assert route_after_detect(True, "image") == "describe_image"
-
-
-def test_non_reply_text_routes_to_summarize():
-    assert route_after_detect(False, "text") == "summarize"
-
-
-def test_non_reply_media_routes_to_none():
-    assert route_after_detect(False, "image") is None
-    assert route_after_detect(False, "file") is None
-
-
-def test_non_reply_mixed_image_text_routes_to_summarize():
-    assert route_after_detect(False, "image", has_text=True) == "summarize"

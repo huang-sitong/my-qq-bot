@@ -13,7 +13,7 @@ import re
 import shutil
 from pathlib import Path
 
-from conversation.bash import BashConfig
+from domain.bash import BashConfig
 
 logger = logging.getLogger(__name__)
 
