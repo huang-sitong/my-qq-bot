@@ -33,7 +33,7 @@ def _ctx(services, args=(), actor=None):
         thread_id="t1",
         channel_type=1,
         args=args,
-        config=BotConfig(_env_file=None, admin_ids=["admin1"]),
+        config=BotConfig(_env_file=None, admin_ids=["admin1"], llm_model="deepseek-v4-flash"),
         services=services,
     )
 

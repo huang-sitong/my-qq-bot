@@ -9,8 +9,9 @@ from common.config import _parse_flag
 from common.constants import EXTERNAL_UPDATE_NODE
 from context.utils import content_to_text, estimate_context_tokens
 
-from .model import Command, CommandContext, CommandResult, CommandServices
+from .domain import Command, CommandContext, CommandResult
 from .registry import CommandRegistry
+from .services import CommandServices
 
 
 async def _help(ctx: CommandContext, registry: CommandRegistry) -> CommandResult:

@@ -1,13 +1,9 @@
-from dataclasses import dataclass
+"""知识上下文领域对象。
 
+跨流程共享的 ``IndexTurnTask`` DTO 已移至 ``domain.tasks``，此处保留 re-export
+以兼容历史导入路径。
+"""
 
-@dataclass(frozen=True)
-class IndexTurnTask:
-    thread_id: str
-    user_id: str
-    user_name: str
-    bot_id: str
-    bot_name: str
-    user_message: str
-    bot_reply: str
-    trace_id: str = ""
+from domain.tasks import IndexTurnTask
+
+__all__ = ["IndexTurnTask"]

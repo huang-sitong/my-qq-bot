@@ -1,9 +1,9 @@
-"""视觉结果领域类型。"""
+"""视觉领域类型。
 
-from dataclasses import dataclass
+跨上下文共享的 ``ImageDescription`` DTO 已移至 ``domain.media``，此处保留
+re-export 以兼容历史导入路径。
+"""
 
+from domain.media import ImageDescription
 
-@dataclass(frozen=True)
-class ImageDescription:
-    image_src: str
-    description: str
+__all__ = ["ImageDescription"]

@@ -2,7 +2,7 @@
 
 import logging
 
-from .model import Command, CommandActor, CommandContext, CommandResult
+from .domain import Command, CommandActor, CommandContext, CommandResult
 
 logger = logging.getLogger(__name__)
 

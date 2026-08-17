@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from common.logging import trace_context
-from knowledge.domain import IndexTurnTask
+from domain import IndexTurnTask
 
 logger = logging.getLogger(__name__)
 

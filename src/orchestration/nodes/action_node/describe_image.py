@@ -16,8 +16,8 @@ from langchain_core.messages import HumanMessage
 
 from context.utils import IMAGE_PLACEHOLDER
 from conversation.state import BotState
+from domain import ImageDescription
 from domain.ports import VisionServicePort
-from vision.domain import ImageDescription
 from vision.service import download_images_as_data_urls
 
 

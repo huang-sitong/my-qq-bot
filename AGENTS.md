@@ -9,6 +9,7 @@ uv sync                  # install dependencies
 uv run python main.py    # run the bot
 uv run python -c "..."   # quick import / logic check
 uv run ruff check        # lint（[tool.ruff] 见 pyproject.toml；BLE001/DTZ 忽略项是刻意设计）
+uv run python scripts/check_package_dependencies.py  # 包依赖方向检查
 uv run python -m pytest  # run tests
 ```
 
@@ -21,15 +22,15 @@ src/common/             # 共享配置 + 提示词（单一事实来源）
   mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
   prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
 src/protocol/           # Satori/OneBot 协议接入：websocket + http（send_message / call_api / send_file）
-src/orchestration/     # 会话编排：LangGraph 工作流组装 + 图节点
+src/orchestration/     # 会话编排：LangGraph 工作流组装 + 图节点 + 上下文压缩服务
   graph.py              #   create_graph → (graph, checkpointer)；EXTERNAL_UPDATE_NODE
+  compaction.py         #   ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
   nodes/                #   llm_node(call_llm) / action_node(describe_image, skill_manager)；detect_intent/summarize/index_turn 保留 helper 不挂图
 src/execution/          # 工具执行：内部工具纯函数 + factory.build_tools + MCP 外部工具加载
   tools/                #   factory + search_chat_history / user_memory / send_file / run_bash
   mcp/                  #   load_mcp_tools（逐 server 降级）
-src/context/            # 上下文管理：消息解析 / context(token 估算) / reply_policy / routing + 图外压缩
+src/context/            # 上下文管理：消息解析 / context(token 估算) / reply_policy / routing
   utils/                #   纯函数：content_parser / context / messages / reply_policy / routing
-  compaction.py         #   ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
 src/bot/
   core/
     ingress.py          # SatoriMessageIngress — EventBody 校验 → IncomingMessage（生成 event_id/trace_id）
@@ -43,7 +44,7 @@ src/skill/              # 技能管理上下文：SkillRegistry + load/unload �
 src/knowledge/          # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker
 src/memory/             # 用户长期记忆上下文：MemoryStore
 src/vision/             # 视觉理解上下文：VisionService + 图片下载
-src/domain/             # 共享领域/协议数据对象（懒加载）：bot/、satori/
+src/domain/             # 共享领域/协议数据对象（懒加载）：satori/ + 跨上下文 DTO（media/tasks）
 db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
 
@@ -106,7 +107,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **技能模块**：`Skill` 纯数据对象在 `src/skill/domain.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：handler 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
 
-**指令模块（图外斜杠指令）**：命令数据模型统一在 `src/commands/domain.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`/`CommandServices`），`src/commands` 包含 parser/registry/builtin/services。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_node(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
+**指令模块（图外斜杠指令）**：命令数据模型统一在 `src/commands/domain.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`），应用服务容器 `CommandServices` 在 `src/commands/services.py`；`src/commands` 包含 parser/registry/builtin/services。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_node(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
 
 **Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 describe_image/skill_manager；detect_intent/summarize/index_turn 保留 helper 不挂图）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）· `subgraph/`（嵌套子图）。
 

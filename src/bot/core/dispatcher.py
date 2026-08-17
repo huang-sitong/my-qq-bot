@@ -15,13 +15,13 @@ from commands import (
     can_run,
     run_command,
 )
-from context.compaction import ContextCompactor
 from context.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
 from conversation.identity import BotIdentity
 from conversation.message import IncomingMessage
 from conversation.router import RouteAction, RouteDecision
+from domain import IndexTurnTask
 from domain.ports import MessageSender, RagIndexer
-from knowledge.domain import IndexTurnTask
+from orchestration.compaction import ContextCompactor
 from orchestration.graph import EXTERNAL_UPDATE_NODE
 
 logger = logging.getLogger(__name__)

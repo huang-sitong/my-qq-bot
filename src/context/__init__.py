@@ -1,8 +1,7 @@
 """上下文管理上下文。
 
 提供上下文构建/估算、消息解析、回复判定等纯函数（``context.utils``）。
-``ContextCompactor`` 通过 ``__getattr__`` 延迟加载，避免与 ``orchestration``
-形成导入环。
+上下文压缩服务 ``ContextCompactor`` 属于编排层，已移至 ``orchestration``。
 """
 
 from .utils import (
@@ -26,7 +25,6 @@ from .utils import (
 __all__ = [
     "IMAGE_PLACEHOLDER",
     "Attachment",
-    "ContextCompactor",
     "MessageKind",
     "ParsedContent",
     "build_system_messages",
@@ -41,11 +39,3 @@ __all__ = [
     "speaker_from_messages",
     "to_llm_text",
 ]
-
-
-def __getattr__(name: str):
-    if name == "ContextCompactor":
-        from context.compaction import ContextCompactor
-
-        return ContextCompactor
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

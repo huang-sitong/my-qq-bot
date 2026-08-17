@@ -1,11 +1,13 @@
 """架构改造后的包结构与兼容层移除测试。"""
 
 import importlib
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
 import commands
-import context
 import conversation
 import execution
 import knowledge
@@ -26,7 +28,7 @@ def test_new_bounded_context_packages_are_importable():
     assert conversation.IncomingMessage is not None
     assert orchestration.create_graph is not None
     assert execution.build_tools is not None
-    assert context.ContextCompactor is not None
+    assert orchestration.ContextCompactor is not None
 
 
 def _assert_missing(module_name: str) -> None:
@@ -49,5 +51,18 @@ def test_old_compatibility_paths_are_removed():
         "bot.core.utils",
         "bot.core.compaction",
         "bot.core.mcp",
+        "context.compaction",
     ):
         _assert_missing(module_name)
+
+
+def test_package_runtime_dependencies_follow_allowlist():
+    repo_root = Path(__file__).resolve().parents[1]
+    result = subprocess.run(
+        [sys.executable, "scripts/check_package_dependencies.py"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

@@ -11,7 +11,7 @@ from commands import (
     build_command_registry,
 )
 from common import BotConfig
-from context.compaction import ContextCompactor
+from orchestration.compaction import ContextCompactor
 from orchestration.graph import EXTERNAL_UPDATE_NODE, create_graph
 from skill import Skill, SkillRegistry
 from tests.fakes import ScriptedLLM, make_state

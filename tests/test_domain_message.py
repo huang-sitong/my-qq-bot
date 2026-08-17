@@ -1,5 +1,5 @@
 from conversation import IncomingMessage
-from knowledge.domain import IndexTurnTask
+from domain import IndexTurnTask
 
 
 def test_incoming_message_is_immutable_domain_event():

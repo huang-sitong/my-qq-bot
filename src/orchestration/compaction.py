@@ -1,9 +1,8 @@
 import logging
 
+from context.utils import estimate_context_tokens
 from orchestration.graph import EXTERNAL_UPDATE_NODE
 from orchestration.nodes import summarize_node
-
-from .utils import estimate_context_tokens
 
 logger = logging.getLogger(__name__)
 

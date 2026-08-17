@@ -6,10 +6,10 @@ from bot.core.dispatcher import MessageDispatcher
 from bot.core.ingress import SatoriMessageIngress
 from bot.core.worker import MessageWorkerPool
 from commands import CommandRegistry, CommandServices
-from context.compaction import ContextCompactor
 from conversation.identity import BotIdentity
 from domain.satori import EventBody, LoginList
 from knowledge.index_worker import IndexWorker
+from orchestration.compaction import ContextCompactor
 from protocol.http.client import SatoriApiClient
 from protocol.websocket.client import SatoriClient
 

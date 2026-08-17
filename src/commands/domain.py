@@ -10,9 +10,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from commands.services import CommandServices  # 兼容旧导入路径
-
 if TYPE_CHECKING:
+    from commands.services import CommandServices
     from common import BotConfig
 
 __all__ = [
@@ -21,7 +20,6 @@ __all__ = [
     "CommandContext",
     "CommandHandler",
     "CommandResult",
-    "CommandServices",
     "ParsedCommand",
 ]
 

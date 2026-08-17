@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
-from knowledge.domain import IndexTurnTask
+from domain.tasks import IndexTurnTask
 
 __all__ = [
     "MessageQueue",

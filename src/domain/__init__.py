@@ -1,6 +1,10 @@
-"""Satori 协议领域模型导出。
+"""共享领域模型导出。
 
-``domain`` 现在只保留协议相关的共享模型；业务领域模型已按限界上下文拆分到
+- Satori 协议相关模型位于 ``domain.satori``
+- 跨上下文共享 DTO 位于 ``domain.tasks`` / ``domain.media``
+- 端口抽象位于 ``domain.ports``
+
+业务领域模型按限界上下文拆分到
 ``commands`` / ``conversation`` / ``skill`` / ``knowledge`` / ``memory`` / ``vision``。
 """
 
@@ -21,6 +25,8 @@ __all__ = [
     "Guild",
     "GuildMember",
     "GuildRole",
+    "ImageDescription",
+    "IndexTurnTask",
     "Login",
     "LoginList",
     "LoginStatus",
@@ -35,6 +41,8 @@ __all__ = [
 ]
 
 _module_map: dict[str, str] = {name: "satori" for name in __all__}
+_module_map["ImageDescription"] = "media"
+_module_map["IndexTurnTask"] = "tasks"
 
 
 def __getattr__(name: str):

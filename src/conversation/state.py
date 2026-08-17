@@ -4,7 +4,7 @@ from langchain_core.messages import BaseMessage
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from vision.domain import ImageDescription
+from domain import ImageDescription
 
 
 class BotState(TypedDict):
@@ -41,5 +41,5 @@ class BotState(TypedDict):
     llm_text: str           # media→占位符、@→@昵称(id)/所有成员 — HumanMessage content
     clean_text: str         # 剥全部标签、unescape、折叠空白（RAG 索引用，handler 预计算）
     vision_target_count: int  # 本轮图输入追加的 HumanMessage 数量（describe_image 只处理这些）
-    vision_desc: list[ImageDescription]  # 本轮每张图片的 src→描述（见 vision.domain）
+    vision_desc: list[ImageDescription]  # 本轮每张图片的 src→描述（见 domain.media）
     mentions: dict[str, str]   # 顶层 @ 提及 {id: 昵称}（detect_intent 判定用）

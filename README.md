@@ -70,7 +70,7 @@ Satori 事件 -> MessageHandler -> Ingress -> MessageWorkerPool
 - `src/protocol/` — Satori/OneBot 协议接入（WS/HTTP 收发）
 - `src/orchestration/` — 会话编排：LangGraph 工作流组装与图节点
 - `src/execution/` — 工具执行：内部工具 + MCP 工具加载
-- `src/context/` — 上下文管理：消息解析、token 估算、回复判定、图外压缩
+- `src/context/` — 上下文管理：消息解析、token 估算、回复判定等纯工具
 - `src/bot/core/` — 消息流水线（ingress/router/dispatcher/worker/llm）
 - `src/commands/` — 图外斜杠命令上下文
 - `src/skill/` — 技能管理上下文
@@ -81,8 +81,8 @@ Satori 事件 -> MessageHandler -> Ingress -> MessageWorkerPool
 - `src/bot/core/router.py` — 确定性回复判定
 - `src/bot/core/dispatcher.py` — 命令 / 上下文 / 回复图分发
 - `src/orchestration/graph.py` — 最小 LangGraph 对话与工具回环
-- `src/context/compaction.py` — 图外上下文压缩
-- `src/domain/` — Satori 协议数据对象
+- `src/orchestration/compaction.py` — 图外上下文压缩
+- `src/domain/` — Satori 协议数据对象与跨上下文共享 DTO（media/tasks）
 - 旧的 `bot.transport`、`bot.core.rag`、`bot.core.skills`、`bot.core.vision`、`bot.core.commands`、`domain.bot` 等兼容层已彻底移除
 
 更完整的架构约定和开发细节见 `AGENTS.md`。

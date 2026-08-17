@@ -23,9 +23,9 @@ from common import (
 from common.database import DatabaseManager
 from common.logging import TraceIdFilter
 from common.mcp import load_mcp_servers_from_file
-from context.compaction import ContextCompactor
 from execution.mcp import load_mcp_tools
 from knowledge.index_worker import IndexWorker
+from orchestration.compaction import ContextCompactor
 from skill import SkillRegistry
 
 logging.basicConfig(

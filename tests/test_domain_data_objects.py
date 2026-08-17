@@ -5,7 +5,9 @@ from pathlib import Path
 import commands as core_commands
 import conversation.bash as core_run_bash
 import conversation.router as core_router
+import knowledge.domain as core_knowledge_domain
 import skill as core_skills
+import vision as core_vision
 from commands import (
     Command,
     CommandActor,
@@ -20,6 +22,7 @@ from conversation import (
     RouteAction,
     RouteDecision,
 )
+from domain import ImageDescription, IndexTurnTask
 from skill import Skill
 
 
@@ -50,3 +53,10 @@ def test_data_objects_remain_usable():
     assert parsed.name == "ping"
     assert route.action == RouteAction.IGNORE
     assert bash.enabled is True
+
+
+def test_shared_dtos_are_owned_by_domain_and_re_exported():
+    assert core_knowledge_domain.IndexTurnTask is IndexTurnTask
+    assert core_vision.ImageDescription is ImageDescription
+    assert IndexTurnTask(thread_id="t", user_id="u", user_name="", bot_id="", bot_name="", user_message="", bot_reply="").thread_id == "t"
+    assert ImageDescription(image_src="x", description="y").description == "y"
