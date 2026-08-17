@@ -15,8 +15,6 @@ from bot import (
     create_graph,
     setup_llm,
 )
-from bot.core.compaction import ContextCompactor
-from bot.core.mcp import load_mcp_tools
 from commands import CommandServices, build_command_registry
 from common import (
     DEFAULT_PERSONA_PROMPT,
@@ -25,6 +23,8 @@ from common import (
 from common.database import DatabaseManager
 from common.logging import TraceIdFilter
 from common.mcp import load_mcp_servers_from_file
+from context.compaction import ContextCompactor
+from execution.mcp import load_mcp_tools
 from knowledge.index_worker import IndexWorker
 from skill import SkillRegistry
 

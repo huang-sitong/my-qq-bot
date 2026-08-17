@@ -21,19 +21,22 @@ src/common/             # 共享配置 + 提示词（单一事实来源）
   mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
   prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
 src/protocol/           # Satori/OneBot 协议接入：websocket + http（send_message / call_api / send_file）
+src/orchestration/     # 会话编排：LangGraph 工作流组装 + 图节点
+  graph.py              #   create_graph → (graph, checkpointer)；EXTERNAL_UPDATE_NODE
+  nodes/                #   llm_node(call_llm) / action_node(describe_image, skill_manager)；detect_intent/summarize/index_turn 保留 helper 不挂图
+src/execution/          # 工具执行：内部工具纯函数 + factory.build_tools + MCP 外部工具加载
+  tools/                #   factory + search_chat_history / user_memory / send_file / run_bash
+  mcp/                  #   load_mcp_tools（逐 server 降级）
+src/context/            # 上下文管理：消息解析 / context(token 估算) / reply_policy / routing + 图外压缩
+  utils/                #   纯函数：content_parser / context / messages / reply_policy / routing
+  compaction.py         #   ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
 src/bot/
   core/
-    graph.py            # LangGraph 组装 → (graph, checkpointer)；仅保留 reply 流水线
     ingress.py          # SatoriMessageIngress — EventBody 校验 → IncomingMessage（生成 event_id/trace_id）
     router.py           # route_incoming — 协议无关路由（RouteDecision 数据对象在 src/conversation/router.py）
     dispatcher.py       # MessageDispatcher — RouteDecision → 命令/graph/context/system/media 流水线
     worker.py           # MessageWorkerPool — 消息队列 + thread lock + Router + Dispatcher
-    compaction.py       # ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
     llm.py              # ChatOpenAI 工厂（读 BASE_URL / API_KEY）
-    utils/              # 纯函数：context(token 估算) / content_parser / routing(回复判定)
-    mcp/                # client.load_mcp_tools（逐 server 降级）
-    nodes/              # 图节点：llm_node(call_llm) / action_node(describe_image, skill_manager)；detect_intent/summarize/index_turn 保留 helper 不挂图
-    tools/              # factory.build_tools + search_chat_history / user_memory / send_file 纯函数
   handler.py            # MessageHandler — 协议适配门面：EventBody → Ingress → WorkerPool
 src/commands/           # 图外斜杠指令上下文：parser / registry / builtin / services
 src/skill/              # 技能管理上下文：SkillRegistry + load/unload 工具

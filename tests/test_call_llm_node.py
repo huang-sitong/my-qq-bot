@@ -3,10 +3,10 @@ from pathlib import Path
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from bot.core.nodes import call_llm_node
-from bot.core.tools import build_tools
-from bot.core.tools.run_bash import BashConfig
 from common import BotConfig
+from execution.tools import build_tools
+from execution.tools.run_bash import BashConfig
+from orchestration.nodes import call_llm_node
 from tests.fakes import ScriptedLLM, StubMemoryStore, StubRagService, make_state
 
 TOOL_CALLS = [

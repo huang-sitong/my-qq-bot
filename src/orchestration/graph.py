@@ -11,16 +11,16 @@ from langgraph.graph.state import CompiledStateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.prebuilt.tool_node import ToolInvocationError
 
-from bot.core.nodes import (
-    call_llm_node,
-    describe_image_node,
-    skill_manager_node,
-)
-from bot.core.tools import build_tools
 from common import BotConfig
 from common.paths import PROJECT_ROOT
 from conversation.bash import BashConfig
 from conversation.state import BotState
+from execution.tools import build_tools
+from orchestration.nodes import (
+    call_llm_node,
+    describe_image_node,
+    skill_manager_node,
+)
 
 logger = logging.getLogger(__name__)
 

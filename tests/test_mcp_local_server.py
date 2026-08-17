@@ -13,8 +13,8 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
-from bot.core.graph import _tool_error_message
-from bot.core.mcp import load_mcp_tools
+from execution.mcp import load_mcp_tools
+from orchestration.graph import _tool_error_message
 
 SERVER_CODE = '''
 from mcp.server.fastmcp import FastMCP
@@ -99,7 +99,7 @@ def test_mcp_server_load_failure_skips():
 
 def test_mcp_load_failure_logs_class_name_only(monkeypatch, caplog):
     """加载失败日志绝不包含异常 repr——防 Tavily URL/密钥泄漏到日志。"""
-    from bot.core.mcp import client as client_mod
+    from execution.mcp import client as client_mod
 
     class FakeClient:
         connections: ClassVar[dict] = {"tavily": {"transport": "streamable_http"}}
@@ -109,7 +109,7 @@ def test_mcp_load_failure_logs_class_name_only(monkeypatch, caplog):
 
     monkeypatch.setattr(client_mod, "MultiServerMCPClient", lambda *a, **k: FakeClient())
 
-    with caplog.at_level(logging.ERROR, logger="bot.core.mcp.client"):
+    with caplog.at_level(logging.ERROR, logger="execution.mcp.client"):
         tools = asyncio.run(load_mcp_tools(
             {"tavily": {"transport": "streamable_http"}}))
     assert tools == []

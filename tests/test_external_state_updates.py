@@ -3,11 +3,11 @@
 import asyncio
 
 from bot.core.dispatcher import MessageDispatcher
-from bot.core.graph import create_graph
 from common import BotConfig
 from conversation.identity import BotIdentity
 from conversation.message import IncomingMessage
 from conversation.router import RouteAction, RouteDecision
+from orchestration.graph import create_graph
 from tests.fakes import ScriptedLLM
 
 

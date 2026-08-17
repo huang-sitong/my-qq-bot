@@ -2,11 +2,11 @@ import logging
 
 from langgraph.graph.state import CompiledStateGraph as CompiledGraph
 
-from bot.core.compaction import ContextCompactor
 from bot.core.dispatcher import MessageDispatcher
 from bot.core.ingress import SatoriMessageIngress
 from bot.core.worker import MessageWorkerPool
 from commands import CommandRegistry, CommandServices
+from context.compaction import ContextCompactor
 from conversation.identity import BotIdentity
 from domain.satori import EventBody, LoginList
 from knowledge.index_worker import IndexWorker

@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
-from bot.core.tools import build_tools
+from execution.tools import build_tools
 from memory import MemoryStore
 from tests.fakes import make_state
 

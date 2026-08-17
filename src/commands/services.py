@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
     from langgraph.graph.state import CompiledStateGraph
 
-    from bot.core.compaction import ContextCompactor
+    from context.compaction import ContextCompactor
     from knowledge.service import RagService
     from memory import MemoryStore
     from skill import SkillRegistry

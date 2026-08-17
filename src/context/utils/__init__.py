@@ -1,4 +1,8 @@
-from bot.core.utils.content_parser import (
+"""上下文管理纯函数。"""
+
+from conversation.content import Attachment, MessageKind, ParsedContent
+
+from .content_parser import (
     IMAGE_PLACEHOLDER,
     classify_content,
     clean_text,
@@ -7,14 +11,13 @@ from bot.core.utils.content_parser import (
     parse_mentions,
     to_llm_text,
 )
-from bot.core.utils.context import (
+from .context import (
     build_system_messages,
     content_to_text,
     estimate_context_tokens,
     format_messages_for_summary,
 )
-from bot.core.utils.messages import speaker_from_messages
-from conversation.content import Attachment, MessageKind, ParsedContent
+from .messages import speaker_from_messages
 
 __all__ = [
     "IMAGE_PLACEHOLDER",

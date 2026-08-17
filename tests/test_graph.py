@@ -2,8 +2,8 @@ import asyncio
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from bot.core.graph import create_graph
 from common import BotConfig
+from orchestration.graph import create_graph
 from tests.fakes import FakeVisionService, ScriptedLLM, StubMemoryStore, StubRagService
 
 TOOL_CALLS = [

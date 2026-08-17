@@ -8,7 +8,7 @@ memory_store 基于 langgraph AsyncSqliteStore（方法全 async），直接 awa
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
-from bot.core.utils import speaker_from_messages
+from context.utils import speaker_from_messages
 
 
 def resolve_memory_user_id(

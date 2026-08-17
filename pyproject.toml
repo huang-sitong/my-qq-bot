@@ -33,7 +33,7 @@ build-backend = "setuptools.build_meta:__legacy__"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["bot*", "common*", "domain*", "protocol*", "commands*", "skill*", "memory*", "vision*", "knowledge*", "conversation*"]
+include = ["bot*", "common*", "context*", "domain*", "execution*", "orchestration*", "protocol*", "commands*", "skill*", "memory*", "vision*", "knowledge*", "conversation*"]
 
 [[tool.uv.index]]
 url = "https://mirrors.aliyun.com/pypi/simple/"

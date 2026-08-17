@@ -1,7 +1,7 @@
 import asyncio
 
-from bot.core.tools import search_chat_history
-from bot.core.tools.search_chat_history import _format_results
+from execution.tools import search_chat_history
+from execution.tools.search_chat_history import _format_results
 from tests.fakes import StubRagService
 
 SAMPLE = [

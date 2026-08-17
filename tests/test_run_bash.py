@@ -2,7 +2,7 @@
 
 import asyncio
 
-from bot.core.tools.run_bash import BashConfig, _is_blocked, _resolve_cwd, run_bash
+from execution.tools.run_bash import BashConfig, _is_blocked, _resolve_cwd, run_bash
 
 
 def _cfg(tmp_path, **overrides) -> BashConfig:

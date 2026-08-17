@@ -19,16 +19,17 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
-from bot.core.tools.run_bash import run_bash
-from bot.core.tools.search_chat_history import search_chat_history
-from bot.core.tools.send_file import send_file
-from bot.core.tools.user_memory import (
+from conversation.bash import BashConfig
+from skill.tools import load_skill, unload_skill
+
+from .run_bash import run_bash
+from .search_chat_history import search_chat_history
+from .send_file import send_file
+from .user_memory import (
     recall_user_memory,
     remember_user_memory,
     resolve_memory_user_id,
 )
-from conversation.bash import BashConfig
-from skill.tools import load_skill, unload_skill
 
 logger = logging.getLogger(__name__)
 

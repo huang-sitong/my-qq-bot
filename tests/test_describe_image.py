@@ -4,7 +4,7 @@ import asyncio
 
 from langchain_core.messages import HumanMessage
 
-from bot.core.nodes.action_node.describe_image import (
+from orchestration.nodes.action_node.describe_image import (
     build_multimodal_content,
     describe_image_node,
 )
@@ -45,7 +45,7 @@ def _patch_download(monkeypatch, urls_by_src):
         return [urls_by_src.get(src, "") for src in srcs]
 
     monkeypatch.setattr(
-        "bot.core.nodes.action_node.describe_image.download_images_as_data_urls",
+        "orchestration.nodes.action_node.describe_image.download_images_as_data_urls",
         fake_download,
     )
 

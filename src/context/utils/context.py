@@ -10,8 +10,8 @@ import logging
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
-from bot.core.utils.content_parser import IMAGE_PLACEHOLDER
 from common import CURRENT_TIME_HINT, SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
+from context.utils.content_parser import IMAGE_PLACEHOLDER
 
 logger = logging.getLogger(__name__)
 

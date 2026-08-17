@@ -10,7 +10,7 @@ import asyncio
 import pytest
 from langchain_core.messages import HumanMessage
 
-from bot.core.nodes.action_node.detect_intent import detect_intent
+from orchestration.nodes.action_node.detect_intent import detect_intent
 from tests.fakes import make_state
 
 

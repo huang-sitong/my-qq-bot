@@ -1,12 +1,12 @@
 """路由判定单一来源：是否回复 / 是否入上下文 / detect_intent 后三路路径。
 
-锁定 bot.core.utils.routing 的完整判定表——detect_intent 与 graph 共同消费，
+锁定 context.utils.routing 的完整判定表——detect_intent 与 graph 共同消费，
 此处是唯一权威，行为若偏离这里即为回归。
 """
 
 import pytest
 
-from bot.core.utils.routing import (
+from context.utils.routing import (
     decide_reply,
     is_explicit_request,
     keep_in_context,

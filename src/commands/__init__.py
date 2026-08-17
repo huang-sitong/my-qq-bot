@@ -1,7 +1,7 @@
 """指令模块：图外斜杠指令注册与分发。
 
 采用懒加载导出，避免在导入 ``commands`` 时立即加载 ``builtin`` 等依赖
-``bot.core`` 的模块，从而打破 ``commands -> bot -> commands`` 的循环导入。
+``context``/``orchestration`` 的模块，从而打破 ``commands -> bot -> commands`` 的循环导入。
 """
 
 from __future__ import annotations

@@ -14,7 +14,7 @@ import logging
 
 from langchain_core.messages import HumanMessage
 
-from bot.core.utils.routing import decide_reply, keep_in_context
+from context.utils.routing import decide_reply, keep_in_context
 from conversation.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ async def detect_intent(state: BotState, user_name: str = "") -> dict:
     auto_reply = state.get("auto_reply", False)
     has_text = state.get("has_text", False)
 
-    # 判定表（decide_reply / keep_in_context）单一来源见 bot.core.utils.routing
+    # 判定表（decide_reply / keep_in_context）单一来源见 context.utils.routing
     should_respond = decide_reply(channel_type, content_kind, bot_id, bot_name, mentions, auto_reply)
 
     # 2) Build HumanMessage: handler 每轮必注入 llm_text（媒体->占位符、@ 已渲染）

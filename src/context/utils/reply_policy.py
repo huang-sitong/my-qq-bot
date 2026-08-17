@@ -1,6 +1,6 @@
 """auto_reply 随机/冷却纯函数；random_value 由调用方注入，保持可测试。"""
 
-from bot.core.utils.routing import is_explicit_request
+from context.utils.routing import is_explicit_request
 
 
 def should_allow_auto_reply(

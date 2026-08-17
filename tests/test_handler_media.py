@@ -2,7 +2,7 @@
 
 import asyncio
 
-from bot.core.nodes import index_turn_node
+from orchestration.nodes import index_turn_node
 from tests.fakes import StubRagService, make_state
 from vision.domain import ImageDescription
 

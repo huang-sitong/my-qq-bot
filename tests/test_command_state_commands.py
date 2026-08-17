@@ -4,8 +4,6 @@ import asyncio
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from bot.core.compaction import ContextCompactor
-from bot.core.graph import EXTERNAL_UPDATE_NODE, create_graph
 from commands import (
     CommandActor,
     CommandContext,
@@ -13,6 +11,8 @@ from commands import (
     build_command_registry,
 )
 from common import BotConfig
+from context.compaction import ContextCompactor
+from orchestration.graph import EXTERNAL_UPDATE_NODE, create_graph
 from skill import Skill, SkillRegistry
 from tests.fakes import ScriptedLLM, make_state
 

@@ -11,7 +11,7 @@ bot reply, 2 records) and non-replied group text (user only, 1 record —
 
 import logging
 
-from bot.core.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text, speaker_from_messages
+from context.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text, speaker_from_messages
 from conversation.state import BotState
 from knowledge.service import RagService
 

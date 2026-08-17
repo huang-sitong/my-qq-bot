@@ -4,7 +4,6 @@ from langchain_core.messages import AIMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
-from bot.core.utils import build_system_messages, content_to_text
 from common import (
     BASH_TOOL_HINT,
     FILE_SEND_TOOL_HINT,
@@ -12,6 +11,7 @@ from common import (
     MEMORY_TOOL_HINT,
     BotConfig,
 )
+from context.utils import build_system_messages, content_to_text
 from conversation.state import BotState
 
 logger = logging.getLogger(__name__)

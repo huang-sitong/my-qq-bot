@@ -3,8 +3,8 @@
 import asyncio
 from pathlib import Path
 
-from bot.core.tools import build_tools
-from bot.core.tools.run_bash import BashConfig
+from execution.tools import build_tools
+from execution.tools.run_bash import BashConfig
 from skill import Skill, SkillRegistry
 from tests.fakes import StubMemoryStore, StubRagService
 

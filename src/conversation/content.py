@@ -1,6 +1,6 @@
 """Satori 消息内容分类的领域类型（纯数据对象，零逻辑，供各层共享引用）。
 
-由 ``bot.core.utils.content_parser`` 的解析函数消费；解析逻辑留在 utils，
+由 ``context.utils.content_parser`` 的解析函数消费；解析逻辑留在 utils，
 这里只存放可被 ``domain/`` 层（含 ``BotState``）引用的规范类型。
 """
 

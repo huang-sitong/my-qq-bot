@@ -5,9 +5,9 @@ from functools import partial
 
 from langchain_core.messages import RemoveMessage
 
-from bot.core.utils import content_to_text, estimate_context_tokens
 from common.config import _parse_flag
 from common.constants import EXTERNAL_UPDATE_NODE
+from context.utils import content_to_text, estimate_context_tokens
 
 from .model import Command, CommandContext, CommandResult, CommandServices
 from .registry import CommandRegistry

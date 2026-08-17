@@ -2,7 +2,7 @@
 
 import asyncio
 
-from bot.core.tools.send_file import send_file
+from execution.tools.send_file import send_file
 
 
 class _FakeSender:

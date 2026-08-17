@@ -17,9 +17,9 @@ from collections.abc import Callable
 
 from bot.core.dispatcher import MessageDispatcher
 from bot.core.router import route_incoming
-from bot.core.utils.reply_policy import should_allow_auto_reply
 from common.logging import trace_context
 from common.queue import InMemoryMessageQueue
+from context.utils.reply_policy import should_allow_auto_reply
 from conversation.identity import BotIdentity
 from conversation.message import IncomingMessage
 from conversation.router import RouteAction, RouteDecision

@@ -4,8 +4,8 @@ import asyncio
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from bot.core.nodes.action_node.summarize import summarize_node
 from common import BotConfig
+from orchestration.nodes.action_node.summarize import summarize_node
 from tests.fakes import ScriptedLLM, make_state
 
 

@@ -1,7 +1,7 @@
 import asyncio
 
-from bot.core.tools import recall_user_memory, remember_user_memory
-from bot.core.tools.user_memory import _format_memories
+from execution.tools import recall_user_memory, remember_user_memory
+from execution.tools.user_memory import _format_memories
 from tests.fakes import StubMemoryStore
 
 

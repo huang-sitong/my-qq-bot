@@ -1,5 +1,5 @@
-from bot.core.utils.routing import decide_reply, keep_in_context
 from commands import CommandActor, CommandRegistry, parse_command
+from context.utils.routing import decide_reply, keep_in_context
 from conversation.content import MessageKind
 from conversation.message import IncomingMessage
 from conversation.router import RouteAction, RouteDecision

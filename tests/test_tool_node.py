@@ -5,8 +5,8 @@ from langchain_core.tools import tool as make_tool
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
-from bot.core.graph import _tool_error_message
-from bot.core.tools import build_tools
+from execution.tools import build_tools
+from orchestration.graph import _tool_error_message
 from tests.fakes import StubMemoryStore, StubRagService
 
 RAG_CALL = AIMessage(content="", tool_calls=[

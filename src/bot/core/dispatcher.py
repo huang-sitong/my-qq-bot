@@ -8,9 +8,6 @@ import logging
 
 from langchain_core.messages import HumanMessage
 
-from bot.core.compaction import ContextCompactor
-from bot.core.graph import EXTERNAL_UPDATE_NODE
-from bot.core.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
 from commands import (
     CommandContext,
     CommandRegistry,
@@ -18,11 +15,14 @@ from commands import (
     can_run,
     run_command,
 )
+from context.compaction import ContextCompactor
+from context.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
 from conversation.identity import BotIdentity
 from conversation.message import IncomingMessage
 from conversation.router import RouteAction, RouteDecision
 from domain.ports import MessageSender, RagIndexer
 from knowledge.domain import IndexTurnTask
+from orchestration.graph import EXTERNAL_UPDATE_NODE
 
 logger = logging.getLogger(__name__)
 

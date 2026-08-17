@@ -14,7 +14,7 @@
 
 from langchain_core.messages import HumanMessage
 
-from bot.core.utils import IMAGE_PLACEHOLDER
+from context.utils import IMAGE_PLACEHOLDER
 from conversation.state import BotState
 from domain.ports import VisionServicePort
 from vision.domain import ImageDescription
