@@ -5,6 +5,7 @@ from pathlib import Path
 
 import aiosqlite
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -122,7 +123,16 @@ async def create_graph(
 
     checkpoint_path = os.path.join(db_dir, "checkpoint.sqlite")
     conn = await aiosqlite.connect(checkpoint_path)
-    checkpointer = AsyncSqliteSaver(conn)
+    # 显式注册 checkpoint 中允许反序列化的自定义类型路径。
+    # 老 checkpoint 可能存的是 vision.domain.ImageDescription（历史 re-export 路径），
+    # 新 checkpoint 使用 domain.media.ImageDescription，两者都要放行以避免 serde 警告。
+    serializer = JsonPlusSerializer(
+        allowed_msgpack_modules=[
+            ("domain.media", "ImageDescription"),
+            ("vision.domain", "ImageDescription"),
+        ],
+    )
+    checkpointer = AsyncSqliteSaver(conn, serde=serializer)
     graph = builder.compile(checkpointer=checkpointer)
     logger.info("LangGraph compiled with AsyncSqliteSaver checkpointing (db=%s)", checkpoint_path)
     return graph, checkpointer

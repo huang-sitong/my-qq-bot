@@ -75,6 +75,8 @@ WS 事件 → EventBody → MessageHandler.handle() → SatoriMessageIngress →
 | db/milvus.db | MilvusStore | 群聊历史 dense+sparse 向量（milvus-lite 单文件）|
 | db/embed_cache.sqlite | EmbeddingCache | 嵌入磁盘缓存（key=sha256(model+任务前缀+角色+原文)）|
 
+checkpoint 反序列化：`graph.py` 创建 `AsyncSqliteSaver` 时显式传入 `JsonPlusSerializer(allowed_msgpack_modules=[...])`，放行 `ImageDescription` 的新旧路径（`domain.media` / `vision.domain`），避免 LangGraph serde 对自定义类型告警。
+
 ## Session vs Thread
 
 thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 已移除，日志打 thread_id）。
