@@ -24,6 +24,7 @@ from skill.tools import load_skill, unload_skill
 
 from .run_bash import run_bash
 from .search_chat_history import search_chat_history
+from .search_documents import search_documents
 from .send_file import send_file
 from .user_memory import (
     recall_user_memory,
@@ -39,6 +40,12 @@ SEARCH_TOOL_DESCRIPTION = (
     "（2）按人/按内容/按时间属性检索——当用户问『某人说过什么』『谁说过xx』『bot 回复过谁』"
     "或『最近一段时间内』时，用 user_name / content_keyword / start_time / end_time / hours"
     "精确过滤（更快更准；不受当前群限制，跨全部群返回，来源群标注在结果里）。"
+)
+
+SEARCH_DOCS_TOOL_DESCRIPTION = (
+    "检索已导入知识库的文档内容（支持 pdf/docx/xlsx/txt/json）。"
+    "当用户询问某一篇文档、说明书、资料里的内容时使用。"
+    "query 必填；可按文件名前缀（filename）或文件类型（file_type）过滤。"
 )
 
 REMEMBER_TOOL_DESCRIPTION = (
@@ -175,6 +182,39 @@ def _make_search_tool(rag_service) -> BaseTool:
     )
 
 
+def _make_search_documents_tool(document_store) -> BaseTool:
+    async def _run(
+        query: Annotated[str, Field(
+            description="要检索的问题或关键词，用中文表述",
+        )],
+        filename: Annotated[str, Field(
+            description="可选：按文件名前缀过滤，例如 report、说明书",
+        )] = "",
+        file_type: Annotated[str, Field(
+            description="可选：按文件类型过滤，例如 pdf/docx/xlsx/txt/json",
+        )] = "",
+        top_k: Annotated[int, Field(
+            description="返回结果数量，默认 5",
+            ge=1,
+            le=20,
+        )] = 5,
+    ) -> str:
+        try:
+            return await search_documents(
+                query, document_store,
+                filename=filename, file_type=file_type, top_k=top_k,
+            )
+        except Exception:
+            logger.exception("search_documents failed")
+            return "工具执行失败。"
+
+    return StructuredTool.from_function(
+        coroutine=_run,
+        name="search_documents",
+        description=SEARCH_DOCS_TOOL_DESCRIPTION,
+    )
+
+
 def _make_memory_tools(memory_store) -> list[BaseTool]:
     async def _remember(
         key: Annotated[str, Field(
@@ -266,12 +306,13 @@ def _make_skill_tools(skill_registry) -> list[BaseTool]:
     ]
 
 
-def build_tools(rag_service=None, memory_store=None, mcp_tools=None,
-                skill_registry=None, bash_config=None, file_sender=None,
-                send_roots=None) -> list[BaseTool]:
+def build_tools(rag_service=None, document_store=None, memory_store=None,
+                mcp_tools=None, skill_registry=None, bash_config=None,
+                file_sender=None, send_roots=None) -> list[BaseTool]:
     """组装当前可用工具列表（BaseTool）。
 
     - rag_service 存在且启用 → search_chat_history
+    - document_store 存在 → search_documents
     - memory_store 存在 → remember/recall_user_memory
     - skill_registry 非空 → load_skill/unload_skill
     - bash_config 存在且 enabled → run_bash
@@ -281,6 +322,8 @@ def build_tools(rag_service=None, memory_store=None, mcp_tools=None,
     tools: list[BaseTool] = []
     if rag_service is not None and rag_service.enabled:
         tools.append(_make_search_tool(rag_service))
+    if document_store is not None:
+        tools.append(_make_search_documents_tool(document_store))
     if memory_store is not None:
         tools += _make_memory_tools(memory_store)
     if skill_registry is not None and skill_registry.names():

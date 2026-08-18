@@ -28,6 +28,9 @@ uv run python main.py         # 启动 bot
 | `BOT_EMBED_BASE_URL` | 嵌入专用 OpenAI 兼容地址；未设置时回落 `BASE_URL` |
 | `BOT_EMBED_API_KEY` | 嵌入专用 API key；未设置时回落 `API_KEY` |
 | `BOT_VISION_BASE_URL` | 视觉专用 OpenAI 兼容地址；未设置时回落 `BASE_URL` |
+| `BOT_DOC_COLLECTION` | 文档知识库 collection 名（默认 `documents`） |
+| `BOT_DOC_MINERU_ENDPOINT` | MinerU HTTP 服务地址；未配置时 PDF 自动降级 LangChain/pypdf |
+| `BOT_DOC_CHUNK_SIZE` / `BOT_DOC_CHUNK_OVERLAP` | 文档切块大小与重叠 |
 | `BOT_AUTO_REPLY` | 群聊非@消息自动回复总开关（默认关，可经 `/auto_reply` 运行时改） |
 | `BOT_AUTO_REPLY_RANDOM_RATE` | auto_reply 非@消息的随机回复概率，默认 `0.3` |
 | `BOT_AUTO_REPLY_COOLDOWN` | 同一会话两次 auto_reply 的最小间隔秒数，默认 `30` |
@@ -44,6 +47,27 @@ uv run python main.py         # 启动 bot
 - `memory.sqlite` — 用户持久记忆（langgraph `AsyncSqliteStore`）
 - `milvus.db` — 群聊历史向量（dense+sparse 混合检索）
 - `embed_cache.sqlite` — 嵌入向量磁盘缓存
+
+## 文档知识库导入
+
+当前支持通过脚本离线导入 `.docx` / `.pdf` / `.xlsx` / `.txt` / `.json` 到独立的 `documents` collection：
+
+```bash
+# 导入单个/多个文件
+uv run python scripts/import_documents.py docs/a.pdf docs/b.docx
+
+# 只验证文件能否被解析和切分，不写入 Milvus
+uv run python scripts/import_documents.py --dry-run docs/*.pdf
+```
+
+说明：
+
+- 由于 `milvus-lite` 存在文件锁，建议在 Bot 停止时运行导入脚本；Bot 重启后即可通过 `search_documents` 检索。
+- PDF 优先使用 MinerU（需配置 `BOT_DOC_MINERU_ENDPOINT`），失败自动降级 LangChain / pypdf；
+- 其他格式优先使用 LangChain 生态的轻量 loader，未安装 `langchain-community` 时使用内置 fallback；
+- 文档按内容哈希去重，重复导入自动跳过；
+- 文档写入独立的 `documents` collection，不参与聊天记录按线程淘汰；
+- Bot 启动后 LLM 可通过 `search_documents` 工具检索文档知识。
 
 ## 日志
 

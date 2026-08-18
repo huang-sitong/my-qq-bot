@@ -57,6 +57,7 @@ async def create_graph(
     config: BotConfig,
     db_dir: str = "db",
     rag_service=None,
+    document_store=None,
     memory_store=None,
     vision_service=None,
     mcp_tools=None,
@@ -80,7 +81,8 @@ async def create_graph(
         Path(root).resolve() for root in config.bash_allowed_roots
     ]
     tools = build_tools(
-        rag_service=rag_service, memory_store=memory_store, mcp_tools=mcp_tools,
+        rag_service=rag_service, document_store=document_store,
+        memory_store=memory_store, mcp_tools=mcp_tools,
         skill_registry=skill_registry, bash_config=bash_config,
         file_sender=file_sender, send_roots=send_roots,
     )

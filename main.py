@@ -24,6 +24,7 @@ from common.database import DatabaseManager
 from common.logging import setup_logging
 from common.mcp import load_mcp_servers_from_file
 from execution.mcp import load_mcp_tools
+from knowledge.document_store import DocumentStore
 from knowledge.index_worker import IndexWorker
 from orchestration.compaction import ContextCompactor
 from skill import SkillRegistry
@@ -63,12 +64,23 @@ async def main():
 
     llm = setup_llm(config)
     rag_service = None
+    document_store = None
     if config.rag_enabled:
         try:
             rag_service = RagService(config)
         except Exception:
             logger.exception("RAG init failed; falling back to rag disabled")
             rag_service = None
+        try:
+            shared_embedder = rag_service.embedder if rag_service else None
+            document_store = DocumentStore(
+                config,
+                collection=config.document_collection,
+                embedder=shared_embedder,
+            )
+        except Exception:
+            logger.exception("DocumentStore init failed; document search disabled")
+            document_store = None
     memory_store = MemoryStore(db_dir=config.db_dir)
     vision_service = None
     if config.vision_enabled:
@@ -96,7 +108,8 @@ async def main():
         )
         logger.info("Loaded %d skills from %s", skill_registry.total, config.skills_dir)
     graph, checkpointer = await create_graph(
-        llm, config, db_dir=config.db_dir, rag_service=rag_service, memory_store=memory_store,
+        llm, config, db_dir=config.db_dir, rag_service=rag_service,
+        document_store=document_store, memory_store=memory_store,
         vision_service=vision_service, mcp_tools=mcp_tools, skill_registry=skill_registry,
         file_sender=api_client,
     )
@@ -165,6 +178,8 @@ async def main():
         await api_client.close()
         if rag_service is not None:
             rag_service.close()
+        if document_store is not None:
+            document_store.close()
         if vision_service is not None:
             await vision_service.close()
         await memory_store.close()

@@ -239,6 +239,31 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_RAG_MAX_AGENT_ROUNDS",
     )
 
+    # --- Document Ingestion (文档知识库导入) ---
+    document_collection: str = Field(
+        default="documents",
+        validation_alias="BOT_DOC_COLLECTION",
+    )
+    document_mineru_endpoint: str | None = Field(
+        default=None,
+        validation_alias="BOT_DOC_MINERU_ENDPOINT",
+    )
+    document_mineru_timeout: int = Field(
+        default=300,
+        gt=0,
+        validation_alias="BOT_DOC_MINERU_TIMEOUT",
+    )
+    document_chunk_size: int = Field(
+        default=500,
+        gt=0,
+        validation_alias="BOT_DOC_CHUNK_SIZE",
+    )
+    document_chunk_overlap: int = Field(
+        default=50,
+        ge=0,
+        validation_alias="BOT_DOC_CHUNK_OVERLAP",
+    )
+
     # --- Vision (OpenAI 兼容视觉 API，图片描述) ---
     vision_enabled: Flag = Field(
         default=True,

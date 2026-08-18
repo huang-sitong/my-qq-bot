@@ -79,16 +79,25 @@ class MilvusStore:
         uri: str | None = None,
         collection: str = "chat",
         embedder=None,
+        *,
+        prune_on_add: bool = True,
     ) -> None:
         self._config = config
         self._collection = collection
+        self._owns_embedder = embedder is None
         self._embedder = embedder or EmbeddingService(config)
+        self._prune_on_add = prune_on_add
         self._client_lock = asyncio.Lock()
         # 默认落盘到 db_dir/milvus.db，避免从任意目录启动在 CWD 下静默新建空库
         uri = uri or os.path.join(config.db_dir, "milvus.db")
         self._client = MilvusClient(uri=uri, grpc_options=_MILVUS_GRPC_OPTIONS)
         self._ensure_collection()
         logger.info("MilvusStore ready (uri=%s, collection=%s)", uri, collection)
+
+    @property
+    def embedder(self):
+        """返回当前使用的 EmbeddingService，便于多个 Store 共享同一缓存连接。"""
+        return self._embedder
 
     # ------------------------------------------------------------------
     # 集合创建
@@ -172,8 +181,9 @@ class MilvusStore:
         ]
         async with self._client_lock:
             await asyncio.to_thread(self._client.insert, self._collection, rows)
-            for tid in {m["thread_id"] for m in metadatas}:
-                self._prune_thread(tid, self._config.rag_retention_per_thread)
+            if self._prune_on_add:
+                for tid in {m["thread_id"] for m in metadatas}:
+                    self._prune_thread(tid, self._config.rag_retention_per_thread)
 
     def _prune_thread(self, thread_id: str, keep: int) -> None:
         """删除每线程超出 keep 的最旧记录（timestamp DESC）。
@@ -210,7 +220,12 @@ class MilvusStore:
     # ------------------------------------------------------------------
 
     async def search_dense(
-        self, query: str, expr: str, thread_id: str | None, k: int,
+        self,
+        query: str,
+        expr: str,
+        thread_id: str | None,
+        k: int,
+        output_fields: list[str] | None = None,
     ) -> list[dict]:
         """dense 语义检索：query 嵌入后按 vector 字段 ANN。"""
         vec = await self._embedder.embed_query(query)
@@ -220,12 +235,17 @@ class MilvusStore:
                 self._collection, data=[vec], anns_field="vector",
                 filter=_build_filter(expr, thread_id), limit=k,
                 search_params={"metric_type": "COSINE"},
-                output_fields=_OUTPUT_FIELDS,
+                output_fields=output_fields or _OUTPUT_FIELDS,
             )
         return [_dense_hit(h) for h in raw[0]]
 
     async def search_sparse(
-        self, query: str, expr: str, thread_id: str | None, k: int,
+        self,
+        query: str,
+        expr: str,
+        thread_id: str | None,
+        k: int,
+        output_fields: list[str] | None = None,
     ) -> list[dict]:
         """sparse 词法检索：query 文本直接进 BM25 函数（jieba 分词）。"""
         async with self._client_lock:
@@ -234,10 +254,11 @@ class MilvusStore:
                 self._collection, data=[query], anns_field="sparse",
                 filter=_build_filter(expr, thread_id), limit=k,
                 search_params={"metric_type": "BM25"},
-                output_fields=_OUTPUT_FIELDS,
+                output_fields=output_fields or _OUTPUT_FIELDS,
             )
         return [_sparse_hit(h) for h in raw[0]]
 
     def close(self) -> None:
         self._client.close()
-        self._embedder.close()
+        if self._owns_embedder:
+            self._embedder.close()

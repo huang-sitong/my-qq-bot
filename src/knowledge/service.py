@@ -55,6 +55,11 @@ class RagService:
     def enabled(self) -> bool:
         return self.config.rag_enabled
 
+    @property
+    def embedder(self):
+        """暴露内部 EmbeddingService，便于 DocumentStore 共享同一缓存连接。"""
+        return self._store.embedder
+
     # ------------------------------------------------------------------
     # 索引
     # ------------------------------------------------------------------

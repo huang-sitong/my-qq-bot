@@ -28,6 +28,14 @@ def test_memory_tools_present_when_store_injected():
     assert {"remember_user_memory", "recall_user_memory"} <= _names(tools)
 
 
+def test_document_tool_present_when_document_store_injected():
+    class StubDocumentStore:
+        pass
+
+    tools = build_tools(rag_service=None, document_store=StubDocumentStore())
+    assert "search_documents" in _names(tools)
+
+
 def test_mcp_tools_appended():
     class FakeMcpTool:
         name = "web_search"

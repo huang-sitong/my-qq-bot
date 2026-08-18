@@ -105,6 +105,14 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - env：`BOT_RAG_ENABLED`/`BOT_EMBED_MODEL`/`BOT_EMBED_BASE_URL`/`BOT_EMBED_API_KEY`/`BOT_EMBED_DIMENSIONS`/`BOT_EMBED_CACHE_ENABLED`/`BOT_EMBED_CACHE_MAX_ENTRIES`/`BOT_RAG_TOP_K`/`BOT_RAG_SCORE_THRESHOLD`/`BOT_RAG_RETENTION_PER_THREAD`/`BOT_RAG_MAX_AGENT_ROUNDS`；视觉 `BOT_VISION_ENABLED`/`BOT_VISION_MODEL`/`BOT_VISION_BASE_URL`/`BOT_VISION_API_KEY`/`BOT_VISION_MAX_IMAGES`/`BOT_VISION_TIMEOUT`；多模态 `BOT_LLM_MULTIMODAL`（0=视觉服务/1=主 LLM）
 - MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS_FILE`/`BOT_MCP_TOOL_NAME_PREFIX`；server 定义集中在可提交的 `config/mcp_servers.json`（`{"servers": {...}}`，密钥用 `${ENV_VAR}` 占位），加载 `src/common/mcp.py::load_mcp_servers_from_file`（相对路径按项目根解析、缺失/损坏降级空、插值缺变量→空串；env 必传、不读 os.environ）；main.py 用 `dotenv_values(find_dotenv())` 读 .env 内容做插值源，再 `client.py::load_mcp_tools` 加载；加载后注入 MCP_TOOL_HINT 引导
 
+**文档知识库（Document Ingestion）**：
+- 独立于聊天记录：`DocumentStore` 使用 `documents` collection（`BOT_DOC_COLLECTION`），schema 含 `doc_id/file_hash/file_name/file_type/page/chunk_index/source_path/imported_at`，不走聊天线程淘汰。
+- 导入入口：`scripts/import_documents.py`（支持文件/目录/通配符，`--dry-run` 只验证解析+切分）。核心逻辑在 `knowledge/document_ingestion.py::ingest_files`，可被后续 Bot 后台任务复用。
+- 解析策略：`.txt/.json/.docx/.xlsx` 优先 LangChain loader，未安装 `langchain-community` 时使用内置 fallback；`.pdf` 优先 MinerU（`BOT_DOC_MINERU_ENDPOINT`，Python SDK -> HTTP 服务），失败降级 LangChain/pypdf。
+- 切分：优先 `langchain-text-splitters`；MinerU Markdown 走 `MarkdownHeaderTextSplitter`，其余走 `RecursiveCharacterTextSplitter`，配置 `BOT_DOC_CHUNK_SIZE`/`BOT_DOC_CHUNK_OVERLAP`。
+- 去重/检索：`file_hash` 去重；LLM 通过 `search_documents` 工具检索文档 chunks。
+- 注意：`milvus-lite` 有文件锁，导入脚本应尽量在 Bot 停止时运行；Bot 内 `DocumentStore` 与 `RagService` 各自持有 MilvusClient、共享同一 EmbeddingService（避免重复打开 embed_cache.sqlite 连接），启动时已验证可共存。
+
 **记忆工具**：注入 MemoryStore 后 call_llm 绑定 `remember/recall_user_memory` 工具 + MEMORY_TOOL_HINT，LLM 自行决定读写；工具暴露 `user_id`/`user_name` 参数，批内可指定目标发言者，缺失时回退最近一条 HumanMessage 元数据，底层官方 AsyncSqliteStore 全 async。旧"图前全量注入 + 图外抽取"方案已移除。
 
 **技能模块**：`Skill` 纯数据对象在 `src/skill/domain.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：handler 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
