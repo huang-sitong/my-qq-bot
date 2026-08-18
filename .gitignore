@@ -30,3 +30,6 @@ downloads/*
 docs/captured_messages.jsonl
 # milvus-lite embedded db
 db/milvus.db
+
+# Runtime logs
+log/

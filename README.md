@@ -45,6 +45,12 @@ uv run python main.py         # 启动 bot
 - `milvus.db` — 群聊历史向量（dense+sparse 混合检索）
 - `embed_cache.sqlite` — 嵌入向量磁盘缓存
 
+## 日志
+
+启动时会自动创建根目录下的 `log/` 文件夹，并将 bot 日志写入 `log/bot.log`（同时保留控制台输出）。日志中包含对话上下文中的 Human/AI/Tool Message，以及命令、RAG、MCP、工具执行等运行信息，便于回溯问题。
+
+注意 `log/` 已加入 `.gitignore`，不会被提交到版本库。
+
 ## 测试
 
 ```bash

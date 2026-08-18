@@ -21,20 +21,14 @@ from common import (
     BotConfig,
 )
 from common.database import DatabaseManager
-from common.logging import TraceIdFilter
+from common.logging import setup_logging
 from common.mcp import load_mcp_servers_from_file
 from execution.mcp import load_mcp_tools
 from knowledge.index_worker import IndexWorker
 from orchestration.compaction import ContextCompactor
 from skill import SkillRegistry
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s [trace=%(trace_id)s]",
-)
-
-for _handler in logging.getLogger().handlers:
-    _handler.addFilter(TraceIdFilter())
+setup_logging("log")
 logger = logging.getLogger("bot")
 
 

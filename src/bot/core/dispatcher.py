@@ -16,7 +16,12 @@ from commands import (
     run_command,
 )
 from common.constants import EXTERNAL_UPDATE_NODE
-from context.utils import IMAGE_PLACEHOLDER, MessageKind, content_to_text
+from context.utils import (
+    IMAGE_PLACEHOLDER,
+    MessageKind,
+    content_to_text,
+    format_message_for_log,
+)
 from conversation.identity import BotIdentity
 from conversation.message import IncomingMessage
 from conversation.router import RouteAction, RouteDecision
@@ -189,11 +194,17 @@ class MessageDispatcher:
             "image_srcs": message.image_srcs,
         }
         kwargs["auto_reply"] = auto_reply
-        return HumanMessage(
+        human = HumanMessage(
             content=message.llm_text,
             name=message.user_name or None,
             additional_kwargs=kwargs,
         )
+        logger.info(
+            "Context message thread=%s: %s",
+            message.thread_id,
+            format_message_for_log(human),
+        )
+        return human
 
     def _build_graph_input(
         self,

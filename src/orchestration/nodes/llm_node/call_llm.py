@@ -11,7 +11,7 @@ from common import (
     MEMORY_TOOL_HINT,
     BotConfig,
 )
-from context.utils import build_system_messages, content_to_text
+from context.utils import build_system_messages, content_to_text, format_message_for_log
 from conversation.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -53,6 +53,15 @@ async def call_llm_node(
 
     messages = system_msgs + state["messages"]
 
+    # 打印当前上下文中的持久化 Message（Human/AI/Tool），便于在 ./log 回溯完整上下文。
+    thread_id = state.get("thread_id", "")
+    for msg in state.get("messages", []):
+        logger.info(
+            "Context message before_llm thread=%s: %s",
+            thread_id,
+            format_message_for_log(msg),
+        )
+
     tools = tools or []
     max_rounds = bot_config.rag_max_agent_rounds if bot_config is not None else 3
     rounds = state.get("tool_rounds", 0)
@@ -67,6 +76,11 @@ async def call_llm_node(
                 "reply_text": "我暂时无法思考，请稍后再试",
             }
         if response.tool_calls:
+            logger.info(
+                "Context message after_llm thread=%s: %s",
+                thread_id,
+                format_message_for_log(response),
+            )
             return {
                 "messages": [response],
                 "tool_rounds": rounds + 1,
@@ -74,12 +88,22 @@ async def call_llm_node(
             }
         # reply_text 必须归一化为字符串：多模态主 LLM 的 content 是块列表，
         # 直接透传给 index_turn/.strip() 或 send_message 会崩。
+        logger.info(
+            "Context message after_llm thread=%s: %s",
+            thread_id,
+            format_message_for_log(response),
+        )
         return {
             "messages": [AIMessage(content=response.content)],
             "reply_text": content_to_text(response.content),
         }
 
     reply = await _invoke_plain(messages, llm, state)
+    logger.info(
+        "Context message after_llm thread=%s: %s",
+        thread_id,
+        format_message_for_log(AIMessage(content=reply)),
+    )
     return {"messages": [AIMessage(content=reply)], "reply_text": reply}
 
 

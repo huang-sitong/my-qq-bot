@@ -6,8 +6,9 @@
 
 import logging
 
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolMessage
 
+from context.utils import format_message_for_log
 from conversation.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -23,10 +24,44 @@ def _last_ai_with_tool_calls(messages) -> AIMessage | None:
 
 async def skill_manager_node(state: BotState, skill_registry=None) -> dict:
     """扫描最近的工具调用，更新 active_skills。"""
-    if skill_registry is None:
-        return {}
     last_ai = _last_ai_with_tool_calls(state["messages"])
+    if last_ai is not None:
+        # 把本轮工具执行产生的 ToolMessage 写入日志，方便在 ./log 中查看工具回传内容。
+        # 优先按 tool_call_id 精确匹配；没有 ID 时退回记录最近一次带 tool_calls 的
+        # AIMessage 之后的所有 ToolMessage。
+        messages = state.get("messages", [])
+        tool_call_ids = {
+            call.get("id")
+            for call in last_ai.tool_calls
+            if isinstance(call, dict) and call.get("id")
+        }
+        if tool_call_ids:
+            for msg in messages:
+                if (
+                    isinstance(msg, ToolMessage)
+                    and getattr(msg, "tool_call_id", None) in tool_call_ids
+                ):
+                    logger.info(
+                        "Context message tool_result thread=%s: %s",
+                        state.get("thread_id", ""),
+                        format_message_for_log(msg),
+                    )
+        else:
+            start = -1
+            for index, msg in enumerate(messages):
+                if msg is last_ai:
+                    start = index
+                    break
+            for msg in messages[start + 1:]:
+                if isinstance(msg, ToolMessage):
+                    logger.info(
+                        "Context message tool_result thread=%s: %s",
+                        state.get("thread_id", ""),
+                        format_message_for_log(msg),
+                    )
     if last_ai is None:
+        return {}
+    if skill_registry is None:
         return {}
     active = list(state.get("active_skills", []))
     changed = False

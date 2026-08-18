@@ -17,7 +17,11 @@ from .context import (
     estimate_context_tokens,
     format_messages_for_summary,
 )
-from .messages import speaker_from_messages
+from .messages import (
+    format_message_for_log,
+    log_context_message,
+    speaker_from_messages,
+)
 
 __all__ = [
     "IMAGE_PLACEHOLDER",
@@ -29,7 +33,9 @@ __all__ = [
     "clean_text",
     "content_to_text",
     "estimate_context_tokens",
+    "format_message_for_log",
     "format_messages_for_summary",
+    "log_context_message",
     "parse_attachments",
     "parse_content",
     "parse_mentions",

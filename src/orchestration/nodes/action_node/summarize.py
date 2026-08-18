@@ -16,7 +16,12 @@ from langchain_core.messages.utils import count_tokens_approximately
 from langchain_openai import ChatOpenAI
 
 from common import SUMMARY_PROMPT, BotConfig
-from context.utils import content_to_text, estimate_context_tokens, format_messages_for_summary
+from context.utils import (
+    content_to_text,
+    estimate_context_tokens,
+    format_message_for_log,
+    format_messages_for_summary,
+)
 from conversation.state import BotState
 
 logger = logging.getLogger(__name__)
@@ -84,6 +89,12 @@ async def summarize_node(
         "Summarizing %d messages (keeping %d) for thread %s",
         len(to_summarize), len(keep_messages), state.get("thread_id", ""),
     )
+    for msg in to_summarize:
+        logger.info(
+            "Context message summarized thread=%s: %s",
+            state.get("thread_id", ""),
+            format_message_for_log(msg),
+        )
 
     # 3. Generate summary via LLM
     old_summary = state.get("conversation_summary", "")
