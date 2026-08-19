@@ -117,7 +117,10 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 **文档知识库（Document Ingestion）**：
 - 独立于聊天记录：`DocumentStore` 使用 `documents` collection（`BOT_DOC_COLLECTION`），schema 含 `doc_id/file_hash/file_name/file_type/page/chunk_index/source_path/imported_at`，不走聊天线程淘汰。
 - 导入入口：`scripts/import_documents.py`（支持文件/目录/通配符，`--dry-run` 只验证解析+切分）。核心逻辑在 `knowledge/document_ingestion.py::ingest_files`，可被后续 Bot 后台任务复用。
-- 解析策略：`.txt/.json/.docx/.xlsx` 优先 LangChain loader，未安装 `langchain-community` 时使用内置 fallback；`.pdf` 优先 MinerU（`BOT_DOC_MINERU_ENDPOINT`，Python SDK -> HTTP 服务），失败降级 LangChain/pypdf。
+- 解析策略：`.txt/.json/.docx/.xlsx` 优先 LangChain loader，未安装 `langchain-community` 时使用内置 fallback；`.pdf` 做 3 重降级（客户端在 `knowledge/mineru_client.py`）：
+  ① MinerU 精准解析 API（v4，`/api/v4/file-urls/batch` 签名上传 → PUT → 轮询 `/api/v4/extract-results/batch/{batch_id}` → 下载 zip 取 `full.md`；配置 `BOT_DOC_MINERU_ENDPOINT` 或 `BOT_DOC_MINERU_API_KEY`，仅配 API Key 时回落 `https://mineru.net`）；
+  ② MinerU Agent 轻量解析 API（v1，免 Token、IP 限频，`/api/v1/agent/parse/file` 签名上传 → PUT → 轮询 `/api/v1/agent/parse/{task_id}` → 取 `markdown_url` 文本；≤10MB/≤20 页，`BOT_DOC_MINERU_AGENT_ENABLED` 开关）；
+  ③ 本地 LangChain/pypdf。
 - 切分：优先 `langchain-text-splitters`；MinerU Markdown 走 `MarkdownHeaderTextSplitter`，其余走 `RecursiveCharacterTextSplitter`，配置 `BOT_DOC_CHUNK_SIZE`/`BOT_DOC_CHUNK_OVERLAP`。
 - 去重/检索：`file_hash` 去重；LLM 通过 `search_documents` 工具检索文档 chunks。
 - 注意：`milvus-lite` 有文件锁，导入脚本应尽量在 Bot 停止时运行；Bot 内 `DocumentStore` 与 `RagService` 各自持有 MilvusClient、共享同一 EmbeddingService（避免重复打开 embed_cache.sqlite 连接），启动时已验证可共存。

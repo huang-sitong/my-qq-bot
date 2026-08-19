@@ -11,10 +11,14 @@ import asyncio
 import hashlib
 import json
 
+from langchain_core.documents import Document
+
 from bot.package.config import BotConfig
 from bot.package.knowledge.document_ingestion import (
     _load_docx,
     _load_json,
+    _load_pdf_mineru,
+    _load_pdf_mineru_agent,
     _load_text,
     _load_xlsx,
     _simple_split_text,
@@ -188,3 +192,169 @@ def test_document_store_real_milvus_roundtrip(tmp_path):
         assert not asyncio.run(store.has_doc(file_hash))
     finally:
         store.close()
+
+
+def test_load_pdf_mineru_not_configured_returns_none(tmp_path, monkeypatch):
+    """未配置 MinerU（无 endpoint 且无 API Key）时静默跳过，返回 None。"""
+    from bot.package.knowledge import mineru_client
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+    monkeypatch.setattr(mineru_client, "mineru_base_url", lambda config: None)
+    config = BotConfig(_env_file=None, embed_dimensions=4)
+
+    assert _load_pdf_mineru(path, config) is None
+
+
+def test_load_pdf_mineru_returns_markdown_document(tmp_path, monkeypatch):
+    """MinerU 在线返回 Markdown 时，包装为 markdown 格式的 Document。"""
+    from bot.package.knowledge import mineru_client
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+    markdown = "# 标题\n\n文档正文"
+
+    monkeypatch.setattr(mineru_client, "mineru_base_url", lambda config: "https://mineru.net")
+    monkeypatch.setattr(mineru_client, "parse_pdf", lambda path, config: markdown)
+    config = BotConfig(_env_file=None, embed_dimensions=4, document_mineru_api_key="sk-abc")
+
+    docs = _load_pdf_mineru(path, config)
+    assert docs is not None
+    assert len(docs) == 1
+    assert docs[0].page_content == markdown
+    assert docs[0].metadata["parser"] == "mineru"
+    assert docs[0].metadata["format"] == "markdown"
+
+
+def test_load_pdf_mineru_fallback_on_empty(tmp_path, monkeypatch):
+    """MinerU 解析失败/返回空文本时返回 None，交由 LangChain/pypdf 降级。"""
+    from bot.package.knowledge import mineru_client
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+
+    monkeypatch.setattr(mineru_client, "mineru_base_url", lambda config: "https://mineru.net")
+    monkeypatch.setattr(mineru_client, "parse_pdf", lambda path, config: "")
+    config = BotConfig(_env_file=None, embed_dimensions=4, document_mineru_api_key="sk-abc")
+
+    assert _load_pdf_mineru(path, config) is None
+
+
+
+def test_load_pdf_mineru_agent_disabled_returns_none(tmp_path, monkeypatch):
+    """Agent 轻量解析开关关闭时直接跳过。"""
+    from bot.package.knowledge import mineru_client
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+    called = {"agent": False}
+    monkeypatch.setattr(
+        mineru_client,
+        "parse_pdf_agent",
+        lambda path, config: called.update(agent=True) or "mocked",
+    )
+    config = BotConfig(
+        _env_file=None,
+        embed_dimensions=4,
+        document_mineru_agent_enabled=False,
+    )
+    assert _load_pdf_mineru_agent(path, config) is None
+    assert not called["agent"]
+
+
+def test_load_pdf_mineru_agent_returns_markdown_document(tmp_path, monkeypatch):
+    """Agent 轻量解析返回 Markdown 时包装为 Document。"""
+    from bot.package.knowledge import mineru_client
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+    markdown = "# Agent 标题\n\n正文"
+
+    monkeypatch.setattr(mineru_client, "parse_pdf_agent", lambda path, config: markdown)
+    config = BotConfig(_env_file=None, embed_dimensions=4)
+
+    docs = _load_pdf_mineru_agent(path, config)
+    assert docs is not None
+    assert docs[0].page_content == markdown
+    assert docs[0].metadata["parser"] == "mineru-agent"
+    assert docs[0].metadata["format"] == "markdown"
+
+
+def test_load_pdf_mineru_agent_fallback_on_empty(tmp_path, monkeypatch):
+    """Agent 返回空文本时返回 None，继续下一重降级。"""
+    from bot.package.knowledge import mineru_client
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+
+    monkeypatch.setattr(mineru_client, "parse_pdf_agent", lambda path, config: "")
+    config = BotConfig(_env_file=None, embed_dimensions=4)
+
+    assert _load_pdf_mineru_agent(path, config) is None
+
+
+def test_load_pdf_three_tier_fallback_order(tmp_path, monkeypatch):
+    """PDF 解析严格按 精准 → Agent → 本地 三级降级。"""
+    from bot.package.knowledge import document_ingestion as di
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+    calls: list[str] = []
+
+    def fake_mineru(path, config):
+        calls.append("precise")
+
+    def fake_agent(path, config):
+        calls.append("agent")
+        return [Document(
+            page_content="# agent result",
+            metadata={"parser": "mineru-agent", "format": "markdown"},
+        )]
+
+    def fake_local(path):
+        calls.append("local")
+        return [Document(
+            page_content="local text",
+            metadata={"source": str(path), "page": 1},
+        )]
+
+    monkeypatch.setattr(di, "_load_pdf_mineru", fake_mineru)
+    monkeypatch.setattr(di, "_load_pdf_mineru_agent", fake_agent)
+    monkeypatch.setattr(di, "_load_pdf_langchain", fake_local)
+    config = BotConfig(_env_file=None, embed_dimensions=4)
+
+    docs = di._load_pdf(path, config)
+    assert [d.metadata.get("parser") for d in docs] == ["mineru-agent"]
+    # 精准失败后才试 Agent，命中后不再走本地
+    assert calls == ["precise", "agent"]
+
+
+def test_load_pdf_three_tier_full_fallback_to_local(tmp_path, monkeypatch):
+    """精准与 Agent 都失败时落到本地 LangChain/pypdf。"""
+    from bot.package.knowledge import document_ingestion as di
+
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4 fake")
+    calls: list[str] = []
+
+    monkeypatch.setattr(
+        di, "_load_pdf_mineru",
+        lambda path, config: calls.append("precise") or None,
+    )
+    monkeypatch.setattr(
+        di, "_load_pdf_mineru_agent",
+        lambda path, config: calls.append("agent") or None,
+    )
+    monkeypatch.setattr(
+        di, "_load_pdf_langchain",
+        lambda path: calls.append("local") or [Document(
+            page_content="local text",
+            metadata={"source": str(path), "page": 1, "parser": "langchain", "format": "text"},
+        )],
+    )
+    config = BotConfig(_env_file=None, embed_dimensions=4)
+
+    docs = di._load_pdf(path, config)
+    assert [d.metadata.get("parser") for d in docs] == ["langchain"]
+    assert calls == ["precise", "agent", "local"]
+

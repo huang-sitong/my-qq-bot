@@ -248,6 +248,15 @@ class BotConfig(BaseSettings):
         default=None,
         validation_alias="BOT_DOC_MINERU_ENDPOINT",
     )
+    document_mineru_api_key: str | None = Field(
+        default=None,
+        validation_alias="BOT_DOC_MINERU_API_KEY",
+    )
+    # Agent 轻量解析开关（免 Token，IP 限频）：作为 PDF 解析第二重降级
+    document_mineru_agent_enabled: Flag = Field(
+        default=True,
+        validation_alias="BOT_DOC_MINERU_AGENT_ENABLED",
+    )
     document_mineru_timeout: int = Field(
         default=300,
         gt=0,

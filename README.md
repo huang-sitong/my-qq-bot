@@ -29,7 +29,9 @@ uv run python main.py         # 启动 bot
 | `BOT_EMBED_API_KEY` | 嵌入专用 API key；未设置时回落 `API_KEY` |
 | `BOT_VISION_BASE_URL` | 视觉专用 OpenAI 兼容地址；未设置时回落 `BASE_URL` |
 | `BOT_DOC_COLLECTION` | 文档知识库 collection 名（默认 `documents`） |
-| `BOT_DOC_MINERU_ENDPOINT` | MinerU HTTP 服务地址；未配置时 PDF 自动降级 LangChain/pypdf |
+| `BOT_DOC_MINERU_ENDPOINT` | MinerU v4 精准解析 API 基地址（HTTP URL 直连，替代 Python SDK）；仅配 API Key 时回落 `https://mineru.net`；未配置时 PDF 自动降级 LangChain/pypdf |
+| `BOT_DOC_MINERU_API_KEY` | MinerU API Bearer Token（API 管理页面自定创建） |
+| `BOT_DOC_MINERU_AGENT_ENABLED` | MinerU Agent 轻量解析开关（默认开；免 Token、IP 限频、≤10MB/≤20 页），作为 PDF 解析第二重降级 |
 | `BOT_DOC_CHUNK_SIZE` / `BOT_DOC_CHUNK_OVERLAP` | 文档切块大小与重叠 |
 | `BOT_AUTO_REPLY` | 群聊非@消息自动回复总开关（默认关，可经 `/auto_reply` 运行时改） |
 | `BOT_AUTO_REPLY_RANDOM_RATE` | auto_reply 非@消息的随机回复概率，默认 `0.3` |
@@ -63,7 +65,7 @@ uv run python scripts/import_documents.py --dry-run docs/*.pdf
 说明：
 
 - 由于 `milvus-lite` 存在文件锁，建议在 Bot 停止时运行导入脚本；Bot 重启后即可通过 `search_documents` 检索。
-- PDF 优先使用 MinerU（需配置 `BOT_DOC_MINERU_ENDPOINT`），失败自动降级 LangChain / pypdf；
+- PDF 解析 3 重降级：① MinerU 精准解析 API（v4，需 `BOT_DOC_MINERU_ENDPOINT`/`BOT_DOC_MINERU_API_KEY`）→ ② MinerU Agent 轻量解析 API（v1，免 Token，`BOT_DOC_MINERU_AGENT_ENABLED`）→ ③ 本地 LangChain / pypdf；
 - 其他格式优先使用 LangChain 生态的轻量 loader，未安装 `langchain-community` 时使用内置 fallback；
 - 文档按内容哈希去重，重复导入自动跳过；
 - 文档写入独立的 `documents` collection，不参与聊天记录按线程淘汰；

@@ -3,8 +3,10 @@
 策略：
 - .txt / .json / .docx / .xlsx 走 LangChain 生态的轻量 loader；未安装
   langchain-community 时使用项目内轻量 fallback，保证脚本在最小依赖下可跑通。
-- .pdf 优先走 MinerU（Python SDK -> HTTP 服务），失败/结果为空时降级 LangChain
-  / pypdf 等本地解析器。
+- .pdf 解析做 3 重降级（见 .others/mineru.md）：
+  ① MinerU 精准解析 API（v4，需 BOT_DOC_MINERU_API_KEY/ENDPOINT：签名上传 → 轮询 → 取 full.md）；
+  ② MinerU Agent 轻量解析 API（v1，免 Token，≤10MB/≤20 页，BOT_DOC_MINERU_AGENT_ENABLED 开关）；
+  ③ 本地 LangChain / pypdf 解析。
 - 解析结果统一为 langchain_core.documents.Document，再按文档类型选择结构感知
   切分器（可用时优先 langchain-text-splitters，否则使用内置简单切分）。
 - 入库到独立 documents collection，并做 file_hash 去重。
@@ -103,62 +105,41 @@ def _load_xlsx(path: Path) -> list[Document]:
     return [Document(page_content="\n".join(parts), metadata={"source": str(path)})]
 
 
-def _extract_markdown(result) -> str:
-    """从 MinerU 返回值中尽力提取 Markdown 文本。"""
-    if isinstance(result, str):
-        return result
-    if hasattr(result, "markdown"):
-        value = result.markdown
-        if isinstance(value, str):
-            return value
-    if isinstance(result, dict):
-        for key in ("markdown", "text", "content"):
-            value = result.get(key)
-            if isinstance(value, str):
-                return value
-        pages = result.get("pages")
-        if isinstance(pages, list):
-            return "\n\n".join(_extract_markdown(page) for page in pages)
-    if isinstance(result, list):
-        return "\n\n".join(_extract_markdown(item) for item in result if item)
-    return str(result)
-
-
 def _load_pdf_mineru(path: Path, config: BotConfig) -> list[Document] | None:
-    """尝试使用 MinerU Python SDK 解析 PDF；失败/不可用时返回 None。"""
-    try:
-        from mineru import MinerU  # type: ignore[import-not-found]
-    except Exception:
-        logger.debug("MinerU SDK unavailable, use LangChain/pypdf fallback", exc_info=True)
+    """第 1 重降级：MinerU 精准解析 API（v4，需 Token/Endpoint）；失败返回 None。"""
+    from . import mineru_client
+
+    if mineru_client.mineru_base_url(config) is None:
+        # 未配置精准解析（无 endpoint 且无 API Key），继续走下一重降级
         return None
 
-    endpoint = getattr(config, "document_mineru_endpoint", None)
-    timeout = getattr(config, "document_mineru_timeout", 300)
-    try:
-        if endpoint:
-            client = MinerU(endpoint=endpoint, timeout=timeout)
-        else:
-            client = MinerU()
-        if hasattr(client, "parse"):
-            result = client.parse(str(path))
-        elif hasattr(client, "convert"):
-            result = client.convert(str(path))
-        elif callable(client):
-            result = client(str(path))
-        else:
-            raise RuntimeError("MinerU SDK 实例没有可用的 parse/convert/__call__ 方法")
-    except Exception:
-        logger.warning("MinerU parse failed for %s, will fallback to LangChain", path, exc_info=True)
-        return None
-
-    markdown = _extract_markdown(result)
+    markdown = mineru_client.parse_pdf(path, config)
     if not markdown or not markdown.strip():
-        logger.warning("MinerU returned empty text for %s, fallback to LangChain", path)
+        logger.warning("MinerU precise parse returned empty text for %s", path)
         return None
     return [
         Document(
             page_content=markdown,
             metadata={"source": str(path), "parser": "mineru", "format": "markdown"},
+        )
+    ]
+
+
+def _load_pdf_mineru_agent(path: Path, config: BotConfig) -> list[Document] | None:
+    """第 2 重降级：MinerU Agent 轻量解析 API（v1，免 Token）；失败返回 None。"""
+    from . import mineru_client
+
+    if not getattr(config, "document_mineru_agent_enabled", True):
+        return None
+
+    markdown = mineru_client.parse_pdf_agent(path, config)
+    if not markdown or not markdown.strip():
+        logger.warning("MinerU agent parse returned empty text for %s", path)
+        return None
+    return [
+        Document(
+            page_content=markdown,
+            metadata={"source": str(path), "parser": "mineru-agent", "format": "markdown"},
         )
     ]
 
@@ -178,7 +159,7 @@ def _load_pdf_langchain(path: Path) -> list[Document]:
         from pypdf import PdfReader  # type: ignore[import-not-found]
     except ImportError as exc:  # pragma: no cover - depends on optional deps
         raise RuntimeError(
-            "解析 .pdf 需要安装 MinerU 或 langchain-community + pypdf"
+            "解析 .pdf 需要配置 MinerU（BOT_DOC_MINERU_ENDPOINT/API_KEY）或安装 langchain-community + pypdf"
         ) from exc
 
     reader = PdfReader(str(path))
@@ -196,9 +177,15 @@ def _load_pdf_langchain(path: Path) -> list[Document]:
 
 
 def _load_pdf(path: Path, config: BotConfig) -> list[Document]:
+    # 1. MinerU 精准解析（v4）
     docs = _load_pdf_mineru(path, config)
     if docs:
         return docs
+    # 2. MinerU Agent 轻量解析（v1，免 Token）
+    docs = _load_pdf_mineru_agent(path, config)
+    if docs:
+        return docs
+    # 3. 本地 LangChain / pypdf
     docs = _load_pdf_langchain(path)
     for doc in docs:
         doc.metadata.setdefault("parser", "langchain")

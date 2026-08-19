@@ -9,8 +9,9 @@
 说明：
 - 支持文件、目录、shell 通配符；目录会递归扫描受支持的扩展名；
 - 仅支持 .docx / .pdf / .xlsx / .txt / .json；
-- PDF 优先使用 MinerU（需配置 BOT_DOC_MINERU_ENDPOINT 或安装 mineru SDK），
-  失败自动降级 LangChain / pypdf；
+- PDF 解析 3 重降级：① MinerU 精准解析（v4，需 BOT_DOC_MINERU_API_KEY/ENDPOINT）→
+  ② MinerU Agent 轻量解析（v1，免 Token，BOT_DOC_MINERU_AGENT_ENABLED）→
+  ③ 本地 LangChain / pypdf；
 - 写入独立 documents collection，不参与聊天记录淘汰；
 - 已导入过的文件会按内容哈希自动跳过。
 """
