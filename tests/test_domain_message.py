@@ -1,5 +1,5 @@
-from conversation import IncomingMessage
-from domain import IndexTurnTask
+from bot.package.conversation import IncomingMessage
+from bot.package.domain import IndexTurnTask
 
 
 def test_incoming_message_is_immutable_domain_event():

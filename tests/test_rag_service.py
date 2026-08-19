@@ -6,8 +6,8 @@
 import asyncio
 from datetime import datetime
 
-from common import BotConfig
-from knowledge.service import TS_FMT, RagService
+from bot.package.config import BotConfig
+from bot.package.knowledge.service import TS_FMT, RagService
 
 
 class FakeMilvusStore:
@@ -234,7 +234,7 @@ def test_index_turn_then_search_returns_content(tmp_path):
     若 metadata 缺 content，search 返回的 hit 无该键，工具渲染会 KeyError
     降级为「工具执行失败。」（库行里 text 仅作 BM25 输入，不带出检索结果）。
     """
-    from knowledge.milvus import MilvusStore
+    from bot.package.knowledge.milvus import MilvusStore
 
     class FE:
         """确定性假嵌入器（dim=4），query 向量指向含"嵌入"的文档。"""

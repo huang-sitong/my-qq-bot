@@ -2,7 +2,7 @@
 
 import asyncio
 
-from commands import (
+from bot.package.commands import (
     Command,
     CommandActor,
     CommandContext,
@@ -12,7 +12,7 @@ from commands import (
     can_run,
     run_command,
 )
-from common import BotConfig
+from bot.package.config import BotConfig
 
 
 async def _ok(ctx):

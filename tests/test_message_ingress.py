@@ -1,7 +1,7 @@
 """SatoriMessageIngress：协议事件校验与领域消息归一化。"""
 
-from bot.core.ingress import SatoriMessageIngress
-from domain.satori import Channel, ChannelType, EventBody, Message, User
+from bot.package.platform.satori import Channel, ChannelType, EventBody, Message, User
+from bot.package.platform.satori.ingress import SatoriMessageIngress
 
 
 def _event(content: str | None = "你好") -> EventBody:

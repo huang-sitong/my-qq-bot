@@ -2,13 +2,13 @@
 
 from pathlib import Path
 
-import commands as core_commands
-import conversation.router as core_router
-import domain.bash as core_run_bash
-import knowledge.domain as core_knowledge_domain
-import skill as core_skills
-import vision as core_vision
-from commands import (
+import bot.package.commands as core_commands
+import bot.package.conversation.router as core_router
+import bot.package.domain.bash as core_run_bash
+import bot.package.knowledge.domain as core_knowledge_domain
+import bot.package.skill as core_skills
+import bot.package.vision as core_vision
+from bot.package.commands import (
     Command,
     CommandActor,
     CommandContext,
@@ -16,13 +16,13 @@ from commands import (
     CommandServices,
     ParsedCommand,
 )
-from conversation import (
+from bot.package.conversation import (
     BotIdentity,
     RouteAction,
     RouteDecision,
 )
-from domain import BashConfig, ImageDescription, IndexTurnTask
-from skill import Skill
+from bot.package.domain import BashConfig, ImageDescription, IndexTurnTask
+from bot.package.skill import Skill
 
 
 def test_data_objects_are_single_source_in_contexts():

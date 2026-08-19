@@ -1,6 +1,6 @@
-from bot.core.router import RouteAction, route_incoming
-from commands import Command, CommandRegistry
-from conversation.message import IncomingMessage
+from bot.package.commands import Command, CommandRegistry
+from bot.package.conversation.message import IncomingMessage
+from bot.package.pipeline.router import RouteAction, route_incoming
 
 
 async def _ping(ctx):

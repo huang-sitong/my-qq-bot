@@ -4,13 +4,13 @@ import asyncio
 
 import pytest
 
-import bot.core.llm as llm_module
-import protocol.websocket.client as ws_client
-from bot.core.llm import setup_llm
-from common import BotConfig
-from domain.satori.api import MESSAGE_CREATE, MessageCreateParams
-from protocol.http.client import SatoriApiClient
-from protocol.websocket.client import SatoriClient
+import bot.package.core.llm as llm_module
+import bot.package.platform.satori.websocket as ws_client
+from bot.package.config import BotConfig
+from bot.package.core.llm import setup_llm
+from bot.package.platform.satori.api import MESSAGE_CREATE, MessageCreateParams
+from bot.package.platform.satori.http import SatoriApiClient
+from bot.package.platform.satori.websocket import SatoriClient
 
 
 class _FakeChatOpenAI:

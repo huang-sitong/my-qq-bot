@@ -4,8 +4,8 @@ import asyncio
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from orchestration.nodes.action_node.skill_manager import skill_manager_node
-from skill import Skill, SkillRegistry
+from bot.package.orchestration.nodes.action_node.skill_manager import skill_manager_node
+from bot.package.skill import Skill, SkillRegistry
 from tests.fakes import make_state
 
 

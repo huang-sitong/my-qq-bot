@@ -2,7 +2,7 @@
 
 import asyncio
 
-from common.queue import InMemoryMessageQueue
+from bot.package.utils.queue import InMemoryMessageQueue
 
 
 def test_in_memory_queue_put_get_and_qsize():

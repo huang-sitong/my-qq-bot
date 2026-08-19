@@ -4,12 +4,12 @@ import asyncio
 
 from langchain_core.messages import HumanMessage
 
-from orchestration.nodes.action_node.describe_image import (
+from bot.package.orchestration.nodes.action_node.describe_image import (
     build_multimodal_content,
     describe_image_node,
 )
+from bot.package.vision.domain import ImageDescription
 from tests.fakes import FakeVisionService, make_state
-from vision.domain import ImageDescription
 
 
 class _PerCallVision:
@@ -45,7 +45,7 @@ def _patch_download(monkeypatch, urls_by_src):
         return [urls_by_src.get(src, "") for src in srcs]
 
     monkeypatch.setattr(
-        "orchestration.nodes.action_node.describe_image.download_images_as_data_urls",
+        "bot.package.orchestration.nodes.action_node.describe_image.download_images_as_data_urls",
         fake_download,
     )
 

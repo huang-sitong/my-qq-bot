@@ -11,8 +11,8 @@ from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 
-from execution.tools import build_tools
-from memory import MemoryStore
+from bot.package.memory import MemoryStore
+from bot.package.tools import build_tools
 from tests.fakes import make_state
 
 REMEMBER_CALL = AIMessage(content="", tool_calls=[

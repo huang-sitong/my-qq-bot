@@ -12,7 +12,7 @@ uv run python main.py         # 启动 bot
 
 ## 配置
 
-所有运行参数统一由 `src/common/config.py` 的 `BotConfig`（pydantic-settings）从 `.env` 读取，完整环境变量清单见 `.env-template`。核心项：
+所有运行参数统一由 `src/bot/package/config/settings.py` 的 `BotConfig`（pydantic-settings）从 `.env` 读取，完整环境变量清单见 `.env-template`。核心项：
 
 | 变量 | 说明 |
 |---|---|
@@ -84,7 +84,7 @@ uv run python -m pytest
 ## 架构
 
 ```text
-Satori 事件 -> MessageHandler -> Ingress -> MessageWorkerPool
+Satori 事件 -> SatoriAdapter -> Ingress -> MessagePipeline/WorkerPool
   -> Router -> Dispatcher
     - COMMAND       -> 图外命令 handler，不进图
     - REPLY         -> ContextCompactor -> LangGraph -> 发送回复 -> IndexWorker
@@ -94,25 +94,26 @@ Satori 事件 -> MessageHandler -> Ingress -> MessageWorkerPool
 
 同 thread 消息由 per-thread lock 串行；`BOT_MESSAGE_BATCH_MAX` 开启时，worker 在进入图前机会式合并连续突发消息，整批一次图调用、一条回复。批内命令仍按原位置单独执行，配置变更可作用于批内后续消息，RAG 索引按每条消息入队。
 
-主要模块：
+主要模块（统一在 `src/bot/package/` 下）：
 
-- `main.py` — 装配 config / LLM / graph / handler / compactor / IndexWorker / RagService / MemoryStore
-- `src/protocol/` — Satori/OneBot 协议接入（WS/HTTP 收发）
-- `src/orchestration/` — 会话编排：LangGraph 工作流组装与图节点
-- `src/execution/` — 工具执行：内部工具 + MCP 工具加载
-- `src/context/` — 上下文管理：消息解析、token 估算、回复判定等纯工具
-- `src/bot/core/` — 消息流水线（ingress/router/dispatcher/worker/llm）
-- `src/commands/` — 图外斜杠命令上下文
-- `src/skill/` — 技能管理上下文
-- `src/knowledge/` — 群聊历史 hybrid search 与后台索引（RAG）
-- `src/memory/` — 用户长期记忆上下文
-- `src/vision/` — 图片理解上下文
-- `src/bot/core/worker.py` — 消息队列、per-thread 串行与批量合并
-- `src/bot/core/router.py` — 确定性回复判定
-- `src/bot/core/dispatcher.py` — 命令 / 上下文 / 回复图分发
-- `src/orchestration/graph.py` — 最小 LangGraph 对话与工具回环
-- `src/orchestration/compaction.py` — 图外上下文压缩
-- `src/domain/` — Satori 协议数据对象与跨上下文共享 DTO（media/tasks/bash）
-- 旧的 `bot.transport`、`bot.core.rag`、`bot.core.skills`、`bot.core.vision`、`bot.core.commands`、`domain.bot` 等兼容层已彻底移除
+- `core/` — `app.py`（运行时容器）与 `boot.py`（装配入口）
+- `pipeline/` — 协议无关事件流水线（router/dispatcher/worker/pipeline）
+- `platform/satori/` — Satori 协议模型、WS/HTTP 客户端与事件归一化
+- `utils/` — 消息解析、token 估算、回复判定、日志/队列/重试等纯工具
+- `config/` — `BotConfig` 配置类
+- `tools/` — 内部工具纯函数与 `build_tools` 装配
+- `mcp/` — MCP server 配置加载与工具加载
+- `commands/` — 图外斜杠命令上下文
+- `conversation/` — 会话领域对象
+- `domain/` — 共享领域对象与端口（ports/tasks/media/bash/prompts/constants）
+- `knowledge/` — 群聊历史 hybrid search 与后台索引（RAG）
+- `memory/` — 用户长期记忆上下文
+- `orchestration/` — 会话编排：LangGraph 工作流组装与图节点
+- `skill/` — 技能管理上下文
+- `vision/` — 图片理解上下文
+
+旧顶层路径、`src/bot/core/` 目录与 `src/bot/handler.py` 已删除，
+所有导入统一使用 `src/bot/package/` 路径；完整目标架构与迁移记录见
+`docs/architecture.md`。
 
 更完整的架构约定和开发细节见 `AGENTS.md`。

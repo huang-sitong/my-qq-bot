@@ -19,8 +19,8 @@ import pathlib
 import pytest
 import websockets
 
-from common import BotConfig
-from domain.satori import EventBody  # show what the current model keeps/drops
+from bot.package.config import BotConfig
+from bot.package.platform.satori import EventBody  # show what the current model keeps/drops
 
 logging.basicConfig(level=logging.WARNING)
 

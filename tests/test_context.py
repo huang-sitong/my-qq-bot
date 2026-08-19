@@ -6,7 +6,7 @@
 
 from langchain_core.messages import SystemMessage
 
-from context.utils import build_system_messages
+from bot.package.utils import build_system_messages
 
 
 def test_builds_persona_and_summary_layers():
@@ -35,7 +35,7 @@ def test_estimate_builds_same_layers_as_builder():
     from langchain_core.messages import HumanMessage
     from langchain_core.messages.utils import count_tokens_approximately
 
-    from context.utils import estimate_context_tokens
+    from bot.package.utils import estimate_context_tokens
 
     msgs = [HumanMessage(content="你好")]
     expected = build_system_messages("你是助手", "摘要") + msgs
@@ -49,7 +49,7 @@ def test_format_messages_for_summary_extracts_text_from_multimodal():
     """多模态 content 数组 → 摘要只取文本块，图片归一为 [图片]，绝不带 base64。"""
     from langchain_core.messages import HumanMessage
 
-    from context.utils import format_messages_for_summary
+    from bot.package.utils import format_messages_for_summary
 
     msg = HumanMessage(content=[
         {"type": "text", "text": "看图 "},
@@ -65,7 +65,7 @@ def test_summary_trim_accepts_callable_counter():
     from langchain_core.messages import HumanMessage
     from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 
-    from orchestration.nodes.action_node.summarize import _approx_token_counter
+    from bot.package.orchestration.nodes.action_node.summarize import _approx_token_counter
 
     msgs = [HumanMessage(content="hello world hello world")]
     # 计数器与 estimate_context_tokens 的 1.5 字符/token 语义一致
@@ -78,7 +78,7 @@ def test_summary_trim_accepts_callable_counter():
 
 """技能层：索引 + 激活正文注入；估算与实际注入一致。"""
 
-from skill import Skill, SkillRegistry
+from bot.package.skill import Skill, SkillRegistry
 
 
 def test_skill_index_and_active_layers_injected():
@@ -134,7 +134,7 @@ def test_estimate_includes_skill_layers():
     from langchain_core.messages import HumanMessage
     from langchain_core.messages.utils import count_tokens_approximately
 
-    from context.utils import estimate_context_tokens
+    from bot.package.utils import estimate_context_tokens
 
     registry = SkillRegistry({"translate": Skill(name="translate", description="中英互译", body="## 规则")})
     msgs = [HumanMessage(content="你好")]

@@ -11,9 +11,8 @@ import asyncio
 import hashlib
 import json
 
-from common import BotConfig
-from execution.tools.search_documents import search_documents
-from knowledge.document_ingestion import (
+from bot.package.config import BotConfig
+from bot.package.knowledge.document_ingestion import (
     _load_docx,
     _load_json,
     _load_text,
@@ -21,7 +20,8 @@ from knowledge.document_ingestion import (
     _simple_split_text,
     ingest_files,
 )
-from knowledge.document_store import DocumentStore
+from bot.package.knowledge.document_store import DocumentStore
+from bot.package.tools.builtin.search_documents import search_documents
 
 TXT = """\
 这是第一段。用于测试文本解析。

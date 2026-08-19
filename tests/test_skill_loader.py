@@ -1,7 +1,7 @@
 # tests/test_skill_loader.py
 """SkillRegistry 加载器测试：frontmatter 解析、非法跳过、索引截断。"""
 
-from skill import Skill, SkillRegistry
+from bot.package.skill import Skill, SkillRegistry
 
 
 def _write_skill(tmp_path, name, md_text):

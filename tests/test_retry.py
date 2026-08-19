@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from common.retry import retry_async
+from bot.package.utils.retry import retry_async
 
 
 def test_retry_async_success_without_retry():

@@ -1,6 +1,6 @@
 """bot/core/utils/content_parser 单元测试：Satori content 分类 + 附件 + 清洗文本。"""
 
-from context.utils import (
+from bot.package.utils import (
     Attachment,
     MessageKind,
     classify_content,

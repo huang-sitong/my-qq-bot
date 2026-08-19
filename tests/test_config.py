@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from common import DEFAULT_PERSONA_PROMPT, BotConfig
+from bot.package.config import BotConfig
+from bot.package.domain.prompts import DEFAULT_PERSONA_PROMPT
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -389,5 +390,5 @@ def test_production_code_does_not_read_env_directly():
 
 
 def test_bash_tool_hint_exported_from_common():
-    from common import BASH_TOOL_HINT
+    from bot.package.domain.prompts import BASH_TOOL_HINT
     assert "run_bash" in BASH_TOOL_HINT

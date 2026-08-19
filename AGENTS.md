@@ -16,42 +16,51 @@ uv run python -m pytest  # run tests
 ## Architecture
 
 ```
-main.py                 # entrypoint — 装配 BotConfig / LLM / Graph / Handler / ContextCompactor / IndexWorker / RagService / MemoryStore
-src/common/             # 共享配置 + 提示词（单一事实来源）
-  config.py             #   BotConfig pydantic-settings（env 校验、严格布尔 Flag）
-  mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
-  prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / VISION / RETRIEVAL_TASK）
-src/protocol/           # Satori/OneBot 协议接入：websocket + http（send_message / call_api / send_file）
-src/orchestration/     # 会话编排：LangGraph 工作流组装 + 图节点 + 上下文压缩服务
-  graph.py              #   create_graph → (graph, checkpointer)
-  compaction.py         #   ContextCompactor — 图外上下文压缩（自动 compact_if_needed / 命令 force_compact）
-  nodes/                #   llm_node(call_llm) / action_node(describe_image, skill_manager) / summarize helper
-src/execution/          # 工具执行：内部工具纯函数 + factory.build_tools + MCP 外部工具加载
-  tools/                #   factory + search_chat_history / user_memory / send_file / run_bash
-  mcp/                  #   load_mcp_tools（逐 server 降级）
-src/context/            # 上下文管理：消息解析 / context(token 估算) / reply_policy / routing
-  utils/                #   纯函数：content_parser / context / messages / reply_policy / routing
-src/bot/
+main.py                         # 薄入口 — create_app() -> BotApplication.run()
+src/bot/package/                # 应用包主体（所有上下文统一在此管理）
   core/
-    ingress.py          # SatoriMessageIngress — EventBody 校验 → IncomingMessage（生成 event_id/trace_id）
-    router.py           # route_incoming — 协议无关路由（RouteDecision 数据对象在 src/conversation/router.py）
-    dispatcher.py       # MessageDispatcher — RouteDecision → 命令/graph/context/system/media 流水线
-    worker.py           # MessageWorkerPool — 消息队列 + thread lock + Router + Dispatcher
-    llm.py              # ChatOpenAI 工厂（读 BASE_URL / API_KEY）
-  handler.py            # MessageHandler — 协议适配门面：EventBody → Ingress → WorkerPool
-src/commands/           # 图外斜杠指令上下文：parser / registry / builtin / services
-src/skill/              # 技能管理上下文：SkillRegistry + load/unload 工具
-src/knowledge/          # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker
-src/memory/             # 用户长期记忆上下文：MemoryStore
-src/vision/             # 视觉理解上下文：VisionService + 图片下载
-src/domain/             # 共享领域/协议数据对象（懒加载）：satori/ + 跨上下文 DTO（media/tasks/bash）
-db/                     # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
+    app.py                      #   BotApplication：依赖容器 + start/run/stop
+    boot.py                     #   create_app：装配全部上下文与基础设施
+    database.py                 #   DatabaseManager（db 目录与路径）
+    llm.py                      #   setup_llm — ChatOpenAI 工厂
+  pipeline/                     # 协议无关事件流水线
+    pipeline.py                 #   MessagePipeline：队列/去重/worker 生命周期门面
+    worker.py                   #   MessageWorkerPool — 消息队列 + thread lock + burst 合并
+    router.py                   #   route_incoming — RouteDecision
+    dispatcher.py               #   MessageDispatcher — 命令/graph/context/system/media 分发
+    contracts.py                #   MessageRouter / MessageSink / ContextCompactorPort
+  utils/                        # 纯工具与横切设施（原 context/utils + common 工具）
+    content_parser.py / context.py / messages.py / reply_policy.py / routing.py
+    logging.py / paths.py / queue.py / retry.py
+  platform/                     # 平台适配层；目前只有 Satori
+    base.py                     #   EventSource / PlatformAdapter 端口
+    satori/                     #   enums/models/events/api + ingress/http/websocket + adapter
+  config/
+    settings.py                 #   BotConfig pydantic-settings（env 校验、严格布尔 Flag）
+  tools/                        # 工具装配：factory.py + builtin/* 纯函数
+  mcp/                          # MCP：config.py 配置加载 + client.py 工具加载
+  commands/                     # 图外斜杠指令上下文：parser / registry / builtin / services
+  conversation/                 # 会话领域对象：IncomingMessage / RouteDecision / BotState / identity
+  domain/                       # 共享领域对象与端口：ports / tasks / media / bash / prompts / constants
+  knowledge/                    # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker
+  memory/                       # 用户长期记忆上下文：MemoryStore
+  orchestration/                # 会话编排：LangGraph 工作流 + 图节点 + ContextCompactor
+  skill/                        # 技能管理上下文：SkillRegistry + load/unload 工具
+  vision/                       # 视觉理解上下文：VisionService + 图片下载
+db/                             # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
+
+路径约束：旧顶层包（`src/common/`、`src/context/`、`src/execution/`、
+`src/protocol/`、`src/commands/`、`src/conversation/`、`src/domain/`、
+`src/knowledge/`、`src/memory/`、`src/orchestration/`、`src/skill/`、
+`src/vision/`）、旧 `src/bot/core/` 目录与 `src/bot/handler.py`
+均已删除；源码与测试统一从 `src/bot/package/` 路径导入。完整迁移记录见
+`docs/architecture.md`。
 
 ## Data flow
 
 ```
-WS 事件 → EventBody → MessageHandler.handle() → SatoriMessageIngress → IncomingMessage（event_id/trace_id）
+WS 事件 → EventBody → SatoriAdapter._on_message() → SatoriMessageIngress → IncomingMessage（event_id/trace_id）
   → MessageWorkerPool 消息队列（N 个 asyncio worker，按 thread_id 锁串行；锁内机会式合并同会话连续消息，
      上限 BOT_MESSAGE_BATCH_MAX，整批一次路由/一次图调用/一条回复；命令消息在批内原位单独执行）
   → Router.route_incoming() → RouteDecision
@@ -83,7 +92,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 ## Key patterns
 
-**Lazy-loading `domain/`**：`src/domain/__init__.py` 用 `__getattr__` + `_module_map` 按名懒加载子模块。新增领域数据对象或 Satori 模型/参数时同步 `__all__` 与 `_module_map`。
+**Lazy-loading `domain/`**：`src/bot/package/domain/__init__.py` 用 `__getattr__` + `_module_map` 按名懒加载共享 DTO；新增领域数据对象时同步 `__all__` 与 `_module_map`。Satori 协议模型改在 `src/bot/package/platform/satori/` 维护。
 
 **Node DI**：`graph.py` 用 `functools.partial` 注入（非闭包）；节点文件均为独立 `async def(state, ...) -> dict`。
 
@@ -99,11 +108,11 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 **RAG（群聊历史检索）**：
 - LLM 主动触发：`search_chat_history` 绑定为工具，返回 tool_calls 时经 ToolNode 执行并回环；`tool_rounds` 达 `rag_max_agent_rounds` 强制收尾
 - 检索双模式：`hybrid_search`（dense ANN+score 阈值 + sparse BM25/jieba，RRF k=60 融合，当前群优先、不足跨群补齐）；属性检索（`search_by_user`，milvus expr 过滤：`person`/`content_keyword`/ISO 时间窗，thread_id=None 跨全部群）。`hours`/`start_time`/`end_time` 入口 `normalize_time` 规范化
-- 索引任务：graph 返回后 handler 构造 `IndexTurnTask` 入队 `IndexWorker`（独立 asyncio.Queue + 单 FIFO consumer）；reply 轮 2 条（用户+Bot）、context_only 1 条（仅用户）、图片 user_message 追加 `[图片]` 占位符；纯媒体但有 `reply_text` 时仍存 bot 回复，两者皆空才跳过。timestamp 为 ISO `YYYY-MM-DD HH:MM:SS`（字典序==时间序）；记录显式 sender/receiver（`sender_id/name`、`receiver_id/name`）。队列满/失败只降级丢任务，不阻塞消息 worker。
+- 索引任务：graph 返回后 pipeline dispatcher 构造 `IndexTurnTask` 入队 `IndexWorker`（独立 asyncio.Queue + 单 FIFO consumer）；reply 轮 2 条（用户+Bot）、context_only 1 条（仅用户）、图片 user_message 追加 `[图片]` 占位符；纯媒体但有 `reply_text` 时仍存 bot 回复，两者皆空才跳过。timestamp 为 ISO `YYYY-MM-DD HH:MM:SS`（字典序==时间序）；记录显式 sender/receiver（`sender_id/name`、`receiver_id/name`）。队列满/失败只降级丢任务，不阻塞消息 worker。
 - 嵌入：OpenAI 兼容 `/v1/embeddings`，Query/Document 共用 Instruct 前缀，按 `(model, 任务前缀, 角色, 原文)` 哈希落盘缓存（换模型/改 RETRIEVAL_TASK 自动失效）；嵌入/视觉 base URL 与 API key 独立配置，未设时回落主 LLM `BASE_URL`/`API_KEY`
 - 缓存并发：`EmbeddingCache` 单 sqlite 连接，消息检索与 IndexWorker 会并发访问，所有 `get/mget/set/mset/count/close` 必须持同一把锁串行化；新增缓存方法不得裸用 `conn`。
 - env：`BOT_RAG_ENABLED`/`BOT_EMBED_MODEL`/`BOT_EMBED_BASE_URL`/`BOT_EMBED_API_KEY`/`BOT_EMBED_DIMENSIONS`/`BOT_EMBED_CACHE_ENABLED`/`BOT_EMBED_CACHE_MAX_ENTRIES`/`BOT_RAG_TOP_K`/`BOT_RAG_SCORE_THRESHOLD`/`BOT_RAG_RETENTION_PER_THREAD`/`BOT_RAG_MAX_AGENT_ROUNDS`；视觉 `BOT_VISION_ENABLED`/`BOT_VISION_MODEL`/`BOT_VISION_BASE_URL`/`BOT_VISION_API_KEY`/`BOT_VISION_MAX_IMAGES`/`BOT_VISION_TIMEOUT`；多模态 `BOT_LLM_MULTIMODAL`（0=视觉服务/1=主 LLM）
-- MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS_FILE`/`BOT_MCP_TOOL_NAME_PREFIX`；server 定义集中在可提交的 `config/mcp_servers.json`（`{"servers": {...}}`，密钥用 `${ENV_VAR}` 占位），加载 `src/common/mcp.py::load_mcp_servers_from_file`（相对路径按项目根解析、缺失/损坏降级空、插值缺变量→空串；env 必传、不读 os.environ）；main.py 用 `dotenv_values(find_dotenv())` 读 .env 内容做插值源，再 `client.py::load_mcp_tools` 加载；加载后注入 MCP_TOOL_HINT 引导
+- MCP：`BOT_MCP_ENABLED`/`BOT_MCP_SERVERS_FILE`/`BOT_MCP_TOOL_NAME_PREFIX`；server 定义集中在可提交的 `config/mcp_servers.json`（`{"servers": {...}}`，密钥用 `${ENV_VAR}` 占位），加载 `bot.package.mcp.config::load_mcp_servers_from_file`（相对路径按项目根解析、缺失/损坏降级空、插值缺变量→空串；env 必传、不读 os.environ）；main.py 用 `dotenv_values(find_dotenv())` 读 .env 内容做插值源，再 `client.py::load_mcp_tools` 加载；加载后注入 MCP_TOOL_HINT 引导
 
 **文档知识库（Document Ingestion）**：
 - 独立于聊天记录：`DocumentStore` 使用 `documents` collection（`BOT_DOC_COLLECTION`），schema 含 `doc_id/file_hash/file_name/file_type/page/chunk_index/source_path/imported_at`，不走聊天线程淘汰。
@@ -115,16 +124,16 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **记忆工具**：注入 MemoryStore 后 call_llm 绑定 `remember/recall_user_memory` 工具 + MEMORY_TOOL_HINT，LLM 自行决定读写；工具暴露 `user_id`/`user_name` 参数，批内可指定目标发言者，缺失时回退最近一条 HumanMessage 元数据，底层官方 AsyncSqliteStore 全 async。旧"图前全量注入 + 图外抽取"方案已移除。
 
-**技能模块**：`Skill` 纯数据对象在 `src/skill/domain.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：handler 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
+**技能模块**：`Skill` 纯数据对象在 `src/bot/package/skill/domain.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：dispatcher/pipeline 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
 
-**指令模块（图外斜杠指令）**：命令数据模型统一在 `src/commands/domain.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`），应用服务容器 `CommandServices` 在 `src/commands/services.py`；`src/commands` 包含 parser/registry/builtin/services。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_node(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
+**指令模块（图外斜杠指令）**：命令数据模型统一在 `src/bot/package/commands/domain.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`），应用服务容器 `CommandServices` 在 `src/bot/package/commands/services.py`；`bot.package.commands` 包含 parser/registry/builtin/services。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_node(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
 
 **Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 describe_image/skill_manager；`summarize_node` 作为压缩 helper 供 ContextCompactor 复用）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）。
 
 ## Gotchas
 
-- **`domain/` 包**：领域/协议数据对象统一在 `src/domain/`，包名避免与内置 `object` 混淆。始终 `from domain.*` 导入。
-- **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`，统一从 `common.constants` 导入）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
+- **`domain/` 包**：共享领域对象与端口统一在 `src/bot/package/domain/`；Satori 协议模型在 `src/bot/package/platform/satori/`。始终按目标包路径导入。
+- **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`，统一从 `domain.constants` 导入）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），Router/decide_reply 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
 - **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。
@@ -134,6 +143,6 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 - **严格布尔解析（Flag）**：布尔 env 只接受 `1/0/true/false/yes/no/on/off/空`，非法值抛 ValidationError 启动崩——有意 fail-fast。
 - **db/**：启动自动建目录；库文件全部惰性重建（删除→重启重建）。checkpoint.sqlite 含会话状态、memory.sqlite 含用户记忆，**是真数据**。`BOT_DB_DIR`(默认 `db`)。
 - **milvus-lite**：集合 `chat` 双向量（`vector` HNSW/COSINE + `sparse` BM25，text jieba analyzer），timestamp TEXT ISO，`_prune_thread` 超 `rag_retention_per_thread` Python 侧排序删最旧（query 不支持 order_by，动态字段须先 `list()` 物化）。`_ensure_collection` 校验 vector dim，维度漂移 DROP 重建；末尾统一 `load_collection`（新进程集合默认 released，查询前必须 load，跨进程脚本同）。新进程 hit 动态字段在 `entity` 子字典，`_dense_hit`/`_sparse_hit` 统一展平。**pymilvus 直连须覆盖 `grpc_options` 防 `too_many_pings` GOAWAY**（官方激进 keepalive 与 milvus-lite 默认 ping 策略冲突；MilvusStore 已处理，新增客户端须同样覆盖）。
-- **工具定位**：纯函数在 `tools/search_chat_history.py`、`tools/user_memory.py`、`skills/tools.py`、`tools/run_bash.py`、`tools/send_file.py`；`build_tools` 包装为 BaseTool（闭包绑服务 + thread_id/channel_id 经 InjectedState 注入，记忆工具的 user_id/user_name 由 LLM 传参、缺失回退 HumanMessage 元数据 + 异常降级）。ToolNode `handle_tool_errors`：除 `ToolInvocationError`（原样返回逐字段校验信息供 LLM 纠正）外统一降级、按类名记日志（防 Tavily URL 泄漏）。MemoryStore 首次启动自动迁移旧 `user_memories` 表进 `store` 后 DROP。
+- **工具定位**：纯函数在 `bot/package/tools/builtin/search_chat_history.py`、`bot/package/tools/builtin/user_memory.py`、`skills/tools.py`、`bot/package/tools/builtin/run_bash.py`、`bot/package/tools/builtin/send_file.py`；`build_tools` 包装为 BaseTool（闭包绑服务 + thread_id/channel_id 经 InjectedState 注入，记忆工具的 user_id/user_name 由 LLM 传参、缺失回退 HumanMessage 元数据 + 异常降级）。ToolNode `handle_tool_errors`：除 `ToolInvocationError`（原样返回逐字段校验信息供 LLM 纠正）外统一降级、按类名记日志（防 Tavily URL 泄漏）。MemoryStore 首次启动自动迁移旧 `user_memories` 表进 `store` 后 DROP。
 - **run_bash（bash 工具）**：LLM 在 bot 宿主执行 bash 命令，主要跑 skill 脚本与 skill 内环境配置。`.env` 使用 `BOT_BASH_SHELL=bash`，可同时兼容 Windows Git Bash、WSL bash 和 Linux；Windows 也可显式填 Git Bash 的 `bash.exe` 完整路径。技能命令会按平台自动选择 venv Python（Windows `Scripts/python.exe`，Linux/WSL `bin/python`），若从 WSL 调用 Windows Python 时须用 `WSLENV` 共享 `.env` 变量（见 jmcomic SKILL.md）。三道护栏按序：① `DANGEROUS_PATTERNS` 正则拦截危险命令（返回具体文案）② cwd `resolve()` 白名单（project_root 恒允许，`BOT_BASH_ALLOWED_ROOTS` 扩展，越界返回提示）③ `asyncio.wait_for` 超时杀进程 + 输出截断到 `bash_max_output`。cwd 走 subprocess 参数、不拼命令串；每次调用独立新 shell，`cd`/`export` 不跨调用持久（环境配置靠文件系统）。编码 UTF-8 回落 GBK。config：`BOT_BASH_ENABLED`(默认1) / `BOT_BASH_SHELL` / `BOT_BASH_TIMEOUT` / `BOT_BASH_MAX_OUTPUT` / `BOT_BASH_ALLOWED_ROOTS`。护栏拦截/超时/越界是正常返回，真异常（shell 不存在）由 factory 降级「工具执行失败。」。
 - **Persona fallback**：`config.persona_prompt.strip() or DEFAULT_PERSONA_PROMPT`（默认是真实提示词非空串），`BOT_PERSONA_PROMPT=""` 强制回落；均用 `{bot_name}` 占位符。

@@ -2,7 +2,7 @@
 
 import asyncio
 
-from execution.tools.search_documents import search_documents
+from bot.package.tools.builtin.search_documents import search_documents
 
 
 class FakeDocumentStore:

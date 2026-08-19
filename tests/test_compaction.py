@@ -3,8 +3,8 @@ from types import SimpleNamespace
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from common import BotConfig
-from orchestration.compaction import ContextCompactor
+from bot.package.config import BotConfig
+from bot.package.orchestration.compaction import ContextCompactor
 from tests.fakes import ScriptedLLM
 
 

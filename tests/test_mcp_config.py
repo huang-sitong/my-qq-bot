@@ -3,8 +3,8 @@
 server 定义集中在 config/mcp_servers.json（可提交），密钥 ${ENV_VAR} 插值。
 """
 
-from common import BotConfig
-from common.mcp import load_mcp_servers_from_file
+from bot.package.config import BotConfig
+from bot.package.mcp.config import load_mcp_servers_from_file
 
 
 def _clear_config_env(monkeypatch) -> None:

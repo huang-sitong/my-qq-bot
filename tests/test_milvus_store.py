@@ -8,8 +8,8 @@ expr 过滤（人名 / 时间窗）、prune 淘汰、dense score 语义。
 import asyncio
 import threading
 
-from common import BotConfig
-from knowledge.milvus import MilvusStore
+from bot.package.config import BotConfig
+from bot.package.knowledge.milvus import MilvusStore
 
 
 class FakeEmbedder:
@@ -254,7 +254,7 @@ def test_milvus_store_sets_safe_keepalive(tmp_path, monkeypatch):
             captured["grpc_options"] = kwargs.get("grpc_options")
             super().__init__(uri, **kwargs)
 
-    monkeypatch.setattr("knowledge.milvus.MilvusClient", RecordingClient)
+    monkeypatch.setattr("bot.package.knowledge.milvus.MilvusClient", RecordingClient)
     store = _store(tmp_path)
     store.close()
 

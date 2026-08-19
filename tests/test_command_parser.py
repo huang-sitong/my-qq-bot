@@ -1,6 +1,6 @@
 """命令解析测试：prefix、大小写、位置参数、引号与非法输入。"""
 
-from commands.parser import ParsedCommand, parse_command
+from bot.package.commands.parser import ParsedCommand, parse_command
 
 
 def test_recognizes_default_prefix():

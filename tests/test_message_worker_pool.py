@@ -1,12 +1,15 @@
-"""MessageHandler worker pool: multi-worker, per-thread ordering, backpressure, batching."""
+"""MessagePipeline worker pool: multi-worker, per-thread ordering, backpressure, batching."""
 
 import asyncio
 
-from bot.handler import MessageHandler
-from commands import CommandServices, build_command_registry
-from common import BotConfig
-from conversation.router import RouteAction
-from domain.satori import Channel, ChannelType, EventBody, Message, User
+from bot.package.commands import CommandServices, build_command_registry
+from bot.package.config import BotConfig
+from bot.package.conversation.identity import BotIdentity
+from bot.package.conversation.router import RouteAction
+from bot.package.pipeline.dispatcher import MessageDispatcher
+from bot.package.pipeline.pipeline import MessagePipeline
+from bot.package.platform.satori import Channel, ChannelType, EventBody, Message, User
+from bot.package.platform.satori.ingress import SatoriMessageIngress
 
 
 class _StubApi:
@@ -17,15 +20,38 @@ class _StubApi:
         self.sent.append((channel_id, content))
 
 
-def _make_handler(graph, worker_count=1, queue_maxsize=0, batch_max=4):
-    return MessageHandler(
-        client=object(),
+def _make_pipeline(
+    graph,
+    worker_count=1,
+    queue_maxsize=0,
+    batch_max=4,
+    bot_config=None,
+    command_registry=None,
+    command_services=None,
+    queue_factory=None,
+    dedup_size=0,
+):
+    identity = BotIdentity()
+    api_client = _StubApi()
+    dispatcher = MessageDispatcher(
         graph=graph,
         persona="你是{bot_name}",
-        api_client=_StubApi(),
+        api_client=api_client,
+        bot_config=bot_config,
+        command_registry=command_registry,
+        command_services=command_services,
+        identity=identity,
+    )
+    return MessagePipeline(
+        dispatcher,
+        bot_config=bot_config,
+        command_registry=command_registry,
+        identity=identity,
         worker_count=worker_count,
         queue_maxsize=queue_maxsize,
         batch_max=batch_max,
+        queue_factory=queue_factory,
+        dedup_size=dedup_size,
     )
 
 
@@ -43,6 +69,12 @@ def _event(
         user=User(id="u1", name="tester"),
         message=Message(id=f"m-{text}", content=text),
     )
+
+
+async def _enqueue(pipeline, event):
+    message = SatoriMessageIngress().normalize(event)
+    assert message is not None
+    return await pipeline.enqueue(message)
 
 
 class _SeqRandom:
@@ -83,11 +115,11 @@ class _BlockingGraph:
 def test_worker_pool_starts_and_stops():
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=3)
-        await handler.start()
-        assert len(handler._worker_tasks) == 3
-        await handler.stop()
-        assert all(task.done() for task in handler._worker_tasks)
+        pipeline = _make_pipeline(graph, worker_count=3)
+        await pipeline.start()
+        assert len(pipeline.worker_pool.worker_tasks) == 3
+        await pipeline.stop()
+        assert all(task.done() for task in pipeline.worker_pool.worker_tasks)
 
     asyncio.run(run())
 
@@ -95,12 +127,12 @@ def test_worker_pool_starts_and_stops():
 def test_same_thread_messages_keep_order_with_multiple_workers():
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=3, batch_max=1)
-        await handler.start()
-        await handler.handle(_event("m1", "g1"))
-        await handler.handle(_event("m2", "g1"))
-        await handler.handle(_event("m3", "g1"))
-        await handler.stop()
+        pipeline = _make_pipeline(graph, worker_count=3, batch_max=1)
+        await pipeline.start()
+        await _enqueue(pipeline, _event("m1", "g1"))
+        await _enqueue(pipeline, _event("m2", "g1"))
+        await _enqueue(pipeline, _event("m3", "g1"))
+        await pipeline.stop()
         assert graph.calls == [["m1"], ["m2"], ["m3"]]
 
     asyncio.run(run())
@@ -109,15 +141,15 @@ def test_same_thread_messages_keep_order_with_multiple_workers():
 def test_different_threads_can_run_concurrently():
     async def run():
         graph = _BlockingGraph()
-        handler = _make_handler(graph, worker_count=2)
-        await handler.start()
-        await handler.handle(_event("block", "g1"))
+        pipeline = _make_pipeline(graph, worker_count=2)
+        await pipeline.start()
+        await _enqueue(pipeline, _event("block", "g1"))
         await graph.first_entered.wait()
-        await handler.handle(_event("other", "g2"))
+        await _enqueue(pipeline, _event("other", "g2"))
         await asyncio.sleep(0.05)
         assert "other" in graph.entered
         graph.release.set()
-        await handler.stop()
+        await pipeline.stop()
 
     asyncio.run(run())
 
@@ -125,15 +157,15 @@ def test_different_threads_can_run_concurrently():
 def test_same_thread_second_message_waits_for_lock():
     async def run():
         graph = _BlockingGraph()
-        handler = _make_handler(graph, worker_count=2, batch_max=1)
-        await handler.start()
-        await handler.handle(_event("block", "g1"))
+        pipeline = _make_pipeline(graph, worker_count=2, batch_max=1)
+        await pipeline.start()
+        await _enqueue(pipeline, _event("block", "g1"))
         await graph.first_entered.wait()
-        await handler.handle(_event("later", "g1"))
+        await _enqueue(pipeline, _event("later", "g1"))
         await asyncio.sleep(0.05)
         assert graph.entered == ["block"]
         graph.release.set()
-        await handler.stop()
+        await pipeline.stop()
         assert graph.entered == ["block", "later"]
 
     asyncio.run(run())
@@ -142,15 +174,15 @@ def test_same_thread_second_message_waits_for_lock():
 def test_queue_maxsize_blocks_ingress_until_worker_drains():
     async def run():
         graph = _BlockingGraph()
-        handler = _make_handler(graph, worker_count=1, queue_maxsize=1)
-        first = asyncio.create_task(handler.handle(_event("first", "g1")))
+        pipeline = _make_pipeline(graph, worker_count=1, queue_maxsize=1)
+        first = asyncio.create_task(_enqueue(pipeline, _event("first", "g1")))
         await first
-        second = asyncio.create_task(handler.handle(_event("later", "g1")))
+        second = asyncio.create_task(_enqueue(pipeline, _event("later", "g1")))
         await asyncio.sleep(0.05)
         assert not second.done()
-        await handler.start()
+        await pipeline.start()
         await second
-        await handler.stop()
+        await pipeline.stop()
 
     asyncio.run(run())
 
@@ -163,11 +195,11 @@ def test_queue_maxsize_blocks_ingress_until_worker_drains():
 def test_batch_coalesces_same_thread_burst_into_one_invoke():
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=1, batch_max=4)
-        await handler.start()
+        pipeline = _make_pipeline(graph, worker_count=1, batch_max=4)
+        await pipeline.start()
         for text in ("m1", "m2", "m3"):
-            await handler.handle(_event(text, "g1"))
-        await handler.stop()
+            await _enqueue(pipeline, _event(text, "g1"))
+        await pipeline.stop()
         # 一次图调用，三条消息按序进入同一批
         assert graph.calls == [["m1", "m2", "m3"]]
 
@@ -177,11 +209,11 @@ def test_batch_coalesces_same_thread_burst_into_one_invoke():
 def test_batch_respects_batch_max_and_keeps_order():
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=1, batch_max=2)
-        await handler.start()
+        pipeline = _make_pipeline(graph, worker_count=1, batch_max=2)
+        await pipeline.start()
         for text in ("m1", "m2", "m3", "m4", "m5"):
-            await handler.handle(_event(text, "g1"))
-        await handler.stop()
+            await _enqueue(pipeline, _event(text, "g1"))
+        await pipeline.stop()
         assert graph.calls == [["m1", "m2"], ["m3", "m4"], ["m5"]]
 
     asyncio.run(run())
@@ -190,13 +222,13 @@ def test_batch_respects_batch_max_and_keeps_order():
 def test_batch_stops_at_different_thread_and_preserves_fifo():
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=1, batch_max=4)
-        await handler.start()
-        await handler.handle(_event("g1-1", "g1"))
-        await handler.handle(_event("g2-1", "g2"))
-        await handler.handle(_event("g1-2", "g1"))
-        await handler.handle(_event("g2-2", "g2"))
-        await handler.stop()
+        pipeline = _make_pipeline(graph, worker_count=1, batch_max=4)
+        await pipeline.start()
+        await _enqueue(pipeline, _event("g1-1", "g1"))
+        await _enqueue(pipeline, _event("g2-1", "g2"))
+        await _enqueue(pipeline, _event("g1-2", "g1"))
+        await _enqueue(pipeline, _event("g2-2", "g2"))
+        await pipeline.stop()
         # g2 消息隔断 g1 的批；异 thread 消息被持有、按原顺序紧随处理
         assert graph.calls == [["g1-1"], ["g2-1"], ["g1-2"], ["g2-2"]]
 
@@ -215,13 +247,13 @@ class _ReplyGraph:
 def test_batch_sends_single_reply_for_burst():
     async def run():
         graph = _ReplyGraph()
-        handler = _make_handler(graph, worker_count=1, batch_max=4)
-        await handler.start()
+        pipeline = _make_pipeline(graph, worker_count=1, batch_max=4)
+        await pipeline.start()
         for text in ("m1", "m2", "m3"):
-            await handler.handle(_event(text, "g1"))
-        await handler.stop()
+            await _enqueue(pipeline, _event(text, "g1"))
+        await pipeline.stop()
         assert graph.calls == [["m1", "m2", "m3"]]
-        assert handler._api_client.sent == [("g1", "收到")]
+        assert pipeline.dispatcher._api_client.sent == [("g1", "收到")]
 
     asyncio.run(run())
 
@@ -229,11 +261,11 @@ def test_batch_sends_single_reply_for_burst():
 def test_batch_max_zero_disables_coalescing():
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=1, batch_max=0)
-        await handler.start()
+        pipeline = _make_pipeline(graph, worker_count=1, batch_max=0)
+        await pipeline.start()
         for text in ("m1", "m2", "m3"):
-            await handler.handle(_event(text, "g1"))
-        await handler.stop()
+            await _enqueue(pipeline, _event(text, "g1"))
+        await pipeline.stop()
         assert graph.calls == [["m1"], ["m2"], ["m3"]]
 
     asyncio.run(run())
@@ -252,23 +284,19 @@ def test_batch_command_applies_to_following_message():
         services = CommandServices(version="test", started_at=0.0, bot_name="")
         registry = build_command_registry(services)
         graph = _ReplyGraph()
-        api = _StubApi()
-        handler = MessageHandler(
-            client=object(),
-            graph=graph,
-            persona="p",
-            api_client=api,
+        pipeline = _make_pipeline(
+            graph,
             bot_config=cfg,
             command_registry=registry,
             command_services=services,
             batch_max=4,
         )
-        await handler.start()
-        await handler.handle(_event("/auto_reply on", "g1", ChannelType.TEXT))
-        await handler.handle(_event("hello", "g1", ChannelType.TEXT))
-        await handler.stop()
+        await pipeline.start()
+        await _enqueue(pipeline, _event("/auto_reply on", "g1", ChannelType.TEXT))
+        await _enqueue(pipeline, _event("hello", "g1", ChannelType.TEXT))
+        await pipeline.stop()
         assert graph.calls == [["hello"]]
-        assert api.sent == [
+        assert pipeline.dispatcher._api_client.sent == [
             ("g1", "auto_reply 已开启。"),
             ("g1", "收到"),
         ]
@@ -285,22 +313,14 @@ def test_batch_marks_cooldown_when_any_message_auto_replies():
             auto_reply_cooldown=0,
         )
         graph = _ReplyGraph()
-        api = _StubApi()
-        handler = MessageHandler(
-            client=object(),
-            graph=graph,
-            persona="p",
-            api_client=api,
-            bot_config=cfg,
-            batch_max=4,
-        )
-        handler._random = _SeqRandom([0.0, 0.99])
-        await handler.start()
-        await handler.handle(_event("m1", "g1", ChannelType.TEXT))
-        await handler.handle(_event("m2", "g1", ChannelType.TEXT))
-        await handler.stop()
-        assert api.sent == [("g1", "收到")]
-        assert "llonebot::g1" in handler._last_auto_reply_at
+        pipeline = _make_pipeline(graph, bot_config=cfg, batch_max=4)
+        pipeline.worker_pool.random = _SeqRandom([0.0, 0.99])
+        await pipeline.start()
+        await _enqueue(pipeline, _event("m1", "g1", ChannelType.TEXT))
+        await _enqueue(pipeline, _event("m2", "g1", ChannelType.TEXT))
+        await pipeline.stop()
+        assert pipeline.dispatcher._api_client.sent == [("g1", "收到")]
+        assert "llonebot::g1" in pipeline.worker_pool.last_auto_reply_at
 
     asyncio.run(run())
 
@@ -314,23 +334,15 @@ def test_batch_cooldown_applies_to_following_message():
             auto_reply_cooldown=60,
         )
         graph = _ReplyGraph()
-        api = _StubApi()
-        handler = MessageHandler(
-            client=object(),
-            graph=graph,
-            persona="p",
-            api_client=api,
-            bot_config=cfg,
-            batch_max=4,
-        )
-        await handler.handle(_event("m1", "g1", ChannelType.TEXT))
-        await handler.handle(_event("m2", "g1", ChannelType.TEXT))
-        await handler.start()
-        await handler._worker_pool._queue.join()
-        await handler.handle(_event('<img src="x.jpg"/>', "g1", ChannelType.TEXT))
-        await handler.stop()
+        pipeline = _make_pipeline(graph, bot_config=cfg, batch_max=4)
+        await _enqueue(pipeline, _event("m1", "g1", ChannelType.TEXT))
+        await _enqueue(pipeline, _event("m2", "g1", ChannelType.TEXT))
+        await pipeline.start()
+        await pipeline.worker_pool._queue.join()
+        await _enqueue(pipeline, _event('<img src="x.jpg"/>', "g1", ChannelType.TEXT))
+        await pipeline.stop()
         assert graph.calls == [["m1", "m2"]]
-        assert api.sent == [("g1", "收到")]
+        assert pipeline.dispatcher._api_client.sent == [("g1", "收到")]
 
     asyncio.run(run())
 
@@ -341,18 +353,14 @@ def test_batch_command_dispatch_error_does_not_drop_following_message():
         services = CommandServices(version="test", started_at=0.0, bot_name="")
         registry = build_command_registry(services)
         graph = _ReplyGraph()
-        api = _StubApi()
-        handler = MessageHandler(
-            client=object(),
-            graph=graph,
-            persona="p",
-            api_client=api,
+        pipeline = _make_pipeline(
+            graph,
             bot_config=cfg,
             command_registry=registry,
             command_services=services,
             batch_max=4,
         )
-        original_dispatch = handler._dispatcher.dispatch
+        original_dispatch = pipeline.dispatcher.dispatch
 
         async def failing_dispatch(message, decision, *, auto_reply_allowed=False):
             if decision.action == RouteAction.COMMAND:
@@ -361,13 +369,13 @@ def test_batch_command_dispatch_error_does_not_drop_following_message():
                 message, decision, auto_reply_allowed=auto_reply_allowed
             )
 
-        handler._dispatcher.dispatch = failing_dispatch
-        await handler.start()
-        await handler.handle(_event("/ping", "g1"))
-        await handler.handle(_event("hello", "g1"))
-        await handler.stop()
+        pipeline.dispatcher.dispatch = failing_dispatch
+        await pipeline.start()
+        await _enqueue(pipeline, _event("/ping", "g1"))
+        await _enqueue(pipeline, _event("hello", "g1"))
+        await pipeline.stop()
         assert graph.calls == [["hello"]]
-        assert api.sent == [("g1", "收到")]
+        assert pipeline.dispatcher._api_client.sent == [("g1", "收到")]
 
     asyncio.run(run())
 
@@ -375,20 +383,17 @@ def test_batch_command_dispatch_error_does_not_drop_following_message():
 def test_duplicate_event_id_is_dropped():
     async def run():
         graph = _OrderedGraph()
-        handler = MessageHandler(
-            client=object(),
-            graph=graph,
-            persona="你是{bot_name}",
-            api_client=_StubApi(),
+        pipeline = _make_pipeline(
+            graph,
             worker_count=1,
             batch_max=1,
             dedup_size=100,
         )
-        await handler.start()
+        await pipeline.start()
         event = _event("m1", "g1")
-        await handler.handle(event)
-        await handler.handle(event)
-        await handler.stop()
+        await _enqueue(pipeline, event)
+        await _enqueue(pipeline, event)
+        await pipeline.stop()
         assert graph.calls == [["m1"]]
 
     asyncio.run(run())
@@ -430,20 +435,15 @@ def test_worker_uses_queue_factory():
 
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=1, batch_max=1)
-        handler._worker_pool = type(handler._worker_pool)(
-            handler._dispatcher,
-            bot_config=handler._worker_pool._bot_config,
-            command_registry=handler._worker_pool._command_registry,
-            identity=handler._worker_pool._identity,
+        pipeline = _make_pipeline(
+            graph,
             worker_count=1,
-            queue_maxsize=0,
             batch_max=1,
             queue_factory=factory,
         )
-        await handler.start()
-        await handler.handle(_event("m1", "g1"))
-        await handler.stop()
+        await pipeline.start()
+        await _enqueue(pipeline, _event("m1", "g1"))
+        await pipeline.stop()
         assert created and created[0].qsize() == 0
 
     asyncio.run(run())
@@ -452,11 +452,11 @@ def test_worker_uses_queue_factory():
 def test_worker_metrics_expose_processing_and_stage_timing():
     async def run():
         graph = _OrderedGraph()
-        handler = _make_handler(graph, worker_count=1, batch_max=1)
-        await handler.start()
-        await handler.handle(_event("m1", "g1"))
-        await handler.stop()
-        metrics = handler._worker_pool.metrics
+        pipeline = _make_pipeline(graph, worker_count=1, batch_max=1)
+        await pipeline.start()
+        await _enqueue(pipeline, _event("m1", "g1"))
+        await pipeline.stop()
+        metrics = pipeline.worker_pool.metrics
         assert metrics["processed"] == 1
         assert metrics["queue_size"] == 0
         assert "avg_processing_seconds" in metrics

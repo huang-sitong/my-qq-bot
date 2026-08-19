@@ -1,6 +1,6 @@
 """RRF（Reciprocal Rank Fusion）合并单测：toy rankings、k=60、跨信号叠加、去重。"""
 
-from knowledge.rrf import RRF_K, rrf_merge
+from bot.package.knowledge.rrf import RRF_K, rrf_merge
 
 
 def _h(doc_id, **extra):

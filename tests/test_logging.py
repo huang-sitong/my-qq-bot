@@ -4,7 +4,7 @@ import logging
 
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-from context.utils import format_message_for_log, log_context_message
+from bot.package.utils import format_message_for_log, log_context_message
 
 
 def test_format_message_for_log_human_with_name():

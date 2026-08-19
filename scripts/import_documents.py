@@ -24,7 +24,7 @@ import logging
 import sys
 from pathlib import Path
 
-from knowledge.document_ingestion import SUPPORTED_EXTENSIONS
+from bot.package.knowledge.document_ingestion import SUPPORTED_EXTENSIONS
 
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -82,9 +82,9 @@ def _expand_paths(raw_paths: list[str]) -> list[Path]:
 async def _main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    from common import BotConfig
-    from knowledge.document_ingestion import ingest_files
-    from knowledge.document_store import DocumentStore
+    from bot.package.config import BotConfig
+    from bot.package.knowledge.document_ingestion import ingest_files
+    from bot.package.knowledge.document_store import DocumentStore
 
     config = BotConfig()
     logger = logging.getLogger("import_documents")
@@ -108,7 +108,7 @@ async def _main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:
         # dry-run 只验证解析+切分，不创建 collection / 不调用嵌入 API。
-        from knowledge.document_ingestion import _LOADERS, _split_documents
+        from bot.package.knowledge.document_ingestion import _LOADERS, _split_documents
 
         failed = False
         for path in paths:

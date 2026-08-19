@@ -1,7 +1,7 @@
 """DatabaseManager 单元测试。"""
 
 
-from common.database import DatabaseManager
+from bot.package.core.database import DatabaseManager
 
 
 def test_database_manager_paths(tmp_path):

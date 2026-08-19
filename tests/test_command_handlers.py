@@ -3,14 +3,14 @@
 import asyncio
 import time
 
-from commands import (
+from bot.package.commands import (
     CommandActor,
     CommandContext,
     CommandServices,
     build_command_registry,
 )
-from common import BotConfig
-from skill import Skill, SkillRegistry
+from bot.package.config import BotConfig
+from bot.package.skill import Skill, SkillRegistry
 
 
 def _services(skills=None):

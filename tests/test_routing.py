@@ -6,12 +6,12 @@
 
 import pytest
 
-from context.utils.routing import (
+from bot.package.platform.satori import ChannelType
+from bot.package.utils.routing import (
     decide_reply,
     is_explicit_request,
     keep_in_context,
 )
-from domain.satori import ChannelType
 
 # --- decide_reply ---
 

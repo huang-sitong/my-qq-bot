@@ -1,7 +1,7 @@
 import asyncio
 
-from domain import IndexTurnTask
-from knowledge.index_worker import IndexWorker
+from bot.package.domain import IndexTurnTask
+from bot.package.knowledge.index_worker import IndexWorker
 from tests.fakes import StubRagService
 
 

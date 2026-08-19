@@ -1,26 +1,7 @@
-from knowledge.service import RagService
-from memory import MemoryStore
-from orchestration.graph import create_graph
-from protocol.http.client import SatoriApiClient
-from protocol.websocket.client import SatoriClient
-from vision import VisionService
+"""bot 应用包。
 
-from .core.dispatcher import MessageDispatcher
-from .core.ingress import SatoriMessageIngress
-from .core.llm import setup_llm
-from .core.worker import MessageWorkerPool
-from .handler import MessageHandler
+应用主体位于 ``bot.package``；本文件保持轻量，不重导出任何子包，避免
+import bot 时拉起 langchain / milvus / aiosqlite 等重型依赖。
+"""
 
-__all__ = [
-    "MemoryStore",
-    "MessageDispatcher",
-    "MessageHandler",
-    "MessageWorkerPool",
-    "RagService",
-    "SatoriApiClient",
-    "SatoriClient",
-    "SatoriMessageIngress",
-    "VisionService",
-    "create_graph",
-    "setup_llm",
-]
+__all__: list[str] = []

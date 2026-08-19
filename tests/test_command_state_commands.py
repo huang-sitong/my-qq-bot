@@ -4,17 +4,17 @@ import asyncio
 
 from langchain_core.messages import AIMessage, HumanMessage
 
-from commands import (
+from bot.package.commands import (
     CommandActor,
     CommandContext,
     CommandServices,
     build_command_registry,
 )
-from common import BotConfig
-from common.constants import EXTERNAL_UPDATE_NODE
-from orchestration.compaction import ContextCompactor
-from orchestration.graph import create_graph
-from skill import Skill, SkillRegistry
+from bot.package.config import BotConfig
+from bot.package.domain.constants import EXTERNAL_UPDATE_NODE
+from bot.package.orchestration.compaction import ContextCompactor
+from bot.package.orchestration.graph import create_graph
+from bot.package.skill import Skill, SkillRegistry
 from tests.fakes import ScriptedLLM, make_state
 
 

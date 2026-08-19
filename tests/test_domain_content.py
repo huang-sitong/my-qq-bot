@@ -1,7 +1,7 @@
-"""锁定领域类型经 domain 包 lazy-loading 导出，且为 conversation.content 的真实类。"""
+"""锁定领域类型经 bot.package.domain 包 lazy-loading 导出，且为 bot.package.conversation.content 的真实类。"""
 
-import conversation.content as content_module
-from conversation import Attachment, MessageKind, ParsedContent
+import bot.package.conversation.content as content_module
+from bot.package.conversation import Attachment, MessageKind, ParsedContent
 
 
 def test_message_kind_values():
@@ -15,9 +15,9 @@ def test_message_kind_values():
 
 def test_types_live_in_object_bot_content():
     assert content_module.MessageKind is MessageKind
-    assert MessageKind.__module__ == "conversation.content"
-    assert ParsedContent.__module__ == "conversation.content"
-    assert Attachment.__module__ == "conversation.content"
+    assert MessageKind.__module__ == "bot.package.conversation.content"
+    assert ParsedContent.__module__ == "bot.package.conversation.content"
+    assert Attachment.__module__ == "bot.package.conversation.content"
 
 
 def test_parsed_content_has_media():

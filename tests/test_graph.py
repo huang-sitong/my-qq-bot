@@ -2,8 +2,8 @@ import asyncio
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from common import BotConfig
-from orchestration.graph import create_graph
+from bot.package.config import BotConfig
+from bot.package.orchestration.graph import create_graph
 from tests.fakes import FakeVisionService, ScriptedLLM, StubMemoryStore, StubRagService
 
 TOOL_CALLS = [
@@ -249,7 +249,7 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
 # 注意：AsyncSqliteSaver 的 asyncio.Lock 绑定首个事件循环（同 test_memory_store
 # 约定），跨轮/跨线程 ainvoke 必须放在单个 asyncio.run 内——与真实 bot 单 loop 一致。
 
-from skill import Skill, SkillRegistry
+from bot.package.skill import Skill, SkillRegistry
 
 SKILL_LOAD_CALLS = [
     {"name": "load_skill", "args": {"skill_name": "translate"},

@@ -1,10 +1,15 @@
+"""MessagePipeline 端到端：reply / context_only / ignore / burst 合并与 RAG 索引。"""
+
 import asyncio
 
-from bot.handler import MessageHandler
-from commands import CommandServices
-from common import BotConfig
-from domain.satori import Channel, ChannelType, EventBody, Message, User
-from knowledge.index_worker import IndexWorker
+from bot.package.commands import CommandServices
+from bot.package.config import BotConfig
+from bot.package.conversation.identity import BotIdentity
+from bot.package.knowledge.index_worker import IndexWorker
+from bot.package.pipeline.dispatcher import MessageDispatcher
+from bot.package.pipeline.pipeline import MessagePipeline
+from bot.package.platform.satori import Channel, ChannelType, EventBody, Message, User
+from bot.package.platform.satori.ingress import SatoriMessageIngress
 from tests.fakes import StubRagService
 
 
@@ -34,15 +39,23 @@ class _StubGraph:
         self.updates.append(updates)
 
 
-def _handler(graph, index_worker=None, batch_max=4):
-    return MessageHandler(
-        client=object(),
+def _pipeline(graph, index_worker=None, batch_max=4):
+    identity = BotIdentity()
+    api_client = _StubApi()
+    config = BotConfig(_env_file=None)
+    dispatcher = MessageDispatcher(
         graph=graph,
         persona="你是{bot_name}",
-        api_client=_StubApi(),
-        bot_config=BotConfig(_env_file=None),
+        api_client=api_client,
+        bot_config=config,
         command_services=CommandServices(version="test", started_at=0.0, bot_name=""),
         index_worker=index_worker,
+        identity=identity,
+    )
+    return MessagePipeline(
+        dispatcher,
+        bot_config=config,
+        identity=identity,
         batch_max=batch_max,
     )
 
@@ -64,18 +77,24 @@ def _event(
     )
 
 
+async def _enqueue(pipeline, event):
+    message = SatoriMessageIngress().normalize(event)
+    assert message is not None
+    return await pipeline.enqueue(message)
+
+
 def test_reply_path_sends_reply_and_enqueues_index():
     async def run():
         rag = StubRagService()
         worker = IndexWorker(rag)
         await worker.start()
         graph = _StubGraph()
-        handler = _handler(graph, index_worker=worker)
-        await handler.start()
-        await handler.handle(_event("你好"))
-        await handler.stop()
+        pipeline = _pipeline(graph, index_worker=worker)
+        await pipeline.start()
+        await _enqueue(pipeline, _event("你好"))
+        await pipeline.stop()
         await worker.stop()
-        assert handler._api_client.sent == [("c1", "收到")]
+        assert pipeline.dispatcher._api_client.sent == [("c1", "收到")]
         assert rag.last_indexed is not None
         assert rag.last_indexed["bot_reply"] == "收到"
 
@@ -88,14 +107,14 @@ def test_context_only_writes_checkpoint_and_indexes():
         worker = IndexWorker(rag)
         await worker.start()
         graph = _StubGraph()
-        handler = _handler(graph, index_worker=worker)
-        await handler.start()
+        pipeline = _pipeline(graph, index_worker=worker)
+        await pipeline.start()
         event = _event(
             "群聊普通发言",
             channel_type=ChannelType.TEXT,
         )
-        await handler.handle(event)
-        await handler.stop()
+        await _enqueue(pipeline, event)
+        await pipeline.stop()
         await worker.stop()
         assert graph.updates
         assert graph.last_as_node == "describe_image"
@@ -110,13 +129,13 @@ def test_ignore_path_writes_nothing():
         worker = IndexWorker(StubRagService())
         await worker.start()
         graph = _StubGraph()
-        handler = _handler(graph, index_worker=worker)
-        await handler.start()
-        await handler.handle(_event(
+        pipeline = _pipeline(graph, index_worker=worker)
+        await pipeline.start()
+        await _enqueue(pipeline, _event(
             "<img src=\"https://x/1.jpg\"/>",
             channel_type=ChannelType.TEXT,
         ))
-        await handler.stop()
+        await pipeline.stop()
         await worker.stop()
         assert graph.state is None
         assert graph.updates == []
@@ -130,14 +149,14 @@ def test_batch_reply_runs_graph_once_and_sends_one_reply():
         worker = IndexWorker(rag)
         await worker.start()
         graph = _StubGraph()
-        handler = _handler(graph, index_worker=worker, batch_max=4)
-        await handler.start()
+        pipeline = _pipeline(graph, index_worker=worker, batch_max=4)
+        await pipeline.start()
         for text in ("你好", "在吗", "帮我看看"):
-            await handler.handle(_event(text))
-        await handler.stop()
+            await _enqueue(pipeline, _event(text))
+        await pipeline.stop()
         await worker.stop()
         # 突发合并：一次图调用、一条回复；每条消息都入 RAG 索引
-        assert handler._api_client.sent == [("c1", "收到")]
+        assert pipeline.dispatcher._api_client.sent == [("c1", "收到")]
         assert len(graph.state["messages"]) == 3
         assert [m.content for m in graph.state["messages"]] == ["你好", "在吗", "帮我看看"]
         assert rag.last_indexed is not None
@@ -153,11 +172,11 @@ def test_batch_context_only_single_checkpoint_update():
         worker = IndexWorker(rag)
         await worker.start()
         graph = _StubGraph()
-        handler = _handler(graph, index_worker=worker, batch_max=4)
-        await handler.start()
+        pipeline = _pipeline(graph, index_worker=worker, batch_max=4)
+        await pipeline.start()
         for text in ("群聊发言一", "群聊发言二"):
-            await handler.handle(_event(text, channel_type=ChannelType.TEXT))
-        await handler.stop()
+            await _enqueue(pipeline, _event(text, channel_type=ChannelType.TEXT))
+        await pipeline.stop()
         await worker.stop()
         # 两条 context_only 合并为一次 aupdate_state，两条消息一起落 checkpoint
         assert len(graph.updates) == 1
@@ -177,13 +196,13 @@ def test_batch_disabled_processes_messages_individually():
         worker = IndexWorker(rag)
         await worker.start()
         graph = _StubGraph()
-        handler = _handler(graph, index_worker=worker, batch_max=1)
-        await handler.start()
+        pipeline = _pipeline(graph, index_worker=worker, batch_max=1)
+        await pipeline.start()
         for text in ("你好", "在吗"):
-            await handler.handle(_event(text))
-        await handler.stop()
+            await _enqueue(pipeline, _event(text))
+        await pipeline.stop()
         await worker.stop()
-        assert handler._api_client.sent == [("c1", "收到"), ("c1", "收到")]
+        assert pipeline.dispatcher._api_client.sent == [("c1", "收到"), ("c1", "收到")]
         assert len(graph.state["messages"]) == 1
 
     asyncio.run(run())
@@ -192,17 +211,18 @@ def test_batch_disabled_processes_messages_individually():
 def test_batch_human_messages_carry_speaker_and_image_metadata():
     async def run():
         graph = _StubGraph()
-        handler = _handler(graph, batch_max=4)
-        await handler.start()
-        await handler.handle(_event("你好", user_id="u1", user_name="甲"))
-        await handler.handle(
+        pipeline = _pipeline(graph, batch_max=4)
+        await pipeline.start()
+        await _enqueue(pipeline, _event("你好", user_id="u1", user_name="甲"))
+        await _enqueue(
+            pipeline,
             _event(
                 '<img src="https://x/1.jpg"/>',
                 user_id="u2",
                 user_name="乙",
             )
         )
-        await handler.stop()
+        await pipeline.stop()
         messages = graph.state["messages"]
         assert messages[0].additional_kwargs["user_id"] == "u1"
         assert messages[0].name == "甲"

@@ -2,12 +2,12 @@
 
 import asyncio
 
-from bot.core.dispatcher import MessageDispatcher
-from common import BotConfig
-from conversation.identity import BotIdentity
-from conversation.message import IncomingMessage
-from conversation.router import RouteAction, RouteDecision
-from orchestration.graph import create_graph
+from bot.package.config import BotConfig
+from bot.package.conversation.identity import BotIdentity
+from bot.package.conversation.message import IncomingMessage
+from bot.package.conversation.router import RouteAction, RouteDecision
+from bot.package.orchestration.graph import create_graph
+from bot.package.pipeline.dispatcher import MessageDispatcher
 from tests.fakes import ScriptedLLM
 
 

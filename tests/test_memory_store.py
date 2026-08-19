@@ -8,7 +8,7 @@
 import asyncio
 import sqlite3
 
-from memory import MemoryStore
+from bot.package.memory import MemoryStore
 
 
 def test_store_and_load_roundtrip(tmp_path):
