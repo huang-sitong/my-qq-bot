@@ -7,7 +7,6 @@ templates — keep environment-specific secrets in ``.env`` instead.
 from .config import BotConfig
 from .prompts import (
     BASH_TOOL_HINT,
-    CURRENT_TIME_HINT,
     DEFAULT_PERSONA_PROMPT,
     FILE_SEND_TOOL_HINT,
     MCP_TOOL_HINT,
@@ -21,7 +20,6 @@ from .prompts import (
 
 __all__ = [
     "BASH_TOOL_HINT",
-    "CURRENT_TIME_HINT",
     "DEFAULT_PERSONA_PROMPT",
     "FILE_SEND_TOOL_HINT",
     "MCP_TOOL_HINT",

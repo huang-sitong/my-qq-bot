@@ -50,11 +50,6 @@ FILE_SEND_TOOL_HINT = """你可以用 send_file 把本地文件发送到当前�
   * `pwd` 输出盘符如 `C:\\` = Windows 环境，才可以使用 `C:\\...` 路径。
 - 禁止凭空编造路径；发送前可用 `run_bash` 执行 `ls -l <路径>` 确认文件确实存在。"""
 
-# 当前时间提示（call_llm 动态注入，供相对时间表述与检索时间窗的计算基准）
-CURRENT_TIME_HINT = """当前时间：{time}（{weekday}，本地时区）。
-涉及“现在/最近/今天/昨天/最近N小时”等相对时间的表述时，以此时间为基准；
-调用 search_chat_history 的时间参数（hours、start_time、end_time）也按此时间计算。"""
-
 # 视觉描述提示词（VisionService 用，OpenAI 兼容视觉 API 的 system 提示）
 VISION_PROMPT = "请用中文简要描述这张图片的内容。"
 

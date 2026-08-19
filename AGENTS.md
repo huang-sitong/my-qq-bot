@@ -20,7 +20,7 @@ main.py                 # entrypoint — 装配 BotConfig / LLM / Graph / Handle
 src/common/             # 共享配置 + 提示词（单一事实来源）
   config.py             #   BotConfig pydantic-settings（env 校验、严格布尔 Flag）
   mcp.py                #   load_mcp_servers_from_file — config/mcp_servers.json 加载 + ${VAR} 插值
-  prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / CURRENT_TIME_HINT / VISION / RETRIEVAL_TASK）
+  prompts.py            #   各提示词常量（persona / summary / *_TOOL_HINT / VISION / RETRIEVAL_TASK）
 src/protocol/           # Satori/OneBot 协议接入：websocket + http（send_message / call_api / send_file）
 src/orchestration/     # 会话编排：LangGraph 工作流组装 + 图节点 + 上下文压缩服务
   graph.py              #   create_graph → (graph, checkpointer)
@@ -89,10 +89,10 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **create_graph 返回 `(graph, checkpointer)`**：checkpointer 生命周期归 main.py，不在 create_graph 内关闭。服务注入：`rag_service`/`memory_store`/`skill_registry`/`mcp_tools` 进 call_llm_node（工具绑定+技能注入层）与 tools（ToolNode 执行）；`vision_service` 进 describe_image；`file_sender` 进 tools；`skill_registry` 另由 ContextCompactor 的 summarize_node 与命令层复用（token 口径一致）。
 
-**SystemMessage 动态注入**：`call_llm_node` 每次调用由 `build_system_messages` 现构多层 system 并前置，只把 AIMessage 落 state。层级：①当前时间提示（CURRENT_TIME_HINT，LLM 算相对时间/`hours` 的基准）→ ②conversation_summary → ③技能索引 → ④激活技能正文 → ⑤记忆工具提示 → ⑥MCP 工具提示。不变量：
+**SystemMessage 动态注入**：`call_llm_node` 每次调用由 `build_system_messages` 现构多层 system 并前置，只把 AIMessage 落 state。层级：①conversation_summary → ②技能索引 → ③激活技能正文 → ④记忆工具提示 → ⑤MCP 工具提示。不再注入当前时间等易变内容，保证提示稳定可命中 LLM 缓存。不变量：
 - system 为局部变量，**绝不持久化**；persona 恒在 messages[0]（`.format(bot_name=...)`），改动即时生效
 - checkpoint 只存 Human/AI/ToolMessage
-- `estimate_context_tokens` 复用同一函数，token 估算与实际注入不偏离（`now` 仅供测试）
+- `estimate_context_tokens` 复用同一函数，token 估算与实际注入不偏离
 
 **图调用上限**：`dispatcher` 用 `BOT_GRAPH_RECURSION_LIMIT`（默认 128）作为 LangGraph `recursion_limit`，是 `call_llm`/`tools`/`skill_manager` 等全部节点执行的硬上限；`BOT_RAG_MAX_AGENT_ROUNDS` 只限制工具轮数，两者语义不同。
 

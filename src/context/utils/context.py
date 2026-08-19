@@ -4,30 +4,18 @@ Wraps LangChain built-in ``count_tokens_approximately`` and
 ``trim_messages`` for the QQ bot's three-layer context structure.
 """
 
-import datetime
 import logging
 
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
-from common import CURRENT_TIME_HINT, SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
+from common import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from context.utils.content_parser import IMAGE_PLACEHOLDER
 
 logger = logging.getLogger(__name__)
 
 # Chinese text averages ~1.5 characters per token (vs ~4 for English)
 _CHARS_PER_TOKEN = 1.5
-
-# 当前时间展示格式，与 RagService.TS_FMT 一致（时间提示与检索结果时间戳直观对齐）
-_NOW_FMT = "%Y-%m-%d %H:%M:%S"
-_WEEKDAYS = ("星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
-
-
-def _current_time_hint(now: datetime.datetime) -> SystemMessage:
-    return SystemMessage(content=CURRENT_TIME_HINT.format(
-        time=now.strftime(_NOW_FMT),
-        weekday=_WEEKDAYS[now.weekday()],
-    ))
 
 
 def _skill_index_message(skill_registry) -> SystemMessage | None:
@@ -55,7 +43,6 @@ def _active_skills_message(skill_registry, active_skills: list[str]) -> SystemMe
 def build_system_messages(
     persona: str,
     summary: str = "",
-    now: datetime.datetime | None = None,
     skill_registry=None,
     active_skills: list[str] | None = None,
 ) -> list[SystemMessage]:
@@ -63,17 +50,13 @@ def build_system_messages(
 
     层级（与 ``call_llm_node`` 注入的结构完全相同——token 估算与实际上下文永不偏离）：
     - persona（恒为 messages[0]）
-    - 当前时间提示（CURRENT_TIME_HINT，动态注入；``now`` 仅供测试注入固定时刻）
     - 对话摘要（来自 summarize_node）
     - 技能索引（SKILL_INDEX_HINT + SkillRegistry.index_text，空注册表跳过）
     - 已激活技能正文（SKILL_ACTIVE_HINT + 各技能 body，缺失/无激活跳过）
     """
-    if now is None:
-        now = datetime.datetime.now()
     # 摘要可能残留旧 checkpoint 的多模态 content 列表 → 归一化为纯文本
     summary_text = content_to_text(summary)
     msgs = [SystemMessage(content=persona)] if persona.strip() else []
-    msgs.append(_current_time_hint(now))
     if summary_text.strip():
         msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary_text}"))
     index_msg = _skill_index_message(skill_registry)
@@ -98,7 +81,7 @@ def estimate_context_tokens(
     and passes it through ``count_tokens_approximately`` for a single
     consistent token count.
     """
-    # Layer 0..N: persona + time + summary + skill layers（构造与 call_llm 共用 build_system_messages）
+    # Layer 0..N: persona + summary + skill layers（构造与 call_llm 共用 build_system_messages）
     all_msgs = build_system_messages(
         persona, summary, skill_registry=skill_registry, active_skills=active_skills,
     )
