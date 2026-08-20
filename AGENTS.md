@@ -28,7 +28,7 @@ src/bot/package/                # 应用包主体（所有上下文统一在此�
     worker.py                   #   MessageWorkerPool — 消息队列 + thread lock + burst 合并
     router.py                   #   route_incoming — RouteDecision
     dispatcher.py               #   MessageDispatcher — 命令/graph/context/system/media 分发
-    contracts.py                #   兼容垫片 → domain.ports（MessageRouter/Sink 已收敛）
+    contracts.py                #   已删除，唯一源 domain/ports
   utils/                        # 纯工具与横切设施（原 context/utils + common 工具）
     content_parser.py / context.py / messages.py / reply_policy.py / routing.py
     logging.py / paths.py / queue.py / retry.py
@@ -41,7 +41,7 @@ src/bot/package/                # 应用包主体（所有上下文统一在此�
   mcp/                          # MCP：config.py 配置加载 + client.py 工具加载（合并为单包）
   commands/                     # 图外斜杠指令上下文：parser / registry / builtin / services
   conversation/                 # 会话领域对象：IncomingMessage / RouteDecision / BotState / TurnInput / identity
-  domain/                       # 共享领域对象与端口：ports / tasks / media（bash/prompts/constants 已迁移，保留垫片 duplicate）
+  domain/                       # 共享领域对象与端口：ports / tasks / media（bash/prompts/constants 已彻底移除，单一源）
   knowledge/                    # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker + prompts.py
   memory/                       # 用户长期记忆上下文：MemoryStore
   orchestration/                # 会话编排：LangGraph 工作流 + 图节点 + ContextCompactor + prompts.py/constants.py
@@ -92,7 +92,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 ## Key patterns
 
-**显式导出 `domain/`**：`src/bot/package/domain/__init__.py` 已改为显式 `from .media/.tasks/.ports` 导出（移除 `__getattr__`/`_module_map` 魔法），`BashConfig` 保留在 `domain/bash` 垫片（duplicate）供兼容，新代码从 `tools/domain.BashConfig` 导入；`ImageDescription`/`IndexTurnTask` 为唯一源。Satori 协议模型在 `src/bot/package/platform/satori/` 维护。`platform/base` 与 `utils/routing` 已通过 TYPE_CHECKING/内联打破循环。
+**显式导出 `domain/`**：`src/bot/package/domain/__init__.py` 已改为显式 `from .media/.tasks/.ports` 导出（移除 `__getattr__`/`_module_map` 魔法），`BashConfig` 单一源 `tools/domain.BashConfig`（`domain/bash` 已删除）；`ImageDescription`/`IndexTurnTask` 为唯一源。Satori 协议模型在 `src/bot/package/platform/satori/` 维护。`platform/base` 与 `utils/routing` 已通过 TYPE_CHECKING/单一源打破循环。
 
 **Node DI**：`graph.py` 用 `functools.partial` 注入（非闭包）；节点文件均为独立 `async def(state, ...) -> dict`。
 
@@ -136,7 +136,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 ## Gotchas
 
 - **`domain/` 包**：共享领域对象与端口统一在 `src/bot/package/domain/`；Satori 协议模型在 `src/bot/package/platform/satori/`。始终按目标包路径导入。
-- **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`，统一从 `domain.constants` 导入）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
+- **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`，统一从 `orchestration.constants` 导入）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
 - **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），Router/decide_reply 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
 - **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
 - **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。

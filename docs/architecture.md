@@ -100,14 +100,11 @@ src/
 │       │
 │       ├── commands/                  # 图外斜杠命令上下文
 │       ├── conversation/              # 会话领域对象
-│       ├── domain/                    # 共享领域对象与端口
-│       │   ├── __init__.py
-│       │   ├── bash.py
-│       │   ├── constants.py           # EXTERNAL_UPDATE_NODE / DIRECT_CHANNEL_TYPE
-│       │   ├── media.py
-│       │   ├── ports.py
-│       │   ├── prompts.py             # 原 common/prompts.py
-│       │   └── tasks.py
+│       ├── domain/                    # 共享领域对象与端口（仅 media/tasks/ports，bash/prompts/constants 已移除）
+│       │   ├── __init__.py            # 显式导出，无 __getattr__
+│       │   ├── media.py               # ImageDescription
+│       │   ├── ports.py               # 唯一源：MessageQueue/Sender/RagIndexer + Router/Sink/Compactor
+│       │   └── tasks.py               # IndexTurnTask
 │       ├── knowledge/                 # RAG / 文档知识上下文
 │       ├── memory/                    # 用户长期记忆上下文
 │       ├── orchestration/             # LangGraph 编排（工具由 boot 注入）
