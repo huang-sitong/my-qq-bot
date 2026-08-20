@@ -28,25 +28,25 @@ src/bot/package/                # 应用包主体（所有上下文统一在此�
     worker.py                   #   MessageWorkerPool — 消息队列 + thread lock + burst 合并
     router.py                   #   route_incoming — RouteDecision
     dispatcher.py               #   MessageDispatcher — 命令/graph/context/system/media 分发
-    contracts.py                #   MessageRouter / MessageSink / ContextCompactorPort
+    contracts.py                #   兼容垫片 → domain.ports（MessageRouter/Sink 已收敛）
   utils/                        # 纯工具与横切设施（原 context/utils + common 工具）
     content_parser.py / context.py / messages.py / reply_policy.py / routing.py
     logging.py / paths.py / queue.py / retry.py
   platform/                     # 平台适配层；目前只有 Satori
-    base.py                     #   EventSource / PlatformAdapter 端口
-    satori/                     #   enums/models/events/api + ingress/http/websocket + adapter
+    base.py                     #   EventSource / PlatformAdapter 端口（TYPE_CHECKING 避免循环）
+    satori/                     #   enums/models/events/api + ingress/http/websocket + adapter + constants.py
   config/
-    settings.py                 #   BotConfig pydantic-settings（env 校验、严格布尔 Flag）
-  tools/                        # 工具装配：factory.py + builtin/* 纯函数
-  mcp/                          # MCP：config.py 配置加载 + client.py 工具加载
+    settings.py                 #   BotConfig pydantic-settings（env 校验、严格布尔 Flag；DEFAULT_PERSONA 内联）
+  tools/                        # 工具装配：factory.py + builtin/* 纯函数 + domain.py:BashConfig
+  mcp/                          # MCP：config.py 配置加载 + client.py 工具加载（合并为单包）
   commands/                     # 图外斜杠指令上下文：parser / registry / builtin / services
-  conversation/                 # 会话领域对象：IncomingMessage / RouteDecision / BotState / identity
-  domain/                       # 共享领域对象与端口：ports / tasks / media / bash / prompts / constants
-  knowledge/                    # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker
+  conversation/                 # 会话领域对象：IncomingMessage / RouteDecision / BotState / TurnInput / identity
+  domain/                       # 共享领域对象与端口：ports / tasks / media（bash/prompts/constants 已迁移，保留垫片 duplicate）
+  knowledge/                    # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker + prompts.py
   memory/                       # 用户长期记忆上下文：MemoryStore
-  orchestration/                # 会话编排：LangGraph 工作流 + 图节点 + ContextCompactor
+  orchestration/                # 会话编排：LangGraph 工作流 + 图节点 + ContextCompactor + prompts.py/constants.py
   skill/                        # 技能管理上下文：SkillRegistry + load/unload 工具
-  vision/                       # 视觉理解上下文：VisionService + 图片下载
+  vision/                       # 视觉理解上下文：VisionService + 图片下载 + prompts.py
 db/                             # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
 
@@ -84,7 +84,7 @@ WS 事件 → EventBody → SatoriAdapter._on_message() → SatoriMessageIngress
 | db/milvus.db | MilvusStore | 群聊历史 dense+sparse 向量（milvus-lite 单文件）|
 | db/embed_cache.sqlite | EmbeddingCache | 嵌入磁盘缓存（key=sha256(model+任务前缀+角色+原文)）|
 
-checkpoint 反序列化：`graph.py` 创建 `AsyncSqliteSaver` 时显式传入 `JsonPlusSerializer(allowed_msgpack_modules=[...])`，放行 `ImageDescription` 的新旧路径（`domain.media` / `vision.domain`），避免 LangGraph serde 对自定义类型告警。
+checkpoint 反序列化：`graph.py` 创建 `AsyncSqliteSaver` 时显式传入 `JsonPlusSerializer(allowed_msgpack_modules=[...])`，放行 `ImageDescription` 的新旧路径（`domain.media` / `vision.domain` 后者已删除，保留兼容）；`BotState` 已瘦身为 10 持久字段（`turn.py:TurnInput` 分离），旧 checkpoint 的当轮字段通过 `total=False` 兼容。
 
 ## Session vs Thread
 
@@ -92,7 +92,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 ## Key patterns
 
-**Lazy-loading `domain/`**：`src/bot/package/domain/__init__.py` 用 `__getattr__` + `_module_map` 按名懒加载共享 DTO；新增领域数据对象时同步 `__all__` 与 `_module_map`。Satori 协议模型改在 `src/bot/package/platform/satori/` 维护。
+**显式导出 `domain/`**：`src/bot/package/domain/__init__.py` 已改为显式 `from .media/.tasks/.ports` 导出（移除 `__getattr__`/`_module_map` 魔法），`BashConfig` 保留在 `domain/bash` 垫片（duplicate）供兼容，新代码从 `tools/domain.BashConfig` 导入；`ImageDescription`/`IndexTurnTask` 为唯一源。Satori 协议模型在 `src/bot/package/platform/satori/` 维护。`platform/base` 与 `utils/routing` 已通过 TYPE_CHECKING/内联打破循环。
 
 **Node DI**：`graph.py` 用 `functools.partial` 注入（非闭包）；节点文件均为独立 `async def(state, ...) -> dict`。
 

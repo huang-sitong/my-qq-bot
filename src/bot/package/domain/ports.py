@@ -22,8 +22,8 @@ __all__ = [
     "ContextCompactorPort",
     "MessageQueue",
     "MessageRouter",
-    "MessageSink",
     "MessageSender",
+    "MessageSink",
     "RagIndexer",
     "UserMemoryStore",
     "VisionServicePort",
@@ -100,7 +100,7 @@ class UserMemoryStore(Protocol):
 class MessageRouter(Protocol):
     """把归一化消息路由为 ``RouteDecision``。"""
 
-    def __call__(self, message: "IncomingMessage", **opts: Any) -> "RouteDecision": ...
+    def __call__(self, message: IncomingMessage, **opts: Any) -> RouteDecision: ...
 
 
 class MessageSink(Protocol):
@@ -108,8 +108,8 @@ class MessageSink(Protocol):
 
     async def dispatch(
         self,
-        message: "IncomingMessage",
-        decision: "RouteDecision",
+        message: IncomingMessage,
+        decision: RouteDecision,
         *,
         auto_reply_allowed: bool = False,
     ) -> None: ...

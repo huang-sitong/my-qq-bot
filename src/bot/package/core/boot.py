@@ -19,8 +19,6 @@ from bot.package.conversation.identity import BotIdentity
 from bot.package.core.app import AppDependencies, BotApplication
 from bot.package.core.database import DatabaseManager
 from bot.package.core.llm import setup_llm
-from bot.package.tools.domain import BashConfig
-from bot.package.orchestration.prompts import DEFAULT_PERSONA_PROMPT
 from bot.package.knowledge.document_store import DocumentStore
 from bot.package.knowledge.index_worker import IndexWorker
 from bot.package.knowledge.service import RagService
@@ -28,6 +26,7 @@ from bot.package.mcp import load_mcp_servers_from_file, load_mcp_tools
 from bot.package.memory import MemoryStore
 from bot.package.orchestration.compaction import ContextCompactor
 from bot.package.orchestration.graph import create_graph
+from bot.package.orchestration.prompts import DEFAULT_PERSONA_PROMPT
 from bot.package.pipeline.dispatcher import MessageDispatcher
 from bot.package.pipeline.pipeline import MessagePipeline
 from bot.package.platform.satori.adapter import SatoriAdapter
@@ -35,6 +34,7 @@ from bot.package.platform.satori.http import SatoriApiClient
 from bot.package.platform.satori.websocket import SatoriClient
 from bot.package.skill import SkillRegistry
 from bot.package.tools import build_tools
+from bot.package.tools.domain import BashConfig
 from bot.package.utils.logging import setup_logging
 from bot.package.utils.paths import PROJECT_ROOT
 from bot.package.vision import VisionService

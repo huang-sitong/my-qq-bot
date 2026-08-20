@@ -1,6 +1,7 @@
 """门禁脚本子包粒度单测 — Task 1 失败测试"""
 
 from pathlib import Path
+
 from scripts.check_package_dependencies import check_runtime_dependencies
 
 

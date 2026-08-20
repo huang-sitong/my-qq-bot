@@ -15,12 +15,12 @@ from langgraph.prebuilt.tool_node import ToolInvocationError
 
 from bot.package.config import BotConfig
 from bot.package.conversation.state import BotState
-from bot.package.tools.domain import BashConfig
 from bot.package.orchestration.nodes import (
     call_llm_node,
     describe_image_node,
     skill_manager_node,
 )
+from bot.package.tools.domain import BashConfig
 from bot.package.utils.paths import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)

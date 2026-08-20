@@ -1,5 +1,6 @@
 """视觉理解限界上下文。"""
 from bot.package.domain import ImageDescription
+
 from .service import VisionService
 
 __all__ = ["ImageDescription", "VisionService"]

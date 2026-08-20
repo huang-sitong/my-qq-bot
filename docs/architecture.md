@@ -479,6 +479,10 @@ mcp/
 
 ---
 
+## 5. 依赖分层（2026-08-20 更新：domain 纯化、端口归一、BotState 瘦身已完成）
+
+> **2026-08-20 变更**：`domain/bash` → `tools/domain.BashConfig`、`domain/prompts` → `orchestration/prompts + knowledge/prompts + vision/prompts`、`domain/constants` → `orchestration/constants + platform/satori/constants`、`pipeline/contracts` → `domain/ports`、`conversation/state` → `conversation/turn.TurnInput`。`scripts/check_package_dependencies.py` 已升级为子包粒度，`bot.package.mcp` 合并，`platform`/`utils` 循环已通过 TYPE_CHECKING/内联打破。详见 `docs/superpowers/plans/2026-08-20-context-packaging-refactor.md`。
+
 ## 5. 依赖分层
 
 目标分层（越往下越稳定）：
@@ -502,21 +506,20 @@ L0  stdlib / 第三方库
 
 | 包 | 允许依赖 |
 |---|---|
-| `bot.package.domain` | 无内部依赖 |
-| `bot.package.conversation` | `bot.package.domain` |
-| `bot.package.config` | 无内部依赖 |
-| `bot.package.utils` | `bot.package.domain`、`bot.package.conversation` |
-| `bot.package.mcp.config` | 无内部依赖 |
-| `bot.package.commands` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation` |
+| `bot.package.domain` | 无内部依赖（BashConfig 已迁移至 tools/domain，prompts/constants 已拆分，保留垫片期 duplicate 避免循环） |
+| `bot.package.conversation` | `bot.package.domain`（新增 `turn.py: TurnInput` 当轮输入，与 BotState 持久态分离） |
+| `bot.package.config` | 无内部依赖（DEFAULT_PERSONA_PROMPT 内联，不再依赖 domain/orchestration） |
+| `bot.package.utils` | `bot.package.domain`、`bot.package.conversation`、`bot.package.orchestration`（context 需要 SKILL 提示词） |
+| `bot.package.mcp` | `bot.package.config`、`bot.package.utils`（mcp.config + client 合并，共享 PROJECT_ROOT） |
+| `bot.package.commands` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation`、`bot.package.orchestration`（clear/compact 需 EXTERNAL_UPDATE_NODE） |
 | `bot.package.skill` | 无内部依赖 |
-| `bot.package.knowledge` | `bot.package.config`、`bot.package.utils`、`bot.package.domain` |
+| `bot.package.knowledge` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`（新增 `prompts.py: RETRIEVAL_TASK`） |
 | `bot.package.memory` | 无内部依赖 |
-| `bot.package.vision` | `bot.package.config`、`bot.package.utils`、`bot.package.domain` |
-| `bot.package.orchestration` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation` |
-| `bot.package.platform` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation` |
-| `bot.package.tools` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation`、`bot.package.skill`、`bot.package.knowledge` |
-| `bot.package.mcp.client` | `bot.package.mcp.config`、`bot.package.config` |
-| `bot.package.pipeline` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation`、`bot.package.commands`、`bot.package.orchestration` |
+| `bot.package.vision` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`（新增 `prompts.py: VISION_PROMPT`） |
+| `bot.package.orchestration` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation`、`bot.package.vision`、`bot.package.tools`（graph 需 BashConfig，describe_image 需 Vision） |
+| `bot.package.platform` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation`（已改为 TYPE_CHECKING 避免循环） |
+| `bot.package.tools` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation`、`bot.package.skill`、`bot.package.knowledge`（新增 `domain.py: BashConfig`） |
+| `bot.package.pipeline` | `bot.package.config`、`bot.package.utils`、`bot.package.domain`、`bot.package.conversation`、`bot.package.commands`、`bot.package.orchestration`（contracts 已收敛至 domain.ports） |
 | `bot.package.core` | 以上全部 |
 
 两条硬性不变量：

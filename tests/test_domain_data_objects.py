@@ -5,9 +5,9 @@ from pathlib import Path
 import bot.package.commands as core_commands
 import bot.package.conversation.router as core_router
 import bot.package.domain.bash as core_run_bash
+
 # removed shim import
 import bot.package.skill as core_skills
-import bot.package.vision as core_vision
 from bot.package.commands import (
     Command,
     CommandActor,
@@ -80,8 +80,8 @@ def test_bash_config_lives_in_tools_domain():
 
 
 def test_prompts_split():
-    from bot.package.orchestration.prompts import SUMMARY_PROMPT, BASH_TOOL_HINT
     from bot.package.knowledge.prompts import RETRIEVAL_TASK
+    from bot.package.orchestration.prompts import BASH_TOOL_HINT, SUMMARY_PROMPT
     assert "{old_summary}" in SUMMARY_PROMPT
     assert "run_bash" in BASH_TOOL_HINT
     assert RETRIEVAL_TASK.startswith("检索")
@@ -95,13 +95,15 @@ def test_constants_split():
 
 
 def test_config_no_longer_imports_domain():
-    import ast, pathlib
+    import ast
+    import pathlib
     tree = ast.parse(pathlib.Path("src/bot/package/config/settings.py").read_text(encoding="utf-8"))
     imports = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
     assert not any(m.startswith("bot.package.domain") for m in imports if m)
 
 def test_domain_init_has_no_getattr_magic():
-    import pathlib, ast
+    import ast
+    import pathlib
     src = pathlib.Path("src/bot/package/domain/__init__.py").read_text(encoding="utf-8")
     assert "__getattr__" not in src
     assert "_module_map" not in src
@@ -112,7 +114,7 @@ def test_domain_init_has_no_getattr_magic():
 
 
 def test_domain_import_still_works():
-    from bot.package.domain import ImageDescription, IndexTurnTask
+    from bot.package.domain import ImageDescription
     assert ImageDescription(image_src="a", description="b").image_src == "a"
 
 def test_bot_state_is_slim():
