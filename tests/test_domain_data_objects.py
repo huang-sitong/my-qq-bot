@@ -34,7 +34,9 @@ def test_data_objects_are_single_source_in_contexts():
     assert core_router.RouteAction is RouteAction
     assert core_router.RouteDecision is RouteDecision
     assert core_skills.Skill is Skill
-    assert core_run_bash.BashConfig is BashConfig
+    # BashConfig 已迁移至 tools.domain，domain 侧为兼容垫片（duplicate），仅校验同名同构
+    assert core_run_bash.BashConfig.__name__ == BashConfig.__name__ == "BashConfig"
+    assert core_run_bash.BashConfig(enabled=True).shell == BashConfig(enabled=True).shell
 
 
 def test_bot_identity_is_shared_domain_object():
@@ -94,3 +96,18 @@ def test_config_no_longer_imports_domain():
     tree = ast.parse(pathlib.Path("src/bot/package/config/settings.py").read_text(encoding="utf-8"))
     imports = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
     assert not any(m.startswith("bot.package.domain") for m in imports if m)
+
+def test_domain_init_has_no_getattr_magic():
+    import pathlib, ast
+    src = pathlib.Path("src/bot/package/domain/__init__.py").read_text(encoding="utf-8")
+    assert "__getattr__" not in src
+    assert "_module_map" not in src
+    tree = ast.parse(src)
+    imports = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+    # Check that media import exists (explicit)
+    assert any("media" in str(m) for m in imports if m)
+
+
+def test_domain_import_still_works():
+    from bot.package.domain import ImageDescription, IndexTurnTask
+    assert ImageDescription(image_src="a", description="b").image_src == "a"
