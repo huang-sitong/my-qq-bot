@@ -111,3 +111,24 @@ def test_package_runtime_dependencies_follow_allowlist():
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+def test_no_reexport_shims():
+    repo_root = Path(__file__).resolve().parents[1]
+    assert not (repo_root / "src" / "bot" / "package" / "knowledge" / "domain.py").exists(), "knowledge/domain.py shim should be removed"
+    assert not (repo_root / "src" / "bot" / "package" / "vision" / "domain.py").exists(), "vision/domain.py shim should be removed"
+
+def test_single_import_path():
+    repo_root = Path(__file__).resolve().parents[1]
+    needle_vision = "from bot.package.vision.domain import"
+    needle_knowledge = "from bot.package.knowledge.domain import"
+    for path in (repo_root / "tests").rglob("*.py"):
+        if path.name == "test_architecture.py":
+            continue
+        src = path.read_text(encoding="utf-8")
+        assert needle_vision not in src, f"{path} still uses vision.domain shim"
+        assert needle_knowledge not in src, f"{path} still uses knowledge.domain shim"
+    for path in (repo_root / "src").rglob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        assert needle_vision not in src, f"{path} still uses vision.domain shim"
+        assert needle_knowledge not in src, f"{path} still uses knowledge.domain shim"
+

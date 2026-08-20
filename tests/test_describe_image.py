@@ -8,7 +8,7 @@ from bot.package.orchestration.nodes.action_node.describe_image import (
     build_multimodal_content,
     describe_image_node,
 )
-from bot.package.vision.domain import ImageDescription
+from bot.package.domain import ImageDescription
 from tests.fakes import FakeVisionService, make_state
 
 
