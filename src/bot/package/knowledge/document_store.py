@@ -1,6 +1,7 @@
-"""DocumentStore — 文档知识库存储。
+"""DocumentStore — 文档知识库存储适配器。
 
-文档与聊天记录隔离，使用独立的 milvus-lite collection（默认 ``documents``）。
+实现 ``domain.repositories.DocumentRepository``；文档与聊天记录隔离，
+使用独立的 milvus-lite collection（默认 ``documents``）。
 - schema 固定字段比 ``chat`` 多出文档元信息：doc_id / file_hash / file_name / file_type / page / chunk_index / source_path；
 - add_texts 不参与聊天记录按线程淘汰；
 - 提供按 file_hash 去重、按 doc_id 删除等文档生命周期操作。

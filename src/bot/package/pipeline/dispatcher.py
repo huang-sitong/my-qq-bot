@@ -18,23 +18,22 @@ from bot.package.commands import (
     can_run,
     run_command,
 )
+from bot.package.conversation.content import IMAGE_PLACEHOLDER, MessageKind
+from bot.package.conversation.events import ConversationTurnCompleted
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
 from bot.package.conversation.turn import TurnInput
 from bot.package.domain import IndexTurnTask
+from bot.package.domain.events import DomainEventBus
 from bot.package.domain.ports import (
     ContextCompactorPort,
     MessageSender,
     RagIndexer,
 )
+from bot.package.domain.repositories import ConversationRepository
 from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
-from bot.package.utils import (
-    IMAGE_PLACEHOLDER,
-    MessageKind,
-    content_to_text,
-    format_message_for_log,
-)
+from bot.package.utils import content_to_text, format_message_for_log
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +53,8 @@ class MessageDispatcher:
         compactor: ContextCompactorPort | None = None,
         index_worker: RagIndexer | None = None,
         identity: BotIdentity | None = None,
+        conversation_repository: ConversationRepository | None = None,
+        event_bus: DomainEventBus | None = None,
         on_auto_reply_sent=None,
     ) -> None:
         self.graph = graph
@@ -65,6 +66,8 @@ class MessageDispatcher:
         self._compactor = compactor
         self._index_worker = index_worker
         self._identity = identity or BotIdentity()
+        self._conversation_repository = conversation_repository
+        self._event_bus = event_bus
         # 跨对象回调契约：worker 池经 MessagePipeline 在启动装配时注入
         # mark_reply_sent（auto_reply 冷却记账）。公开属性，供装配根接线。
         self.on_auto_reply_sent = on_auto_reply_sent
@@ -96,13 +99,19 @@ class MessageDispatcher:
 
         human = self._build_human_message(message, auto_reply=auto_reply_allowed)
         if decision.action == RouteAction.CONTEXT_ONLY:
-            thread_config = {"configurable": {"thread_id": message.thread_id}}
-            await self.graph.aupdate_state(
-                thread_config,
-                {"messages": [human]},
-                as_node=EXTERNAL_UPDATE_NODE,
-            )
-            await self._enqueue_index(message, "")
+            if self._conversation_repository is not None:
+                await self._conversation_repository.append_record(
+                    message.to_record(),
+                    auto_reply=auto_reply_allowed,
+                )
+            else:
+                thread_config = {"configurable": {"thread_id": message.thread_id}}
+                await self.graph.aupdate_state(
+                    thread_config,
+                    {"messages": [human]},
+                    as_node=EXTERNAL_UPDATE_NODE,
+                )
+            await self._publish_turn_completed([message], "")
             return
 
         await self._run_reply_graph(message, human, auto_reply_allowed)
@@ -148,14 +157,20 @@ class MessageDispatcher:
                 auto_reply_flags=[flag for _, _, flag in keep],
             )
             return
-        thread_config = {"configurable": {"thread_id": first.thread_id}}
-        await self.graph.aupdate_state(
-            thread_config,
-            {"messages": humans},
-            as_node=EXTERNAL_UPDATE_NODE,
-        )
-        for m, _, _ in keep:
-            await self._enqueue_index(m, "")
+        if self._conversation_repository is not None:
+            for m, _, flag in keep:
+                await self._conversation_repository.append_record(
+                    m.to_record(),
+                    auto_reply=flag,
+                )
+        else:
+            thread_config = {"configurable": {"thread_id": first.thread_id}}
+            await self.graph.aupdate_state(
+                thread_config,
+                {"messages": humans},
+                as_node=EXTERNAL_UPDATE_NODE,
+            )
+        await self._publish_turn_completed([m for m, _, _ in keep], "")
 
     async def _execute_command(
         self,
@@ -305,6 +320,24 @@ class MessageDispatcher:
             await self._send_reply(last.channel_id, reply_text)
         if reply_text and auto_reply_allowed and self.on_auto_reply_sent is not None:
             self.on_auto_reply_sent(last.thread_id)
+        await self._publish_turn_completed(messages, reply_text)
+
+    async def _publish_turn_completed(
+        self,
+        messages: list[IncomingMessage],
+        reply_text: str,
+    ) -> None:
+        """发布领域事件；无总线时回退到旧直连索引（兼容测试/最小装配）。"""
+        if self._event_bus is not None:
+            event = ConversationTurnCompleted(
+                thread_id=messages[0].thread_id,
+                messages=tuple(message.to_record() for message in messages),
+                bot_id=self._identity.id,
+                bot_name=self._identity.name,
+                bot_reply=content_to_text(reply_text),
+            )
+            await self._event_bus.publish(event)
+            return
         for message in messages:
             await self._enqueue_index(message, reply_text)
 
@@ -321,7 +354,8 @@ class MessageDispatcher:
         message: IncomingMessage,
         reply_text: str,
     ) -> IndexTurnTask | None:
-        user_message = message.clean_text
+        record = message.to_record()
+        user_message = record.index_text
         reply_text = content_to_text(reply_text).strip()
         if (
             message.content_kind == MessageKind.IMAGE.value
@@ -331,9 +365,9 @@ class MessageDispatcher:
         if not user_message.strip() and not reply_text:
             return None
         return IndexTurnTask(
-            thread_id=message.thread_id,
-            user_id=message.user_id,
-            user_name=message.user_name,
+            thread_id=record.thread_id,
+            user_id=record.user_id,
+            user_name=record.user_name,
             bot_id=self._identity.id,
             bot_name=self._identity.name,
             user_message=user_message,

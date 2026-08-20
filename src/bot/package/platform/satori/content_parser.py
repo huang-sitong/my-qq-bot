@@ -1,20 +1,25 @@
-"""消息内容解析：从 Satori content 字符串分类文本/图片/文件/媒体。
+"""Satori content 字符串解析适配器。
 
 LLOneBot 只发送 ``content`` 字符串（无结构化 ``elements`` 数组），图片/文件/
 语音/视频都以自闭合标签嵌入字符串，例如 ``<img .../>``。本模块用正则解析这些
-标签，产出消息类型（主类型）、附件列表和两种清洗文本：
+标签，产出领域类型（MessageKind/Attachment/ParsedContent）与清洗文本：
 
 - ``clean_text``：剥掉全部标签（含闭合/注释），供 RAG 索引用（纯文本）
 - ``to_llm_text``：媒体→``[图片]`` 等占位符、@→``@昵称(id)``/``所有成员``、链接→``内容 (href)``、其余标签全剥，供 LLM 用（注：``<a@b.com>``/``<https://...>`` 等非元素尖括号序列同样被剥除）
 - ``parse_mentions``：只数顶层 at 提及 ``{id: 昵称}``（引用/转发子树不计），供路由判定用
 
-类型定义（MessageKind/Attachment/ParsedContent）见 ``bot.package.conversation.content``。
+类型定义与 ``IMAGE_PLACEHOLDER`` 见 ``bot.package.conversation.content``。
 """
 
 import html
 import re
 
-from bot.package.conversation.content import Attachment, MessageKind, ParsedContent
+from bot.package.conversation.content import (
+    IMAGE_PLACEHOLDER,
+    Attachment,
+    MessageKind,
+    ParsedContent,
+)
 
 _MEDIA_TAG_RE = re.compile(r"<(img|file|audio|video)\b([^>]*?)/?>", re.IGNORECASE)
 _TAG_RE = re.compile(r"</?[a-z]+\b[^>]*?/?>", re.IGNORECASE)   # 起始/闭合/自闭合
@@ -31,8 +36,8 @@ _PLACEHOLDERS = {
     "video": "[视频]",
 }
 
-# [图片] 占位符单一来源（describe_image 原位替换引用，避免魔数重复）
-IMAGE_PLACEHOLDER = _PLACEHOLDERS["img"]
+# 图片占位符单一来源在 conversation.content；其余媒体占位符仅本适配器使用。
+assert _PLACEHOLDERS["img"] == IMAGE_PLACEHOLDER
 
 _TAG_TO_KIND = {
     "img": "image",

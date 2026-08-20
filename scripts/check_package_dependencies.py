@@ -47,7 +47,7 @@ SUBPACKAGES = {
 LEGACY_TOP = {"common", "context", "execution", "protocol"}
 
 # Runtime dependency allowlist（子包粒度，TYPE_CHECKING 不计）
-# 来源：docs/architecture.md §5，並按實際 runtime 調整以消除誤報：
+# 来源：docs/architecture.md 依赖方向，并按实际 runtime 调整以消除误报：
 # - platform 允許 pipeline（base/adapter 的 MessagePipeline 類型，實為 TYPE_CHECKING 但現為 runtime，寬容）
 # - orchestration 允許 vision（describe_image 節點）
 # - mcp 允許 utils（paths.PROJECT_ROOT）
@@ -61,7 +61,7 @@ ALLOWED_RUNTIME_DEPENDENCIES: dict[str, set[str]] = {
     "mcp": {"config", "utils"},
     "skill": set(),
     "memory": set(),
-    "knowledge": {"config", "utils", "domain"},
+    "knowledge": {"config", "utils", "domain", "conversation"},
     "vision": {"config", "utils", "domain"},
     "orchestration": {"config", "utils", "domain", "conversation", "vision"},
     "platform": {"config", "utils", "domain", "conversation"},

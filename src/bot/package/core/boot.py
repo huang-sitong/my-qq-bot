@@ -16,6 +16,7 @@ from dotenv import dotenv_values, find_dotenv
 from bot.package.commands import CommandServices, build_command_registry
 from bot.package.config import BotConfig
 from bot.package.config.settings import DEFAULT_PERSONA_PROMPT
+from bot.package.conversation.events import ConversationTurnCompleted
 from bot.package.conversation.identity import BotIdentity
 from bot.package.core.app import AppDependencies, BotApplication
 from bot.package.core.database import DatabaseManager
@@ -23,9 +24,11 @@ from bot.package.core.llm import setup_llm
 from bot.package.knowledge.document_store import DocumentStore
 from bot.package.knowledge.index_worker import IndexWorker
 from bot.package.knowledge.service import RagService
+from bot.package.knowledge.turn_index_projection import TurnIndexProjection
 from bot.package.mcp import load_mcp_servers_from_file, load_mcp_tools
 from bot.package.memory import MemoryStore
 from bot.package.orchestration.compaction import ContextCompactor
+from bot.package.orchestration.conversation_repository import LangGraphConversationRepository
 from bot.package.orchestration.graph import create_graph
 from bot.package.pipeline.dispatcher import MessageDispatcher
 from bot.package.pipeline.pipeline import MessagePipeline
@@ -35,6 +38,7 @@ from bot.package.platform.satori.websocket import SatoriClient
 from bot.package.skill import SkillRegistry
 from bot.package.tools import build_tools
 from bot.package.tools.domain import BashConfig
+from bot.package.utils.event_bus import InMemoryDomainEventBus
 from bot.package.utils.logging import setup_logging
 from bot.package.utils.paths import PROJECT_ROOT
 from bot.package.vision import VisionService
@@ -173,7 +177,16 @@ async def create_app(config: BotConfig | None = None) -> BotApplication:
     if graph is not None and llm is not None:
         compactor = ContextCompactor(graph, llm, config, skill_registry=skill_registry)
 
+    conversation_repository = (
+        LangGraphConversationRepository(graph) if graph is not None else None
+    )
+    event_bus = InMemoryDomainEventBus()
     index_worker = IndexWorker(rag_service) if rag_service is not None else None
+    if index_worker is not None:
+        event_bus.subscribe(
+            ConversationTurnCompleted,
+            TurnIndexProjection(index_worker).on_turn_completed,
+        )
 
     command_services = CommandServices(
         version=_bot_version(),
@@ -186,6 +199,7 @@ async def create_app(config: BotConfig | None = None) -> BotApplication:
         rag_service=rag_service,
         vision_service=vision_service,
         memory_store=memory_store,
+        conversation_repository=conversation_repository,
         compactor=compactor,
         mcp_tool_names=tuple(tool.name for tool in mcp_tools),
         mcp_tool_count=len(mcp_tools),
@@ -204,8 +218,9 @@ async def create_app(config: BotConfig | None = None) -> BotApplication:
         command_registry=command_registry,
         command_services=command_services,
         compactor=compactor,
-        index_worker=index_worker,
         identity=identity,
+        conversation_repository=conversation_repository,
+        event_bus=event_bus,
     )
     pipeline = MessagePipeline(
         dispatcher,

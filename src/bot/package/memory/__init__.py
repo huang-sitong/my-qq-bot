@@ -1,4 +1,4 @@
-"""用户记忆存储：对齐 langgraph 官方 BaseStore 体系。
+"""用户记忆存储适配器：实现 ``domain.repositories.MemoryRepository``。
 
 持久记忆用官方 ``AsyncSqliteStore``（继承 ``BaseStore`` 的官方 sqlite 后端，
 ``langgraph.store.sqlite``，数据落 ``db/memory.sqlite`` 的 ``store`` 表）。

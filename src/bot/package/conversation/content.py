@@ -1,11 +1,16 @@
-"""Satori 消息内容分类的领域类型（纯数据对象，零逻辑，供各层共享引用）。
+"""会话消息内容分类的纯领域类型与常量。
 
-由 ``bot.package.utils.content_parser`` 的解析函数消费；解析逻辑留在 utils，
-这里只存放可被 ``domain/`` 层（含 ``BotState``）引用的规范类型。
+``ParsedContent`` / ``Attachment`` / ``MessageKind`` 是各层共享的规范类型；
+``IMAGE_PLACEHOLDER`` 是图片在 LLM 上下文/RAG 文本中的唯一占位符来源。
+协议 XML 解析逻辑位于 ``platform.satori.content_parser``（基础设施适配器），
+本模块不含 LangChain/LangGraph 依赖。
 """
 
 from dataclasses import dataclass, field
 from enum import Enum
+
+# LLM 上下文 / RAG 索引中图片占位符的单一来源。
+IMAGE_PLACEHOLDER = "[图片]"
 
 
 class MessageKind(str, Enum):

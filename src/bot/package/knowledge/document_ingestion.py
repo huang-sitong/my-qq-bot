@@ -24,6 +24,7 @@ from pathlib import Path
 from langchain_core.documents import Document
 
 from bot.package.config import BotConfig
+from bot.package.domain.repositories import DocumentRepository
 
 from .document_store import DocumentStore
 from .service import TS_FMT
@@ -328,7 +329,7 @@ def _build_metadata(
 async def ingest_files(
     config: BotConfig,
     paths: list[str | Path],
-    store: DocumentStore | None = None,
+    store: DocumentRepository | None = None,
 ) -> list[dict]:
     """导入一批文档到知识库，返回每个文件的导入结果摘要。"""
     owns_store = store is None

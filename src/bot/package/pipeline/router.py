@@ -1,8 +1,8 @@
 from bot.package.commands import CommandActor, CommandRegistry, parse_command
 from bot.package.conversation.content import MessageKind
+from bot.package.conversation.conversation import Conversation
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
-from bot.package.utils.routing import decide_reply, keep_in_context
 
 _CONVERSATION_EVENT_TYPES = {"message-created"}
 _MEDIA_KINDS = {
@@ -48,19 +48,17 @@ def route_incoming(
                     parsed_command=parsed_command,
                 )
 
-    should_respond = decide_reply(
-        message.channel_type,
-        message.content_kind,
-        bot_id,
-        bot_name,
-        message.mentions,
-        auto_reply_allowed,
+    conversation = Conversation.from_message(
+        message,
+        bot_id=bot_id,
+        bot_name=bot_name,
     )
-    keep = keep_in_context(
-        should_respond,
-        message.content_kind,
-        message.has_text,
+    reply = conversation.decide(
+        message,
+        auto_reply=auto_reply_allowed,
     )
+    should_respond = reply.should_respond
+    keep = reply.keep_in_context
     if not keep:
         if message.content_kind in _MEDIA_KINDS:
             return RouteDecision(action=RouteAction.MEDIA)

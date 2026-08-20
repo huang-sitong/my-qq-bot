@@ -1,7 +1,10 @@
-"""Satori 协议常量 — 避免上层反向依赖 platform。"""
+"""Satori 协议常量 — 单一来源在会话领域策略。
 
-# Satori ChannelType.DIRECT 的整数值；bot.utils.routing 不应反向依赖 platform 包，
-# 因此在此保存协议共享常量（与原 domain.constants.DIRECT_CHANNEL_TYPE 同值）。
-DIRECT_CHANNEL_TYPE = 1
+``DIRECT_CHANNEL_TYPE`` 的语义权威属于会话领域
+（``bot.package.conversation.policy``），此处仅做平台侧兼容反引；
+Satori ``ChannelType.DIRECT`` 与其同值。
+"""
+
+from bot.package.conversation.policy import DIRECT_CHANNEL_TYPE
 
 __all__ = ["DIRECT_CHANNEL_TYPE"]

@@ -4,8 +4,8 @@ from collections.abc import Callable
 from uuid import uuid4
 
 from bot.package.conversation.message import IncomingMessage
+from bot.package.platform.satori.content_parser import parse_content
 from bot.package.platform.satori.events import EventBody
-from bot.package.utils import parse_content
 
 
 class SatoriMessageIngress:

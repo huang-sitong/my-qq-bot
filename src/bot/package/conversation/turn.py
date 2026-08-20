@@ -1,10 +1,10 @@
 """当轮输入 — 非持久的 TurnInput 领域对象。
 
-与 BotState（持久 checkpoint）分离：TurnInput 仅承载当轮消息分类与视觉元数据，
-不落库、不参与摘要，仅供 describe_image 等当轮节点消费。持久字段（messages,
-persona, summary, thread_id 等）仍在 BotState。
+与 LangGraph 状态投影（``bot.package.orchestration.state.BotState``）分离：
+TurnInput 仅承载当轮消息分类与视觉元数据，不落库、不参与摘要，仅供
+describe_image 等当轮节点消费。持久字段仍在编排层 BotState。
 
-此分离解决 BotState 膨胀（17 字段 → 8 持久 + 10 当轮）与跨 5 上下文耦合问题。
+此分离解决 BotState 膨胀与跨上下文耦合问题，并保持会话领域模型框架无关。
 """
 
 from dataclasses import dataclass

@@ -8,7 +8,8 @@ import logging
 
 from langchain_core.messages import AIMessage, ToolMessage
 
-from bot.package.conversation.state import BotState
+from bot.package.conversation import Conversation
+from bot.package.orchestration.state import BotState
 from bot.package.utils import format_message_for_log
 
 logger = logging.getLogger(__name__)
@@ -63,22 +64,25 @@ async def skill_manager_node(state: BotState, skill_registry=None) -> dict:
         return {}
     if skill_registry is None:
         return {}
-    active = list(state.get("active_skills", []))
-    changed = False
+    conversation = Conversation.restore(
+        thread_id=state.get("thread_id") or "unknown",
+        bot_id=state.get("bot_id", ""),
+        bot_name=state.get("bot_name", ""),
+        active_skills=tuple(state.get("active_skills", [])),
+        tool_rounds=int(state.get("tool_rounds", 0)),
+    )
     for call in last_ai.tool_calls:
         name = call.get("name")
         args = call.get("args", {}) or {}
         if name == "load_skill":
             skill = args.get("skill_name", "")
-            if skill_registry.has(skill) and skill not in active:
-                active.append(skill)
-                changed = True
+            if skill_registry.has(skill):
+                conversation = conversation.activate_skill(skill)
         elif name == "unload_skill":
             skill = args.get("skill_name", "")
-            if skill in active:
-                active.remove(skill)
-                changed = True
-    if not changed:
+            conversation = conversation.deactivate_skill(skill)
+    active = list(conversation.active_skills)
+    if active == list(state.get("active_skills", [])):
         return {}
     logger.info("active_skills updated: %s", active)
     return {"active_skills": active}

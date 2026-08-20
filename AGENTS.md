@@ -29,22 +29,21 @@ src/bot/package/                # 应用包主体（所有上下文统一在此�
     router.py                   #   route_incoming — RouteDecision
     dispatcher.py               #   MessageDispatcher — 命令/graph/context/system/media 分发
     contracts.py                #   已删除，唯一源 domain/ports
-  utils/                        # 纯工具与横切设施（原 context/utils + common 工具）
-    content_parser.py / context.py / messages.py / reply_policy.py / routing.py
-    logging.py / paths.py / queue.py / retry.py
+  utils/                        # 纯技术横切设施
+    context.py / messages.py / event_bus.py / logging.py / paths.py / queue.py / retry.py
   platform/                     # 平台适配层；目前只有 Satori
     base.py                     #   EventSource / PlatformAdapter 端口（TYPE_CHECKING 避免循环）
-    satori/                     #   enums/models/events/api + ingress/http/websocket + adapter + constants.py
+    satori/                     #   enums/models/events/api + content_parser + ingress/http/websocket + adapter + constants.py
   config/
     settings.py                 #   BotConfig pydantic-settings（env 校验、严格布尔 Flag；DEFAULT_PERSONA 内联）
   tools/                        # 工具装配：factory.py + builtin/* 纯函数 + domain.py:BashConfig
   mcp/                          # MCP：config.py 配置加载 + client.py 工具加载（合并为单包）
   commands/                     # 图外斜杠指令上下文：parser / registry / builtin / services
-  conversation/                 # 会话领域对象：IncomingMessage / RouteDecision / BotState / TurnInput / identity
-  domain/                       # 共享领域对象与端口：ports / tasks / media（bash/prompts/constants 已彻底移除，单一源）
-  knowledge/                    # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker + prompts.py
-  memory/                       # 用户长期记忆上下文：MemoryStore
-  orchestration/                # 会话编排：LangGraph 工作流 + 图节点 + ContextCompactor + prompts.py/constants.py
+  conversation/                 # 纯会话领域：Conversation 聚合根 / events / MessageRecord / IncomingMessage / ReplyPolicy / ReplyDecision / RouteDecision / TurnInput / identity（不依赖 LangChain/LangGraph）
+  domain/                       # 共享领域对象与端口：events / ports / repositories / tasks / media（bash/prompts/constants 已彻底移除，单一源）
+  knowledge/                    # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker / turn_index_projection + prompts.py；DocumentStore 实现 DocumentRepository
+  memory/                       # 用户长期记忆上下文：MemoryStore 实现 MemoryRepository
+  orchestration/                # 会话编排：state.py(BotState 投影) + conversation_repository.py(LangGraph 适配器) + 工作流 + 图节点 + ContextCompactor + prompts.py/constants.py
   skill/                        # 技能管理上下文：SkillRegistry + load/unload 工具
   vision/                       # 视觉理解上下文：VisionService + 图片下载 + prompts.py
 db/                             # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
@@ -84,7 +83,7 @@ WS 事件 → EventBody → SatoriAdapter._on_message() → SatoriMessageIngress
 | db/milvus.db | MilvusStore | 群聊历史 dense+sparse 向量（milvus-lite 单文件）|
 | db/embed_cache.sqlite | EmbeddingCache | 嵌入磁盘缓存（key=sha256(model+任务前缀+角色+原文)）|
 
-checkpoint 反序列化：`graph.py` 创建 `AsyncSqliteSaver` 时显式传入 `JsonPlusSerializer(allowed_msgpack_modules=[...])`，放行 `ImageDescription` 的新旧路径（`domain.media` / `vision.domain` 后者已删除，保留兼容）；`BotState` 已瘦身为 10 持久字段，当轮输入（`turn.py:TurnInput`）由 dispatcher 构造并经 run config `configurable.turn_input` 注入图，**不进入 BotState channel schema、不落库**；describe_image 节点优先读 `turn`，回退读 `state` 兼容旧 checkpoint（旧 checkpoint 的当轮字段通过 `total=False` 允许存在）。
+checkpoint 反序列化：`graph.py` 创建 `AsyncSqliteSaver` 时显式传入 `JsonPlusSerializer(allowed_msgpack_modules=[...])`，放行 `ImageDescription` 的新旧路径（`domain.media` / `vision.domain` 后者已删除，保留兼容）；`BotState` 是编排层状态投影（`orchestration/state.py`，会话领域不 import LangChain/LangGraph），已瘦身为 10 持久字段，当轮输入（`turn.py:TurnInput`）由 dispatcher 构造并经 run config `configurable.turn_input` 注入图，**不进入 BotState channel schema、不落库**；describe_image 节点优先读 `turn`，回退读 `state` 兼容旧 checkpoint（旧 checkpoint 的当轮字段通过 `total=False` 允许存在）。
 
 ## Session vs Thread
 
@@ -92,7 +91,15 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 ## Key patterns
 
-**显式导出 `domain/`**：`src/bot/package/domain/__init__.py` 已改为显式 `from .media/.tasks/.ports` 导出（移除 `__getattr__`/`_module_map` 魔法），`BashConfig` 单一源 `tools/domain.BashConfig`（`domain/bash` 已删除）；`ImageDescription`/`IndexTurnTask` 为唯一源。Satori 协议模型在 `src/bot/package/platform/satori/` 维护。`platform/base` 与 `utils/routing` 已通过 TYPE_CHECKING/单一源打破循环。
+**显式导出 `domain/`**：`src/bot/package/domain/__init__.py` 已改为显式 `from .media/.tasks/.ports` 导出（移除 `__getattr__`/`_module_map` 魔法），`BashConfig` 单一源 `tools/domain.BashConfig`（`domain/bash` 已删除）；`ImageDescription`/`IndexTurnTask` 为唯一源。Satori 协议模型在 `src/bot/package/platform/satori/` 维护；`platform/base` 与 pipeline 的循环依赖已通过 TYPE_CHECKING 打破。
+
+**会话策略与聚合根**：回复/入上下文/auto_reply 规则的唯一源在 `src/bot/package/conversation/policy.py`（`ReplyPolicy`/`ReplyDecision`）；`Conversation`（`conversation/conversation.py`）是会话聚合根，通过 `decide()` 执行策略，并收口 `messages / conversation_summary / active_skills / tool_rounds` 的修改：`record_message` / `activate_skill` / `deactivate_skill` / `record_tool_call` / `replace_summary` / `clear_context`。`skill_manager` / `summarize` / `call_llm` / `ConversationRepository.clear` / `/clear` 均经 `Conversation.restore` 还原后调用聚合方法。`MessageRecord`（`conversation/record.py`）是框架无关的消息值对象，`IncomingMessage.to_record()` 供 RAG 索引构造等场景复用。旧 `utils/routing.py` / `utils/reply_policy.py` 已删除。
+
+**框架隔离（BotState 投影）**：`BotState` 已从会话领域迁至 `orchestration/state.py`，作为 LangGraph checkpoint 状态投影；`conversation/` 目录禁止 import LangChain/LangGraph（测试守护），领域对象与工作流框架解耦。图节点统一从 `bot.package.orchestration.state` 导入 `BotState`。
+
+**仓库端口与适配器**：领域仓库端口唯一源在 `domain/repositories.py`——`ConversationRepository` / `DocumentRepository` / `MemoryRepository`。适配器：`orchestration/conversation_repository.py::LangGraphConversationRepository`（checkpoint SQLite）、`knowledge/document_store.py::DocumentStore`（milvus-lite）、`memory/MemoryStore`（SQLite AsyncSqliteStore）。装配根 `core.boot` 创建适配器并注入 `CommandServices` / `MessageDispatcher`；context_only 追加与 `/clear` 优先走 `ConversationRepository`，旧直连 graph 仅作无适配器测试回退。
+
+**领域事件解耦 RAG 索引**：`conversation/events.py::ConversationTurnCompleted` 表示“一轮消息已记录 + 可选回复已发送”；`dispatcher` 在 context_only 与 reply 完成时经 `domain.events.DomainEventBus` 发布，不再直接拼装索引任务（`index_worker` 直连仅作无总线测试回退）。`utils/event_bus.py::InMemoryDomainEventBus` 是进程内适配器；`knowledge/turn_index_projection.py::TurnIndexProjection` 订阅事件并投影为逐条 `IndexTurnTask` 投递 `IndexWorker`。`core.boot` 负责 subscribe 装配。
 
 **Node DI**：`graph.py` 用 `functools.partial` 注入（非闭包）；节点文件均为独立 `async def(state, ...) -> dict`。
 
@@ -137,9 +144,9 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 - **`domain/` 包**：共享领域对象与端口统一在 `src/bot/package/domain/`；Satori 协议模型在 `src/bot/package/platform/satori/`。始终按目标包路径导入。
 - **图外 `aupdate_state`**：所有图外状态更新必须显式传 `as_node="describe_image"`（`EXTERNAL_UPDATE_NODE`，统一从 `orchestration.constants` 导入）。连续外部更新会让 checkpoint 只记录 `__start__`/空 `versions_seen`，LangGraph 无法自动推断写入节点并抛 `InvalidUpdateError`。
-- **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），Router/decide_reply 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
-- **content_parser**：`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。
-- **回复判定树（纯确定性，无 LLM router）**：Router/decide_reply 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。
+- **@提及**：Satori 用 `<at id name/>` 非 `@name`；回复判定基于 `parse_mentions` **顶层提及集合** `{id: 昵称}`（引用/转发不计），`conversation/policy.py` 以 bot_id 为主、bot_name 兜底。LLM 输入渲染 `@昵称(id)`（all→所有成员、here→在线成员）；`llm_text` 每轮必注入，Router/handler 直接消费。
+- **content_parser**：Satori 协议解析适配器位于 `platform/satori/content_parser.py`；`to_llm_text` 媒体→占位符、@→@昵称(id)、链接→`标题 (url)`、其余标签全剥留文本；`clean_text` 剥全部标签含闭合与注释。剥离单一来源 `_TAG_RE`，`_AT_TAG_RE` 仅 at 提取/渲染。`IMAGE_PLACEHOLDER` 单一来源在 `conversation.content`。
+- **回复判定树（纯确定性，无 LLM router）**：`ReplyPolicy.evaluate` 判定：私聊/顶层@为显式请求，始终回复并绕过 auto_reply random/cooldown；file/audio/video 永不回复；群聊非@文本和图文混合在 auto_reply=false 时入上下文+索引但不回复，纯图片无文本走 MEDIA 流水线（不上下文、不回复、不索引）；auto_reply=true 时由 `BOT_AUTO_REPLY_RANDOM_RATE` + `BOT_AUTO_REPLY_COOLDOWN` 决定是否回复，未命中仍保留上下文/RAG。图片 RAG 统一使用 `[图片]` 占位符，不存 URL/base64/视觉描述。
 - **视觉节点双模式**：HumanMessage 携带各自的 `image_srcs`/`auto_reply`；dispatcher 用 `TurnInput.vision_target_count` 限定本轮图输入（经 `configurable.turn_input` 注入，见上文 checkpoint 段），describe_image 优先读 `turn`、只处理本轮追加的 HumanMessage 并逐条处理批内全部图片，不扫描历史 checkpoint。`vision_desc` 为 `list[ImageDescription]`（`image_src` + `description`），每张图有明确对应。`llm_multimodal=0`（默认）把 `[图片]` 原位替换为 `[图片：描述]`；`=1` 图片转 data URL 进主 LLM（视觉服务仅产 vision_desc）。`auto_reply=True` 图片轮跳过视觉服务：多模态主 LLM 直接看图，非多模态保留 `[图片]` 占位符且不产 vision_desc。多模态 content 块列表**一律经 `content_to_text` 归一化为字符串**（透传列表会在摘要/后台索引 `.strip()` 崩溃）；摘要格式化只取 text 块，绝不带 base64。VisionService 单张失败返回 `""` 不抛。`[图片：{desc}]` 由 describe_image 拼装供 LLM；后台索引 user_message 统一保留 `[图片]` 占位符。
 - **uv**：PyPI mirror = mirrors.aliyun.com（pyproject `[[tool.uv.index]]`）；Python >=3.12。
 - **`.env`**：`BASE_URL` + `API_KEY`（非 GO_*），`.env-template` 是文档化 schema。

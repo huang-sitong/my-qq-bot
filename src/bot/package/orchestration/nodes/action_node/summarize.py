@@ -16,8 +16,9 @@ from langchain_core.messages.utils import count_tokens_approximately
 from langchain_openai import ChatOpenAI
 
 from bot.package.config import BotConfig
-from bot.package.conversation.state import BotState
+from bot.package.conversation import Conversation
 from bot.package.orchestration.prompts import SUMMARY_PROMPT
+from bot.package.orchestration.state import BotState
 from bot.package.utils import (
     content_to_text,
     estimate_context_tokens,
@@ -128,14 +129,23 @@ async def summarize_node(
         logger.exception("Summary generation failed for thread %s", state.get("thread_id", ""))
         return {}  # Non-critical — skip summarization on failure
 
-    # 4. Remove summarized messages from state
+    # 4. 聚合根收口摘要替换，节点只负责把 RemoveMessage 写回框架投影。
+    conversation = Conversation.restore(
+        thread_id=state.get("thread_id") or "unknown",
+        bot_id=state.get("bot_id", ""),
+        bot_name=state.get("bot_name", ""),
+        conversation_summary=old_summary,
+        active_skills=tuple(state.get("active_skills", [])),
+        tool_rounds=int(state.get("tool_rounds", 0)),
+    )
+    conversation = conversation.replace_summary(new_summary)
     removes = [RemoveMessage(id=m.id) for m in to_summarize]
 
     logger.info(
         "Summary generated: %d chars, removed %d messages for thread %s",
-        len(new_summary), len(to_summarize), state.get("thread_id", ""),
+        len(conversation.conversation_summary), len(to_summarize), state.get("thread_id", ""),
     )
     return {
         "messages": removes,
-        "conversation_summary": new_summary,
+        "conversation_summary": conversation.conversation_summary,
     }

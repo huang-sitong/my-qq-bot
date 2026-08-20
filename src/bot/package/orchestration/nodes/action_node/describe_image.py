@@ -14,11 +14,11 @@
 
 from langchain_core.messages import HumanMessage
 
-from bot.package.conversation.state import BotState
+from bot.package.conversation.content import IMAGE_PLACEHOLDER
 from bot.package.conversation.turn import TurnInput
 from bot.package.domain import ImageDescription
 from bot.package.domain.ports import VisionServicePort
-from bot.package.utils import IMAGE_PLACEHOLDER
+from bot.package.orchestration.state import BotState
 from bot.package.vision.service import download_images_as_data_urls
 
 

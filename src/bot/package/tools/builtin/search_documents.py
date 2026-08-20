@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from bot.package.knowledge.document_store import DocumentStore
+from bot.package.domain.repositories import DocumentRepository
 from bot.package.knowledge.milvus import _esc
 from bot.package.knowledge.rrf import rrf_merge
 
@@ -38,7 +38,7 @@ def _build_expr(filename: str, file_type: str) -> str:
 
 async def search_documents(
     query: str,
-    document_store: DocumentStore,
+    document_store: DocumentRepository,
     filename: str = "",
     file_type: str = "",
     top_k: int = 5,

@@ -5,13 +5,14 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
 from bot.package.config import BotConfig
-from bot.package.conversation.state import BotState
+from bot.package.conversation import Conversation
 from bot.package.orchestration.prompts import (
     BASH_TOOL_HINT,
     FILE_SEND_TOOL_HINT,
     MCP_TOOL_HINT,
     MEMORY_TOOL_HINT,
 )
+from bot.package.orchestration.state import BotState
 from bot.package.utils import build_system_messages, content_to_text, format_message_for_log
 
 logger = logging.getLogger(__name__)
@@ -69,6 +70,13 @@ async def call_llm_node(
                 "reply_text": "我暂时无法思考，请稍后再试",
             }
         if response.tool_calls:
+            conversation = Conversation.restore(
+                thread_id=state.get("thread_id") or "unknown",
+                bot_id=state.get("bot_id", ""),
+                bot_name=state.get("bot_name", ""),
+                tool_rounds=rounds,
+            )
+            conversation = conversation.record_tool_call()
             logger.info(
                 "Context message after_llm thread=%s: %s",
                 thread_id,
@@ -76,7 +84,7 @@ async def call_llm_node(
             )
             return {
                 "messages": [response],
-                "tool_rounds": rounds + 1,
+                "tool_rounds": conversation.tool_rounds,
                 "reply_text": "",
             }
         # reply_text 必须归一化为字符串：多模态主 LLM 的 content 是块列表，

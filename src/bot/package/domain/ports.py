@@ -1,8 +1,8 @@
 """端口定义（Ports）。
 
 核心流程依赖这些抽象接口，具体基础设施（asyncio.Queue、Kafka、Redis Stream、
-Satori HTTP、Milvus 等）通过适配器实现。当前先定义消息队列、消息发送、RAG 索引
-等端口，后续可继续补充记忆、视觉等外部依赖端口。
+Satori HTTP、Milvus 等）通过适配器实现。当前定义消息队列、消息发送、RAG 索引等流程端口；仓库端口统一见
+``domain.repositories``。
 
 MessageRouter / MessageSink / ContextCompactorPort 原位于 pipeline.contracts，
 该兼容垫片已删除：此处（``bot.package.domain.ports``）是这些端口的唯一源，
@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol
 
+from bot.package.domain.repositories import MemoryRepository
 from bot.package.domain.tasks import IndexTurnTask
 
 if TYPE_CHECKING:
@@ -21,12 +22,12 @@ if TYPE_CHECKING:
 
 __all__ = [
     "ContextCompactorPort",
+    "MemoryRepository",
     "MessageQueue",
     "MessageRouter",
     "MessageSender",
     "MessageSink",
     "RagIndexer",
-    "UserMemoryStore",
     "VisionServicePort",
 ]
 
@@ -82,20 +83,8 @@ class VisionServicePort(Protocol):
     async def close(self) -> None: ...
 
 
-class UserMemoryStore(Protocol):
-    """用户长期记忆存储端口。"""
-
-    async def load_memories(self, user_id: str) -> list[dict]: ...
-
-    async def store_memory(self, user_id: str, key: str, value: str) -> None: ...
-
-    async def delete_memory(self, user_id: str, key: str) -> None: ...
-
-    async def clear_user_memories(self, user_id: str) -> None: ...
-
-    async def format_memories(self, user_id: str) -> str: ...
-
-    async def close(self) -> None: ...
+# 历史名称兼容别名；新代码请使用 ``MemoryRepository``。
+UserMemoryStore = MemoryRepository
 
 
 class MessageRouter(Protocol):

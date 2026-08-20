@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
     from langgraph.graph.state import CompiledStateGraph
 
+    from bot.package.domain.repositories import ConversationRepository
     from bot.package.knowledge.service import RagService
     from bot.package.memory import MemoryStore
     from bot.package.orchestration.compaction import ContextCompactor
@@ -34,6 +35,7 @@ class CommandServices:
     rag_service: RagService | None = None
     vision_service: VisionService | None = None
     memory_store: MemoryStore | None = None
+    conversation_repository: ConversationRepository | None = None
     compactor: ContextCompactor | None = None
     mcp_tool_names: tuple[str, ...] = ()
     mcp_tool_count: int = 0

@@ -17,12 +17,12 @@ from collections.abc import Callable
 
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
+from bot.package.conversation.policy import ReplyPolicy
 from bot.package.conversation.router import RouteAction, RouteDecision
 from bot.package.domain.ports import MessageQueue, MessageRouter, MessageSink
 from bot.package.pipeline.router import route_incoming
 from bot.package.utils.logging import trace_context
 from bot.package.utils.queue import InMemoryMessageQueue
-from bot.package.utils.reply_policy import should_allow_auto_reply
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ class MessageWorkerPool:
             return False
         last_reply = self._last_auto_reply_at.get(message.thread_id, 0.0)
         cooldown_elapsed = time.monotonic() - last_reply >= cfg.auto_reply_cooldown
-        return should_allow_auto_reply(
+        return ReplyPolicy.should_allow_auto_reply(
             channel_type=message.channel_type,
             mentions=message.mentions,
             bot_id=self._identity.id,

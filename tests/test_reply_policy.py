@@ -1,7 +1,7 @@
 """auto_reply 随机/冷却策略纯函数测试。"""
 
+from bot.package.conversation.policy import should_allow_auto_reply
 from bot.package.platform.satori import ChannelType
-from bot.package.utils.reply_policy import should_allow_auto_reply
 
 
 def test_disabled_never_allows():

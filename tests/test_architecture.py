@@ -76,6 +76,10 @@ OLD_COMPATIBILITY_PATHS = (
     "bot.core.compaction",
     "bot.core.mcp",
     "context.compaction",
+    "bot.package.conversation.state",
+    "bot.package.utils.routing",
+    "bot.package.utils.reply_policy",
+    "bot.package.utils.content_parser",
 )
 
 
@@ -87,6 +91,61 @@ def test_old_top_level_packages_are_removed():
 def test_old_compatibility_paths_are_removed():
     for module_name in OLD_COMPATIBILITY_PATHS:
         _assert_missing(module_name)
+
+
+def test_conversation_domain_is_framework_free_and_bot_state_is_projection():
+    """P6 守护：会话领域不 import LangChain/LangGraph；BotState 是编排层投影。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    conversation_dir = repo_root / "src" / "bot" / "package" / "conversation"
+    for path in conversation_dir.rglob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        assert "langchain" not in src, f"{path} imports langchain"
+        assert "langgraph" not in src, f"{path} imports langgraph"
+    assert not (conversation_dir / "state.py").exists(), "BotState should leave conversation domain"
+
+    state_path = repo_root / "src" / "bot" / "package" / "orchestration" / "state.py"
+    src = state_path.read_text(encoding="utf-8")
+    assert "class BotState" in src
+    assert "add_messages" in src
+    assert "BaseMessage" in src
+
+
+def test_repository_ports_are_framework_free():
+    """P7 守护：domain/repositories.py 只定义抽象端口，不 import 基础设施框架。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    src = (repo_root / "src" / "bot" / "package" / "domain" / "repositories.py").read_text(encoding="utf-8")
+    for forbidden in ("langchain", "langgraph", "pymilvus", "aiosqlite", "httpx"):
+        assert forbidden not in src, f"domain/repositories.py must not import {forbidden}"
+
+
+def test_conversation_aggregate_owns_context_state_mutations():
+    """P8 守护：summary / active_skills / tool_rounds / clear 的修改必须经 Conversation 聚合根。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    consumers = [
+        "src/bot/package/commands/builtin.py",
+        "src/bot/package/orchestration/conversation_repository.py",
+        "src/bot/package/orchestration/nodes/action_node/skill_manager.py",
+        "src/bot/package/orchestration/nodes/action_node/summarize.py",
+        "src/bot/package/orchestration/nodes/llm_node/call_llm.py",
+    ]
+    for rel in consumers:
+        src = (repo_root / rel).read_text(encoding="utf-8")
+        assert "Conversation.restore" in src, f"{rel} must mutate context state via Conversation aggregate"
+
+
+def test_rag_indexing_is_decoupled_via_domain_events():
+    """P9 守护：生产装配经领域事件驱动 RAG 索引，dispatcher 支持总线发布。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    boot_src = (repo_root / "src" / "bot" / "package" / "core" / "boot.py").read_text(encoding="utf-8")
+    assert "InMemoryDomainEventBus()" in boot_src
+    assert "ConversationTurnCompleted" in boot_src
+    assert "TurnIndexProjection" in boot_src
+    assert "event_bus=event_bus" in boot_src
+    assert "index_worker=index_worker" not in boot_src.split("MessageDispatcher(")[-1].split("MessagePipeline(")[0]
+
+    dispatcher_src = (repo_root / "src" / "bot" / "package" / "pipeline" / "dispatcher.py").read_text(encoding="utf-8")
+    assert "ConversationTurnCompleted(" in dispatcher_src
+    assert "_event_bus.publish(event)" in dispatcher_src
 
 
 def test_old_top_level_source_directories_are_removed():
@@ -138,22 +197,51 @@ def test_no_private_auto_reply_callback_access():
 
 
 def test_all_ports_are_consumed():
-    """P3 守护：domain/ports 的每个端口都必须在 src 中至少被一处消费（非定义处）。"""
-    from bot.package.domain import ports
+    """P3 守护：domain 的端口/仓库/事件总线抽象都必须在 src 中至少被消费。"""
+    from bot.package.domain import events, ports, repositories
     repo_root = Path(__file__).resolve().parents[1]
     exempt = {
+        repo_root / "src" / "bot" / "package" / "domain" / "events.py",
         repo_root / "src" / "bot" / "package" / "domain" / "ports.py",
+        repo_root / "src" / "bot" / "package" / "domain" / "repositories.py",
         repo_root / "src" / "bot" / "package" / "domain" / "__init__.py",
     }
     src_files = [p for p in (repo_root / "src").rglob("*.py") if p not in exempt]
     for port_name in ports.__all__:
         hits = [p for p in src_files if port_name in p.read_text(encoding="utf-8")]
         assert hits, f"port {port_name} defined but never consumed in src"
+    for repo_name in repositories.__all__:
+        hits = [p for p in src_files if repo_name in p.read_text(encoding="utf-8")]
+        assert hits, f"repository {repo_name} defined but never consumed in src"
+    for event_name in events.__all__:
+        hits = [p for p in src_files if event_name in p.read_text(encoding="utf-8")]
+        assert hits, f"event abstraction {event_name} defined but never consumed in src"
 
 def test_no_reexport_shims():
     repo_root = Path(__file__).resolve().parents[1]
     assert not (repo_root / "src" / "bot" / "package" / "knowledge" / "domain.py").exists(), "knowledge/domain.py shim should be removed"
     assert not (repo_root / "src" / "bot" / "package" / "vision" / "domain.py").exists(), "vision/domain.py shim should be removed"
+    for old in ("routing", "reply_policy", "content_parser"):
+        assert not (repo_root / "src" / "bot" / "package" / "utils" / f"{old}.py").exists(), f"utils/{old}.py should be removed"
+
+
+def test_utils_package_only_exports_technical_cross_cutting_tools():
+    """P10 守护：utils 不得再导出会话业务策略或 Satori 解析函数。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    init_src = (repo_root / "src" / "bot" / "package" / "utils" / "__init__.py").read_text(encoding="utf-8")
+    for forbidden in (
+        "decide_reply",
+        "is_explicit_request",
+        "keep_in_context",
+        "should_allow_auto_reply",
+        "parse_content",
+        "classify_content",
+        "parse_attachments",
+        "parse_mentions",
+        "to_llm_text",
+        "clean_text",
+    ):
+        assert forbidden not in init_src, f"utils must not export business/protocol function {forbidden}"
 
 
 def test_platform_satori_init_has_no_getattr_magic():

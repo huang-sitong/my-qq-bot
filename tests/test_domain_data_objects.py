@@ -113,8 +113,8 @@ def test_domain_import_still_works():
     assert ImageDescription(image_src="a", description="b").image_src == "a"
 
 
-def test_bot_state_is_slim():
-    from bot.package.conversation.state import BotState
+def test_bot_state_projection_is_slim():
+    from bot.package.orchestration.state import BotState
     hints = BotState.__annotations__.keys()
     for field in ["channel_type","content_kind","has_text","vision_target_count","vision_desc","mentions","llm_text","clean_text"]:
         assert field not in hints, f"BotState should not contain turn field {field}"

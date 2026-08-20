@@ -1,17 +1,17 @@
-"""路由判定单一来源：是否回复 / 是否入上下文。
+"""路由判定行为锁定：是否回复 / 是否入上下文。
 
-锁定 context.utils.routing 的完整判定表，此处是唯一权威，
-行为若偏离这里即为回归。
+权威实现位于 ``bot.package.conversation.policy``；本测试锁定完整判定表，
+行为若偏离即为回归。
 """
 
 import pytest
 
-from bot.package.platform.satori import ChannelType
-from bot.package.utils.routing import (
+from bot.package.conversation.policy import (
     decide_reply,
     is_explicit_request,
     keep_in_context,
 )
+from bot.package.platform.satori import ChannelType
 
 # --- decide_reply ---
 

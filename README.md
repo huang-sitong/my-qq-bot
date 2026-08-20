@@ -100,22 +100,20 @@ Satori 事件 -> SatoriAdapter -> Ingress -> MessagePipeline/WorkerPool
 
 - `core/` — `app.py`（运行时容器）与 `boot.py`（装配入口）
 - `pipeline/` — 协议无关事件流水线（router/dispatcher/worker/pipeline）
-- `platform/satori/` — Satori 协议模型、WS/HTTP 客户端与事件归一化
-- `utils/` — 消息解析、token 估算、回复判定、日志/队列/重试等纯工具
+- `platform/satori/` — Satori 协议模型、content 解析、WS/HTTP 客户端与事件归一化
+- `utils/` — 纯技术横切设施：token 估算、日志/队列/重试与进程内领域事件总线
 - `config/` — `BotConfig` 配置类
 - `tools/` — 内部工具纯函数与 `build_tools` 装配
 - `mcp/` — MCP server 配置加载与工具加载
 - `commands/` — 图外斜杠命令上下文
-- `conversation/` — 会话领域对象
-- `domain/` — 共享领域对象与端口（ports/tasks/media/bash/prompts/constants）
-- `knowledge/` — 群聊历史 hybrid search 与后台索引（RAG）
-- `memory/` — 用户长期记忆上下文
-- `orchestration/` — 会话编排：LangGraph 工作流组装与图节点
+- `conversation/` — 纯会话领域：`Conversation` 聚合根、领域事件与回复策略（`MessageRecord` / `IncomingMessage` / `ReplyPolicy` / `RouteDecision`）
+- `domain/` — 共享领域对象、领域事件总线端口与仓库接口（events/ports/repositories/tasks/media）
+- `knowledge/` — 群聊历史 hybrid search 与后台索引（RAG）；`DocumentStore` 实现 `DocumentRepository`，`TurnIndexProjection` 订阅会话领域事件
+- `memory/` — 用户长期记忆上下文；`MemoryStore` 实现 `MemoryRepository`
+- `orchestration/` — 会话编排：`BotState` 状态投影、`LangGraphConversationRepository` 适配器 + LangGraph 工作流组装与图节点
 - `skill/` — 技能管理上下文
 - `vision/` — 图片理解上下文
 
 旧顶层路径、`src/bot/core/` 目录与 `src/bot/handler.py` 已删除，
-所有导入统一使用 `src/bot/package/` 路径；完整目标架构与迁移记录见
-`docs/architecture.md`。
-
-更完整的架构约定和开发细节见 `AGENTS.md`。
+所有导入统一使用 `src/bot/package/` 路径。更完整的架构约定、数据流与
+开发细节见 `AGENTS.md`。

@@ -79,6 +79,14 @@ from .api import (
     UserChannelCreateParams,
     UserGetParams,
 )
+from .content_parser import (
+    classify_content,
+    clean_text,
+    parse_attachments,
+    parse_content,
+    parse_mentions,
+    to_llm_text,
+)
 from .enums import ChannelType, Direction, LoginStatus, Order
 from .events import EventBody, LoginList, Signal
 from .http import SatoriApiClient
@@ -103,6 +111,9 @@ from .websocket import SatoriClient
 __all__ = [  # noqa: RUF022
     # enums
     "ChannelType", "Direction", "LoginStatus", "Order",
+    # content parser
+    "classify_content", "clean_text", "parse_attachments", "parse_content",
+    "parse_mentions", "to_llm_text",
     # models
     "Argv", "BidiList", "Button", "Channel", "Emoji",
     "Friend", "Guild", "GuildMember", "GuildRole", "Login",

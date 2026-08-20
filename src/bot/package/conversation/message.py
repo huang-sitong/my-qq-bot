@@ -1,5 +1,7 @@
 from dataclasses import dataclass
 
+from .record import MessageRecord, MessageRole
+
 
 @dataclass(frozen=True)
 class IncomingMessage:
@@ -20,3 +22,16 @@ class IncomingMessage:
     image_srcs: list[str]
     event_type: str = ""
     trace_id: str = ""
+
+    def to_record(
+        self,
+        *,
+        role: MessageRole = "user",
+        created_at: str = "",
+    ) -> MessageRecord:
+        """转换为框架无关的纯领域消息记录。"""
+        return MessageRecord.from_incoming(
+            self,
+            role=role,
+            created_at=created_at,
+        )
