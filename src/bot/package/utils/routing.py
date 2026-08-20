@@ -5,8 +5,7 @@
 """
 
 from bot.package.conversation.content import MessageKind
-
-DIRECT_CHANNEL_TYPE = 1  # inline to avoid utils -> platform dependency (platform owns canonical value)
+from bot.package.platform.satori.constants import DIRECT_CHANNEL_TYPE
 
 # 永不回复的媒体类型（file/audio/video，即使私聊/@ 也盖不过）
 NON_REPLY_KINDS = frozenset({

@@ -11,8 +11,8 @@ from bot.package.commands import (
     build_command_registry,
 )
 from bot.package.config import BotConfig
-from bot.package.domain.constants import EXTERNAL_UPDATE_NODE
 from bot.package.orchestration.compaction import ContextCompactor
+from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.orchestration.graph import create_graph
 from bot.package.skill import Skill, SkillRegistry
 from tests.fakes import ScriptedLLM, make_state

@@ -23,16 +23,20 @@ def test_config_must_not_depend_on_domain():
     violations = check_runtime_dependencies(Path("src"))
     assert not any("config -> domain" in v for v in violations), f"config->domain should be fixed, got {violations}"
 
+
 def test_single_source_of_ports():
     import pathlib
-    contracts = pathlib.Path("src/bot/package/pipeline/contracts.py").read_text(encoding="utf-8")
-    # 期望 contracts 不再定義 Protocol，僅 re-export
-    assert "class MessageRouter" not in contracts
-    assert "from bot.package.domain.ports import" in contracts
+    # 兼容层已彻底移除，pipeline/contracts.py 应不存在，domain/ports 为唯一源
+    assert not pathlib.Path("src/bot/package/pipeline/contracts.py").exists(), "pipeline/contracts.py should be removed"
+    # 确保没有残留对旧路径的导入
+    for path in pathlib.Path("src").rglob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        assert "from bot.package.pipeline.contracts import" not in src
+        assert "import bot.package.pipeline.contracts" not in src
+
 
 def test_no_duplicate_port_definitions():
     import pathlib
     domain_src = pathlib.Path("src/bot/package/domain/ports.py").read_text(encoding="utf-8")
     assert "class MessageRouter" in domain_src
     assert "class MessageSink" in domain_src
-

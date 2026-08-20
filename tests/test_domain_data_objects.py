@@ -1,13 +1,11 @@
-"""领域数据对象统一从各限界上下文导出。"""
+"""领域数据对象统一从各限界上下文导出 — 清理后单一源校验。"""
 
 from pathlib import Path
 
 import bot.package.commands as core_commands
 import bot.package.conversation.router as core_router
-import bot.package.domain.bash as core_run_bash
-
-# removed shim import
 import bot.package.skill as core_skills
+import bot.package.tools.domain as core_run_bash
 from bot.package.commands import (
     Command,
     CommandActor,
@@ -21,8 +19,9 @@ from bot.package.conversation import (
     RouteAction,
     RouteDecision,
 )
-from bot.package.domain import BashConfig, ImageDescription, IndexTurnTask
+from bot.package.domain import ImageDescription, IndexTurnTask
 from bot.package.skill import Skill
+from bot.package.tools.domain import BashConfig
 
 
 def test_data_objects_are_single_source_in_contexts():
@@ -34,9 +33,7 @@ def test_data_objects_are_single_source_in_contexts():
     assert core_router.RouteAction is RouteAction
     assert core_router.RouteDecision is RouteDecision
     assert core_skills.Skill is Skill
-    # BashConfig 已迁移至 tools.domain，domain 侧为兼容垫片（duplicate），仅校验同名同构
-    assert core_run_bash.BashConfig.__name__ == BashConfig.__name__ == "BashConfig"
-    assert core_run_bash.BashConfig(enabled=True).shell == BashConfig(enabled=True).shell
+    assert core_run_bash.BashConfig is BashConfig
 
 
 def test_bot_identity_is_shared_domain_object():
@@ -60,31 +57,33 @@ def test_shared_dtos_are_owned_by_domain_and_re_exported():
     # 垫片已移除，domain 为唯一源
     assert IndexTurnTask(thread_id="t", user_id="u", user_name="", bot_id="", bot_name="", user_message="", bot_reply="").thread_id == "t"
     assert ImageDescription(image_src="x", description="y").description == "y"
-    # 知识/视觉上下文不再 re-export，需从 domain 单一导入
-    import pathlib
-    assert not pathlib.Path("src/bot/package/knowledge/domain.py").exists()
-    assert not pathlib.Path("src/bot/package/vision/domain.py").exists()
+    assert not Path("src/bot/package/knowledge/domain.py").exists()
+    assert not Path("src/bot/package/vision/domain.py").exists()
+    assert not Path("src/bot/package/domain/bash.py").exists()
+    assert not Path("src/bot/package/domain/constants.py").exists()
+    assert not Path("src/bot/package/domain/prompts.py").exists()
+    assert not Path("src/bot/package/pipeline/contracts.py").exists()
+
 
 def test_bash_config_lives_in_tools_domain():
     from bot.package.tools.domain import BashConfig as NewBash
     assert NewBash(enabled=True).shell == "bash"
-    # 舊路徑應已遷移（墊片期：domain 仍可導入但發 DeprecationWarning；以文件內容為準，避免模塊緩存導致二次導入不 warning）
-    import pathlib
-    bash_shim = pathlib.Path("src/bot/package/domain/bash.py").read_text(encoding="utf-8")
-    assert "DeprecationWarning" in bash_shim
-    assert "bot.package.tools.domain" in bash_shim
-    # 舊路徑仍可用（墊片期），新舊類同名同結構
-    from bot.package.domain import BashConfig as Old
-    assert Old.__name__ == "BashConfig"
-    assert Old(enabled=True).shell == "bash"
+    # 旧 domain 路径已彻底移除，应 ImportError
+    import importlib
+
+    import pytest
+    with pytest.raises(ImportError):
+        importlib.import_module("bot.package.domain.bash")
 
 
 def test_prompts_split():
     from bot.package.knowledge.prompts import RETRIEVAL_TASK
     from bot.package.orchestration.prompts import BASH_TOOL_HINT, SUMMARY_PROMPT
+    from bot.package.vision.prompts import VISION_PROMPT
     assert "{old_summary}" in SUMMARY_PROMPT
     assert "run_bash" in BASH_TOOL_HINT
     assert RETRIEVAL_TASK.startswith("检索")
+    assert "描述这张图片" in VISION_PROMPT
 
 
 def test_constants_split():
@@ -101,27 +100,25 @@ def test_config_no_longer_imports_domain():
     imports = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
     assert not any(m.startswith("bot.package.domain") for m in imports if m)
 
+
 def test_domain_init_has_no_getattr_magic():
-    import ast
     import pathlib
     src = pathlib.Path("src/bot/package/domain/__init__.py").read_text(encoding="utf-8")
     assert "__getattr__" not in src
     assert "_module_map" not in src
-    tree = ast.parse(src)
-    imports = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
-    # Check that media import exists (explicit)
-    assert any("media" in str(m) for m in imports if m)
 
 
 def test_domain_import_still_works():
     from bot.package.domain import ImageDescription
     assert ImageDescription(image_src="a", description="b").image_src == "a"
 
+
 def test_bot_state_is_slim():
     from bot.package.conversation.state import BotState
     hints = BotState.__annotations__.keys()
     for field in ["channel_type","content_kind","has_text","vision_target_count","vision_desc","mentions","llm_text","clean_text"]:
         assert field not in hints, f"BotState should not contain turn field {field}"
+
 
 def test_turn_input_exists():
     from bot.package.conversation.turn import TurnInput

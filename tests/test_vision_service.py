@@ -5,7 +5,7 @@ import base64
 
 import httpx
 
-from bot.package.domain.prompts import VISION_PROMPT
+from bot.package.vision.prompts import VISION_PROMPT
 from bot.package.vision.service import _MAX_IMAGE_BYTES, VisionService
 
 # 公网字面 IP：字面 IP 的 getaddrinfo 不查 DNS，避免测试慢/不稳，也不触发 SSRF 阻断

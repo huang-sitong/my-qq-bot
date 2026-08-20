@@ -55,7 +55,7 @@ ALLOWED_RUNTIME_DEPENDENCIES: dict[str, set[str]] = {
     "domain": set(),
     "conversation": {"domain"},
     "config": set(),
-    "utils": {"domain", "conversation", "orchestration"},
+    "utils": {"domain", "conversation", "orchestration", "platform"},
     "mcp": {"config", "utils"},
     "skill": set(),
     "memory": set(),

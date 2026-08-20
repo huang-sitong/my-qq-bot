@@ -1,11 +1,8 @@
 """编排层提示词 — 原 domain.prompts 拆分后的 LLM 提示词归位。
 
-- DEFAULT_PERSONA_PROMPT 仍被 config/settings 作默认值，但 config 不再直接依赖 domain
+- DEFAULT_PERSONA_PROMPT 已迁移至 config/settings.py 单一源（config 内联，避免 config→orchestration 循环）
 - 其余 HINT / SUMMARY 均由 orchestration 消费
 """
-
-DEFAULT_PERSONA_PROMPT = """\
-你是一个AI助手，名字叫 "{bot_name}"，请用中文友好地回答问题。"""
 
 SUMMARY_PROMPT = """\
 你是一个对话摘要助手。将对话历史压缩为一段简洁的摘要，保留关键信息。
