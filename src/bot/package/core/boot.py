@@ -15,6 +15,7 @@ from dotenv import dotenv_values, find_dotenv
 
 from bot.package.commands import CommandServices, build_command_registry
 from bot.package.config import BotConfig
+from bot.package.config.settings import DEFAULT_PERSONA_PROMPT
 from bot.package.conversation.identity import BotIdentity
 from bot.package.core.app import AppDependencies, BotApplication
 from bot.package.core.database import DatabaseManager
@@ -26,7 +27,6 @@ from bot.package.mcp import load_mcp_servers_from_file, load_mcp_tools
 from bot.package.memory import MemoryStore
 from bot.package.orchestration.compaction import ContextCompactor
 from bot.package.orchestration.graph import create_graph
-from bot.package.orchestration.prompts import DEFAULT_PERSONA_PROMPT
 from bot.package.pipeline.dispatcher import MessageDispatcher
 from bot.package.pipeline.pipeline import MessagePipeline
 from bot.package.platform.satori.adapter import SatoriAdapter

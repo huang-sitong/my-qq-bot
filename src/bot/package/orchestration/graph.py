@@ -52,6 +52,23 @@ def _route_after_llm(state: BotState) -> str:
     return "tools" if getattr(last, "tool_calls", None) else END
 
 
+def _describe_image_with_turn(node, **inject):
+    """包装 describe_image 节点：从 run config 提取当轮 TurnInput 注入。
+
+    TurnInput（当轮输入）经 ``config["configurable"]["turn_input"]`` 传入，
+    不进入 BotState channel schema，因此不会被 checkpoint 持久化；未提供时
+    节点回退读 state 兼容旧 checkpoint。``node`` 形如 describe_image_node，接收
+    ``turn=`` 关键字。
+    """
+
+    async def wrapped(state, *, config=None):
+        configurable = (config or {}).get("configurable") or {}
+        turn = configurable.get("turn_input")
+        return await node(state, turn=turn, **inject)
+
+    return wrapped
+
+
 async def create_graph(
     llm: ChatOpenAI,
     config: BotConfig,
@@ -110,7 +127,7 @@ async def create_graph(
         )
     )
     builder.add_node("skill_manager", partial(skill_manager_node, skill_registry=skill_registry))
-    builder.add_node("describe_image", partial(
+    builder.add_node("describe_image", _describe_image_with_turn(
         describe_image_node,
         vision_service=vision_service,
         llm_multimodal=config.llm_multimodal,

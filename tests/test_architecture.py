@@ -132,3 +132,18 @@ def test_single_import_path():
         assert needle_vision not in src, f"{path} still uses vision.domain shim"
         assert needle_knowledge not in src, f"{path} still uses knowledge.domain shim"
 
+
+def test_boot_module_imports_cleanly():
+    """装配层 boot 必须可导入（薄入口 main.py 依赖它），杜绝遗留旧导入路径。"""
+    import bot.package.core.boot  # noqa: F401
+
+    # DEFAULT_PERSONA_PROMPT 唯一源在 config.settings，orchestration.prompts 不应再定义/被依赖
+    from bot.package.config.settings import DEFAULT_PERSONA_PROMPT
+    from bot.package.orchestration import prompts as orchestration_prompts
+
+    assert "{bot_name}" in DEFAULT_PERSONA_PROMPT
+    assert not hasattr(orchestration_prompts, "DEFAULT_PERSONA_PROMPT")
+    boot_src = Path(Path(__file__).resolve().parents[1] / "src/bot/package/core/boot.py").read_text(encoding="utf-8")
+    assert "from bot.package.config.settings import DEFAULT_PERSONA_PROMPT" in boot_src
+    assert "from bot.package.orchestration.prompts import DEFAULT_PERSONA_PROMPT" not in boot_src
+

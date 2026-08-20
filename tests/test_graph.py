@@ -3,6 +3,7 @@ import asyncio
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from bot.package.config import BotConfig
+from bot.package.conversation.turn import TurnInput
 from bot.package.orchestration.graph import create_graph
 from tests.fakes import FakeVisionService, ScriptedLLM, StubMemoryStore, StubRagService
 
@@ -18,8 +19,33 @@ SAMPLE = [
 ]
 
 
+def _turn(**overrides) -> TurnInput:
+    """构造 Graph 测试用的当轮输入（默认单一文本轮，图片轮用覆盖）。"""
+    base = {
+        "channel_type": 1,        # DIRECT → Router 判 reply；graph 直接消费输入 HumanMessage
+        "bot_id": "bot1",
+        "auto_reply": False,
+        "content_kind": "text",
+        "has_text": True,
+        "llm_text": "还记得我们聊过 RAG 吗？",
+        "clean_text": "还记得我们聊过 RAG 吗？",
+        "vision_target_count": 1,
+        "vision_desc": [],
+        "mentions": {},
+    }
+    base.update(overrides)
+    return TurnInput(**base)
+
+
+def _cfg(thread_id: str = "test:thread", turn: TurnInput | None = None) -> dict:
+    """构造 Graph run config；当轮输入经 configurable.turn_input 注入（不落库）。"""
+    if turn is None:
+        turn = _turn()
+    return {"configurable": {"thread_id": thread_id, "turn_input": turn}}
+
+
 def _initial_state() -> dict:
-    # channel_type=1 (DIRECT) → Router 判 reply；graph 直接消费输入 HumanMessage
+    # 仅持久态字段；当轮输入（vision_target_count/auto_reply 等）走 _cfg 的 turn_input
     return {
         "messages": [HumanMessage(
             content="还记得我们聊过 RAG 吗？",
@@ -32,13 +58,7 @@ def _initial_state() -> dict:
         "reply_text": "",
         "should_respond": False,
         "bot_name": "测试机器人",
-        "bot_id": "bot1",
-        "channel_type": 1,
         "tool_rounds": 0,
-        "content_kind": "text",
-        "llm_text": "还记得我们聊过 RAG 吗？",
-        "clean_text": "还记得我们聊过 RAG 吗？",
-        "vision_target_count": 1,
     }
 
 
@@ -54,7 +74,7 @@ def test_graph_loops_tool_call_then_answers(tmp_path):
         create_graph(llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
     )
 
-    result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+    result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
 
     assert result["reply_text"] == "我们上次决定用 qwen3-embedding 做嵌入"
     # 循环确实发生：state 中应包含 ToolMessage，且 stub 检索结果流入其 content
@@ -79,7 +99,7 @@ def test_graph_memory_tool_roundtrip(tmp_path):
         create_graph(llm, BotConfig(rag_enabled=False), db_dir=str(tmp_path), memory_store=store)
     )
 
-    result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+    result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
 
     assert result["reply_text"] == "你之前说过你叫张三"
     tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
@@ -97,7 +117,7 @@ def test_graph_does_not_index_turn(tmp_path):
     graph, _ = asyncio.run(
         create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
     )
-    result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+    result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
     assert result["reply_text"] == "收到"
     assert rag.last_indexed is None
 
@@ -109,7 +129,7 @@ def test_graph_input_message_appends_to_checkpoint(tmp_path):
             llm, BotConfig(_env_file=None), db_dir=str(tmp_path)
         )
         try:
-            cfg = {"configurable": {"thread_id": "test:thread"}}
+            cfg = _cfg()
             await graph.ainvoke(_initial_state(), cfg)
             second = _initial_state()
             second["messages"] = [HumanMessage(content="第二条")]
@@ -131,12 +151,9 @@ def test_graph_does_not_reprocess_previous_image_on_later_turn(tmp_path):
             vision_service=vision,
         )
         try:
-            cfg = {"configurable": {"thread_id": "test:thread"}}
+            cfg = _cfg()
             first = {
                 **_initial_state(),
-                "content_kind": "image",
-                "clean_text": "",
-                "llm_text": "[图片]",
                 "messages": [HumanMessage(
                     content="[图片]",
                     name="张三",
@@ -180,9 +197,6 @@ def test_graph_image_reply_includes_vision_description(tmp_path):
         try:
             state = {
                 **_initial_state(),
-                "content_kind": "image",
-                "clean_text": "",
-                "llm_text": "[图片]",
                 "messages": [HumanMessage(
                     content="[图片]",
                     name="张三",
@@ -193,7 +207,7 @@ def test_graph_image_reply_includes_vision_description(tmp_path):
                 )],
             }
             result = await graph.ainvoke(
-                state, {"configurable": {"thread_id": "test:thread"}}
+                state, _cfg()
             )
 
             assert result["reply_text"] == "好可爱的猫！"
@@ -217,9 +231,6 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
         try:
             state = {
                 **_initial_state(),
-                "content_kind": "image",
-                "clean_text": "",
-                "llm_text": "[图片]",
                 "messages": [HumanMessage(
                     content="[图片]",
                     name="张三",
@@ -230,7 +241,7 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
                 )],
             }
             result = await graph.ainvoke(
-                state, {"configurable": {"thread_id": "test:thread"}}
+                state, _cfg()
             )
 
             assert result["reply_text"] == "我看不到图"
@@ -277,13 +288,13 @@ def test_graph_skill_persists_across_turns(tmp_path):
             skill_registry=_skill_registry(),
         )
         try:
-            state1 = {**_initial_state(), "llm_text": "用翻译技能", "clean_text": "用翻译技能"}
-            r1 = await graph.ainvoke(state1, {"configurable": {"thread_id": "test:thread"}})
+            state1 = _initial_state()
+            r1 = await graph.ainvoke(state1, _cfg())
             assert r1["active_skills"] == ["translate"]
 
             # 第 2 轮不带 active_skills（输入覆盖 checkpoint 会导致清零——这是设计约束）
-            state2 = {**_initial_state(), "llm_text": "翻译 how are you", "clean_text": "翻译 how are you"}
-            r2 = await graph.ainvoke(state2, {"configurable": {"thread_id": "test:thread"}})
+            state2 = _initial_state()
+            r2 = await graph.ainvoke(state2, _cfg())
             assert r2["active_skills"] == ["translate"]  # checkpoint 恢复
             sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
             assert any("翻译规则：保留语气" in m.content for m in sys_msgs)  # 正文注入可见
@@ -305,11 +316,11 @@ def test_graph_skill_isolated_per_thread(tmp_path):
             skill_registry=_skill_registry(),
         )
         try:
-            a = {**_initial_state(), "llm_text": "翻译", "clean_text": "翻译"}
-            await graph.ainvoke(a, {"configurable": {"thread_id": "thread:A"}})
+            a = _initial_state()
+            await graph.ainvoke(a, _cfg(thread_id="thread:A"))
 
-            b = {**_initial_state(), "llm_text": "你好", "clean_text": "你好"}
-            rb = await graph.ainvoke(b, {"configurable": {"thread_id": "thread:B"}})
+            b = _initial_state()
+            rb = await graph.ainvoke(b, _cfg(thread_id="thread:B"))
             assert rb.get("active_skills", []) == []  # 新线程不串技能
         finally:
             await checkpointer.conn.close()
@@ -348,7 +359,7 @@ def test_graph_runs_bash_tool(tmp_path, monkeypatch):
     graph, _ = asyncio.run(
         create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path))
     )
-    result = asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+    result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
 
     assert result["reply_text"] == "已执行"
     tool_msgs = [m for m in result["messages"] if isinstance(m, ToolMessage)]
@@ -361,7 +372,7 @@ def test_graph_injects_bash_hint(tmp_path):
     graph, _ = asyncio.run(
         create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path))
     )
-    asyncio.run(graph.ainvoke(_initial_state(), {"configurable": {"thread_id": "test:thread"}}))
+    asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
     sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
     assert any("run_bash" in m.content for m in sys_msgs)
 
@@ -399,7 +410,7 @@ def test_graph_runs_send_file_tool(tmp_path):
         )
     )
     result = asyncio.run(graph.ainvoke(
-        _initial_state(), {"configurable": {"thread_id": "test:thread"}},
+        _initial_state(), _cfg(),
     ))
 
     assert result["reply_text"] == "已发送"
@@ -418,7 +429,7 @@ def test_graph_injects_file_send_hint(tmp_path):
         )
     )
     asyncio.run(graph.ainvoke(
-        _initial_state(), {"configurable": {"thread_id": "test:thread"}},
+        _initial_state(), _cfg(),
     ))
     sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
     assert any("send_file" in m.content for m in sys_msgs)

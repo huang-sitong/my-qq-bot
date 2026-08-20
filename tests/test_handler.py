@@ -26,6 +26,7 @@ class _StubGraph:
 
     async def ainvoke(self, state, config):
         self.state = dict(state)
+        self.config = config
         return {"reply_text": ""}
 
     async def aupdate_state(self, config, updates, as_node=None):
@@ -95,13 +96,18 @@ def test_channel_type_coerced_to_int_before_graph():
     asyncio.run(_dispatch(pipeline, _private_event()))
 
     assert graph.state is not None
-    ct = graph.state["channel_type"]
+    assert graph.state["channel_id"] == "ch1"
+    # 当轮输入（channel_type/content_kind/clean_text/mentions 等）走 TurnInput，
+    # 经 run config 注入，不进入 BotState → checkpoint
+    turn = graph.config["configurable"]["turn_input"]
+    ct = turn.channel_type
     assert ct == 1                                  # 值不变（DIRECT）
     assert type(ct) is int                          # 强制成纯 int
     assert not isinstance(ct, ChannelType)          # 枚举不再进入 state → checkpoint
-    assert graph.state["mentions"] == {}   # parse_content → mentions 注入 state（空提及锁键存在）
-    assert graph.state["clean_text"] == "你好"   # 预计算清洗文本注入 state
-    assert graph.state["channel_id"] == "ch1"
+    assert turn.mentions == {}                      # parse_content → mentions（空提及锁键存在）
+    assert turn.clean_text == "你好"                # 预计算清洗文本
+    assert "channel_type" not in graph.state        # 不落库
+    assert "clean_text" not in graph.state          # 不落库
 
 
 def test_channel_type_fallback_is_int_when_channel_missing():
@@ -310,7 +316,7 @@ def test_unicode_command_name_falls_through_to_graph():
     )
     asyncio.run(_dispatch(pipeline, _command_event("/帮助")))
     assert graph.state is not None
-    assert graph.state["clean_text"] == "/帮助"
+    assert graph.config["configurable"]["turn_input"].clean_text == "/帮助"
 
 
 def test_command_dispatches_in_group_channel():
@@ -343,7 +349,7 @@ def test_auto_reply_private_explicit_is_not_marked_auto_reply():
     config = BotConfig(_env_file=None, auto_reply=True)
     pipeline = _make_pipeline(graph, bot_config=config)
     asyncio.run(_dispatch(pipeline, _private_event()))
-    assert graph.state["auto_reply"] is False
+    assert graph.config["configurable"]["turn_input"].auto_reply is False
 
 
 def test_group_non_at_auto_reply_allowed_when_random_hits():
@@ -366,8 +372,9 @@ def test_group_non_at_auto_reply_allowed_when_random_hits():
         message=Message(id="m10", content="晚上吃什么"),
     )
     asyncio.run(_dispatch(pipeline, event))
-    assert graph.state["auto_reply"] is True
-    assert graph.state["has_text"] is True
+    turn = graph.config["configurable"]["turn_input"]
+    assert turn.auto_reply is True
+    assert turn.has_text is True
 
 
 def test_auto_reply_cooldown_blocks_second_reply():
@@ -399,4 +406,4 @@ def test_auto_reply_defaults_false_when_config_absent():
     graph = _StubGraph()
     pipeline = _make_pipeline(graph)  # bot_config=None
     asyncio.run(_dispatch(pipeline, _private_event()))
-    assert graph.state["auto_reply"] is False
+    assert graph.config["configurable"]["turn_input"].auto_reply is False

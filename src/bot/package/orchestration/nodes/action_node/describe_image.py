@@ -15,6 +15,7 @@
 from langchain_core.messages import HumanMessage
 
 from bot.package.conversation.state import BotState
+from bot.package.conversation.turn import TurnInput
 from bot.package.domain import ImageDescription
 from bot.package.domain.ports import VisionServicePort
 from bot.package.utils import IMAGE_PLACEHOLDER
@@ -106,6 +107,8 @@ def _vision_result(
 async def describe_image_node(
     state: BotState,
     vision_service: VisionServicePort | None = None,
+    *,
+    turn: TurnInput | None = None,
     llm_multimodal: bool = False,
     max_images: int = 3,
     timeout: float = 60.0,
@@ -113,12 +116,19 @@ async def describe_image_node(
     """批量图片处理：只处理本轮图输入中的 HumanMessage，返回逐图描述。
 
     失败时降级为 [图片] 占位符（多模态全下载失败 → 文本只留占位符）。
-    ``vision_target_count`` 由 dispatcher 注入，限定不扫描历史 checkpoint 图片。
+    ``turn``（当轮输入 TurnInput）优先提供 ``vision_target_count`` /
+    ``auto_reply``，限定不扫描历史 checkpoint 图片；未注入 turn 时回退读
+    ``state`` 以兼容旧 checkpoint 与直接调图的场景。
     ``vision_desc`` 为 ``list[ImageDescription]``，每个元素携带 ``image_src``，
     明确该描述对应哪一张图片。
     """
+    if turn is not None:
+        target_count = int(turn.vision_target_count)
+        auto_reply_default = turn.auto_reply
+    else:
+        target_count = int(state.get("vision_target_count") or 0)
+        auto_reply_default = bool(state.get("auto_reply", False))
     messages = state.get("messages") or []
-    target_count = int(state.get("vision_target_count") or 0)
     candidates = messages[-target_count:] if target_count > 0 else messages
     targets = [
         message
@@ -130,7 +140,7 @@ async def describe_image_node(
     if llm_multimodal:
         return await _describe_all_multimodal(
             targets, vision_service, max_images, timeout,
-            auto_reply_default=state.get("auto_reply", False),
+            auto_reply_default=auto_reply_default,
         )
 
     # 纯文本模式（现状）：视觉服务描述 → [图片：描述] 原位替换；
@@ -138,7 +148,7 @@ async def describe_image_node(
     local_targets = [
         message
         for message in targets
-        if not _message_auto_reply(message, state.get("auto_reply", False))
+        if not _message_auto_reply(message, auto_reply_default)
     ]
     if not local_targets:
         return {"vision_desc": []}

@@ -18,6 +18,7 @@ from bot.package.commands import (
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
+from bot.package.conversation.turn import TurnInput
 from bot.package.domain import IndexTurnTask
 from bot.package.domain.ports import MessageSender, RagIndexer
 from bot.package.orchestration.compaction import ContextCompactor
@@ -210,9 +211,13 @@ class MessageDispatcher:
         self,
         message: IncomingMessage,
         humans: list[HumanMessage],
-        auto_reply_allowed: bool,
     ) -> dict:
-        """构造图输入；``humans`` 可含多条（burst 合并轮）。"""
+        """构造图输入（仅持久态字段 + 本轮 HumanMessage）。
+
+        当轮输入（channel_type/auto_reply/vision_target_count/mentions 等）
+        由 :meth:`_build_turn_input` 构造为 ``TurnInput`` 并经 run config 注入，
+        不进入 BotState 持久化。``humans`` 可含多条（burst 合并轮）。
+        """
         return {
             "thread_id": message.thread_id,
             "channel_id": message.channel_id,
@@ -220,18 +225,29 @@ class MessageDispatcher:
             "reply_text": "",
             "should_respond": True,
             "bot_name": self._identity.name,
-            "bot_id": self._identity.id,
             "tool_rounds": 0,
-            "channel_type": message.channel_type,
-            "content_kind": message.content_kind,
-            "has_text": message.has_text,
-            "llm_text": message.llm_text,
-            "clean_text": message.clean_text,
-            "mentions": message.mentions,
-            "vision_target_count": len(humans),
-            "auto_reply": auto_reply_allowed,
             "messages": humans,
         }
+
+    def _build_turn_input(
+        self,
+        message: IncomingMessage,
+        humans: list[HumanMessage],
+        auto_reply_allowed: bool,
+    ) -> TurnInput:
+        """构造当轮输入 TurnInput（不落库，仅本轮图消费）。"""
+        return TurnInput(
+            channel_type=message.channel_type,
+            bot_id=self._identity.id,
+            auto_reply=auto_reply_allowed,
+            content_kind=message.content_kind,
+            has_text=message.has_text,
+            llm_text=message.llm_text,
+            clean_text=message.clean_text,
+            vision_target_count=len(humans),
+            vision_desc=[],
+            mentions=message.mentions,
+        )
 
     async def _run_reply_graph(
         self,
@@ -257,11 +273,15 @@ class MessageDispatcher:
             if self._bot_config is not None
             else 128
         )
+        turn_input = self._build_turn_input(last, humans, auto_reply_allowed)
         try:
             result = await self.graph.ainvoke(
-                self._build_graph_input(last, humans, auto_reply_allowed),
+                self._build_graph_input(last, humans),
                 {
-                    "configurable": {"thread_id": last.thread_id},
+                    "configurable": {
+                        "thread_id": last.thread_id,
+                        "turn_input": turn_input,
+                    },
                     "recursion_limit": recursion_limit,
                 },
             )

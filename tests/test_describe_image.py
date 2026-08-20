@@ -4,6 +4,7 @@ import asyncio
 
 from langchain_core.messages import HumanMessage
 
+from bot.package.conversation.turn import TurnInput
 from bot.package.domain import ImageDescription
 from bot.package.orchestration.nodes.action_node.describe_image import (
     build_multimodal_content,
@@ -145,6 +146,26 @@ def test_ignores_previous_turn_images_when_target_count_is_set():
         vision_target_count=1,
     )
     assert asyncio.run(describe_image_node(state, fake)) == {}
+    assert fake.calls == 0
+
+
+def test_turn_input_takes_precedence_over_state_fallback():
+    """TurnInput 注入时优先读取，避免回退 state 把历史图片重放。
+
+    回归锁：BotState 瘦身后当轮字段不再进 checkpoint，若 describe_image 仍只
+    读 state，会漏掉 vision_target_count 从而重放历史图片；这里用 turn 显式
+    指定只看最后一轮（无图消息），验证不扫描历史图片。
+    """
+    fake = FakeVisionService(["旧图"])
+    old = _msg("[图片]", ["old"])
+    current = _msg("你好", [])
+    state = make_state(messages=[old, current], content_kind="image", vision_target_count=2)
+    turn = TurnInput(
+        channel_type=1, bot_id="bot1", auto_reply=False,
+        content_kind="text", has_text=True, llm_text="你好", clean_text="你好",
+        vision_target_count=1, vision_desc=[], mentions={},
+    )
+    assert asyncio.run(describe_image_node(state, fake, turn=turn)) == {}
     assert fake.calls == 0
 
 
