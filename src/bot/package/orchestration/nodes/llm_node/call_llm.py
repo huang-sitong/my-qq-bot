@@ -53,14 +53,7 @@ async def call_llm_node(
 
     messages = system_msgs + state["messages"]
 
-    # 打印当前上下文中的持久化 Message（Human/AI/Tool），便于在 ./log 回溯完整上下文。
     thread_id = state.get("thread_id", "")
-    for msg in state.get("messages", []):
-        logger.info(
-            "Context message before_llm thread=%s: %s",
-            thread_id,
-            format_message_for_log(msg),
-        )
 
     tools = tools or []
     max_rounds = bot_config.rag_max_agent_rounds if bot_config is not None else 3

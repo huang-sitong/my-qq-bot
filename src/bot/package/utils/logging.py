@@ -10,6 +10,7 @@ import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
+from datetime import datetime
 from pathlib import Path
 
 from .paths import PROJECT_ROOT
@@ -35,17 +36,58 @@ def trace_context(trace_id: str) -> Iterator[None]:
         _trace_id_var.reset(token)
 
 
+class DailyFileHandler(logging.FileHandler):
+    """按天切分的日志文件 handler，文件名形如 2026-08-20.log。
+
+    启动时以当天日期创建文件，若进程跨天运行，在下一次 emit 时自动切换到
+    新日期的文件，保证同一天的日志始终落在同一文件。
+    """
+
+    def __init__(self, log_dir: Path, encoding: str = "utf-8") -> None:
+        self.log_dir = Path(log_dir)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.current_date_str = datetime.now().strftime("%Y-%m-%d")
+        file_path = self.log_dir / f"{self.current_date_str}.log"
+        super().__init__(file_path, encoding=encoding)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        # 跨天检测：日期变化时切换文件
+        try:
+            new_date_str = datetime.now().strftime("%Y-%m-%d")
+            if new_date_str != self.current_date_str:
+                self.current_date_str = new_date_str
+                # 关闭旧文件，指向新文件
+                if self.stream:
+                    self.stream.close()
+                    self.stream = None  # type: ignore[assignment]
+                self.baseFilename = str(self.log_dir / f"{self.current_date_str}.log")
+                self.stream = self._open()
+        except Exception:  # noqa: S110
+            # 日期切换失败不影响日志写入
+            pass
+        super().emit(record)
+
+
+def _resolve_log_filename(log_filename: str | None) -> str | None:
+    """解析日志文件名：None 或 bot.log 视为使用按天命名。"""
+    if log_filename is None or log_filename == "bot.log":
+        return None  # 信号：使用 DailyFileHandler
+    return log_filename
+
+
 def setup_logging(
     log_dir: str | Path = "log",
     *,
     level: int = logging.INFO,
-    log_filename: str = "bot.log",
+    log_filename: str | None = None,
     console: bool = True,
 ) -> Path:
     """初始化 bot 日志：同时输出到控制台和根目录 ``log/`` 下的文件。
 
-    默认日志文件为 ``<项目根>/log/bot.log``。重复调用会先清空已有 handler，
-    避免在测试/重载场景下重复打印。
+    默认日志文件为 ``<项目根>/log/YYYY-MM-DD.log``，同一天的日志追加到同一文件，
+    跨天自动切换（通过 ``DailyFileHandler``）。兼容旧调用 ``log_filename="bot.log"``
+    会自动映射为按天文件。显式传入其他文件名（如测试用的 ``test.log``）则按给定
+    名称创建单一文件。重复调用会先清空已有 handler，避免在测试/重载场景下重复打印。
     """
     root = logging.getLogger()
     root.setLevel(level)
@@ -53,7 +95,10 @@ def setup_logging(
     # 清空已有 handler，保证幂等
     for handler in list(root.handlers):
         root.removeHandler(handler)
-        handler.close()
+        try:
+            handler.close()
+        except Exception:  # noqa: S110
+            pass
 
     formatter = logging.Formatter(
         "%(asctime)s [%(levelname)s] %(name)s: %(message)s [trace=%(trace_id)s]"
@@ -70,7 +115,11 @@ def setup_logging(
         log_path = PROJECT_ROOT / log_path
     log_path.mkdir(parents=True, exist_ok=True)
 
-    file_handler = logging.FileHandler(log_path / log_filename, encoding="utf-8")
+    resolved = _resolve_log_filename(log_filename)
+    if resolved is None:
+        file_handler: logging.Handler = DailyFileHandler(log_path, encoding="utf-8")
+    else:
+        file_handler = logging.FileHandler(log_path / resolved, encoding="utf-8")
     file_handler.setFormatter(formatter)
     file_handler.addFilter(TraceIdFilter())
     root.addHandler(file_handler)
@@ -78,4 +127,4 @@ def setup_logging(
     return log_path
 
 
-__all__ = ["TraceIdFilter", "setup_logging", "trace_context"]
+__all__ = ["DailyFileHandler", "TraceIdFilter", "setup_logging", "trace_context"]
