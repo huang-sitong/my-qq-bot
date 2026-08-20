@@ -8,6 +8,7 @@ from .identity import BotIdentity
 from .message import IncomingMessage
 from .router import RouteAction, RouteDecision
 from .state import BotState
+from .turn import TurnInput
 
 __all__ = [
     "Attachment",
@@ -18,4 +19,5 @@ __all__ = [
     "ParsedContent",
     "RouteAction",
     "RouteDecision",
+    "TurnInput",
 ]
