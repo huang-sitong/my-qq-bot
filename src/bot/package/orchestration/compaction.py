@@ -1,6 +1,6 @@
 import logging
 
-from bot.package.domain.constants import EXTERNAL_UPDATE_NODE
+from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.orchestration.nodes import summarize_node
 from bot.package.utils import estimate_context_tokens
 

@@ -4,7 +4,8 @@ from dotenv import find_dotenv
 from pydantic import BeforeValidator, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
-from bot.package.domain.prompts import DEFAULT_PERSONA_PROMPT
+DEFAULT_PERSONA_PROMPT = """\
+你是一个AI助手，名字叫 "{bot_name}"，请用中文友好地回答问题。"""
 
 
 def _parse_flag(value: object) -> bool:

@@ -1,14 +1,7 @@
-"""Bash 工具配置领域对象 — 已迁移至 bot.package.tools.domain，此为兼容垫片。"""
+"""工具域对象 — BashConfig 归位（原 domain.bash）。"""
 
-import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
-
-warnings.warn(
-    "bot.package.domain.bash is deprecated, use bot.package.tools.domain",
-    DeprecationWarning,
-    stacklevel=2,
-)
 
 
 @dataclass(frozen=True)

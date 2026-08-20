@@ -1,11 +1,14 @@
-"""跨模块共享常量。"""
+"""跨模块共享常量 — 已拆分，此为兼容垫片。"""
 
-# 图外 aupdate_state 必须显式指定写入节点；describe_image 是消息进入图后的
-# 第一个状态写入节点，连续外部更新时不会让 LangGraph 出现 Ambiguous update。
+import warnings
+
+warnings.warn(
+    "bot.package.domain.constants is deprecated, use bot.package.orchestration.constants / bot.package.platform.satori.constants",
+    DeprecationWarning,
+    stacklevel=2,
+)
+
 EXTERNAL_UPDATE_NODE = "describe_image"
+DIRECT_CHANNEL_TYPE = 1
 
 __all__ = ["DIRECT_CHANNEL_TYPE", "EXTERNAL_UPDATE_NODE"]
-
-# Satori ChannelType.DIRECT 的整数值；bot.utils.routing 不应反向依赖 platform 包，
-# 因此在此保存协议共享常量。
-DIRECT_CHANNEL_TYPE = 1

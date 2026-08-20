@@ -17,7 +17,7 @@ from langchain_openai import ChatOpenAI
 
 from bot.package.config import BotConfig
 from bot.package.conversation.state import BotState
-from bot.package.domain.prompts import SUMMARY_PROMPT
+from bot.package.orchestration.prompts import SUMMARY_PROMPT
 from bot.package.utils import (
     content_to_text,
     estimate_context_tokens,

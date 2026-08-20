@@ -15,7 +15,7 @@ from langgraph.prebuilt.tool_node import ToolInvocationError
 
 from bot.package.config import BotConfig
 from bot.package.conversation.state import BotState
-from bot.package.domain.bash import BashConfig
+from bot.package.tools.domain import BashConfig
 from bot.package.orchestration.nodes import (
     call_llm_node,
     describe_image_node,

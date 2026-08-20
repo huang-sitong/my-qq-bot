@@ -6,9 +6,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from bot.package.pipeline.pipeline import MessagePipeline
+if TYPE_CHECKING:
+    from bot.package.pipeline.pipeline import MessagePipeline
 
 
 class EventSource(Protocol):

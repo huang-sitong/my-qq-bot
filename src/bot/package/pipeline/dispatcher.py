@@ -19,7 +19,7 @@ from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
 from bot.package.domain import IndexTurnTask
-from bot.package.domain.constants import EXTERNAL_UPDATE_NODE
+from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.domain.ports import MessageSender, RagIndexer
 from bot.package.orchestration.compaction import ContextCompactor
 from bot.package.utils import (

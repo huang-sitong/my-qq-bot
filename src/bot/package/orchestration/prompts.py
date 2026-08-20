@@ -1,12 +1,8 @@
-"""提示词垫片 — 已拆分至 orchestration/knowledge/vision，此为兼容垫片。"""
+"""编排层提示词 — 原 domain.prompts 拆分后的 LLM 提示词归位。
 
-import warnings
-
-warnings.warn(
-    "bot.package.domain.prompts is deprecated, use bot.package.orchestration.prompts / bot.package.knowledge.prompts / bot.package.vision.prompts",
-    DeprecationWarning,
-    stacklevel=2,
-)
+- DEFAULT_PERSONA_PROMPT 仍被 config/settings 作默认值，但 config 不再直接依赖 domain
+- 其余 HINT / SUMMARY 均由 orchestration 消费
+"""
 
 DEFAULT_PERSONA_PROMPT = """\
 你是一个AI助手，名字叫 "{bot_name}"，请用中文友好地回答问题。"""
@@ -35,12 +31,14 @@ MEMORY_TOOL_HINT = """你可以通过工具读取和保存当前用户的持久�
 - 用户提到新的持久性个人信息时，调用 remember_user_memory 保存。
 - 记忆按用户区分，只涉及当前发送消息的用户。"""
 
+# 外部工具（MCP）提示（call_llm 动态注入，仅加载到 mcp_tools 时）
 MCP_TOOL_HINT = """你可以调用外部工具获取联网或实时信息（如搜索最新新闻、实时数据、超出你知识范围的事实）。
 - 当问题涉及时效性信息（今天/最新/实时/当前）、或你不确定的领域事实时，优先调用合适的工具检索后再回答。
 - 工具清单与用途见函数列表，按工具描述选择最合适的工具；一次检索不够可再补一轮，但不要反复调用同一个没结果的工具。
 - 不要臆造检索结果——工具未返回的信息，明确告诉用户无法获取。
 - 已拿到工具结果时直接基于结果组织回答，避免冗余调用。"""
 
+# bash 工具提示（call_llm 动态注入，仅 bash 启用时）
 BASH_TOOL_HINT = """你可以用 run_bash 在服务器上执行 bash 命令（Windows Git Bash / WSL/Linux bash）。
 - 主要用于运行技能（skill）中的脚本、配置技能所需环境（安装依赖/创建虚拟环境/设置环境变量等）。
 - 技能正文会说明脚本路径与执行步骤，按正文在对应目录（cwd）下执行。
@@ -48,6 +46,7 @@ BASH_TOOL_HINT = """你可以用 run_bash 在服务器上执行 bash 命令（Wi
 - 返回「退出码 N」+ 输出；退出码非 0 表示失败，可调整命令重试。
 - 不确定当前环境或路径风格时，先执行 `pwd` 和 `ls` 确认当前目录与文件真实路径。"""
 
+# send_file 工具提示（call_llm 动态注入，仅 API client 注入时）
 FILE_SEND_TOOL_HINT = """你可以用 send_file 把本地文件发送到当前会话。
 - 图片会作为图片消息发送，其他文件作为 QQ 群文件/私聊文件发送。
 - 目录不是文件，请先用 run_bash 打包成 zip/pdf 等单文件后再发送。
@@ -57,9 +56,6 @@ FILE_SEND_TOOL_HINT = """你可以用 send_file 把本地文件发送到当前�
   * `pwd` 输出盘符如 `C:\\` = Windows 环境，才可以使用 `C:\\...` 路径。
 - 禁止凭空编造路径；发送前可用 `run_bash` 执行 `ls -l <路径>` 确认文件确实存在。"""
 
-VISION_PROMPT = "请用中文简要描述这张图片的内容。"
-
-RETRIEVAL_TASK = "检索群聊历史中与问题最相关的消息"
-
+# 技能模块提示词（call_llm 经 build_system_messages 动态注入）
 SKILL_INDEX_HINT = "可用技能（按需用 load_skill 加载正文）："
 SKILL_ACTIVE_HINT = "当前已激活技能（遵循其规则）："

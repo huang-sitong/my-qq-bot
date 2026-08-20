@@ -9,7 +9,7 @@ import logging
 from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
-from bot.package.domain.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
+from bot.package.orchestration.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from bot.package.utils.content_parser import IMAGE_PLACEHOLDER
 
 logger = logging.getLogger(__name__)

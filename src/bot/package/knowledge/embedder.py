@@ -15,7 +15,7 @@ from langchain_core.embeddings import Embeddings
 from langchain_openai import OpenAIEmbeddings
 
 from bot.package.config import BotConfig
-from bot.package.domain.prompts import RETRIEVAL_TASK
+from bot.package.knowledge.prompts import RETRIEVAL_TASK
 from bot.package.utils.retry import retry_async
 
 from .cache import EmbeddingCache

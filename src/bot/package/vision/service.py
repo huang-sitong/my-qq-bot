@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from bot.package.domain.prompts import VISION_PROMPT
+from bot.package.vision.prompts import VISION_PROMPT
 from bot.package.utils.retry import retry_async
 
 logger = logging.getLogger(__name__)

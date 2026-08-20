@@ -19,7 +19,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
-from bot.package.domain.bash import BashConfig
+from bot.package.tools.domain import BashConfig
 from bot.package.skill.tools import load_skill, unload_skill
 
 from .builtin.run_bash import run_bash

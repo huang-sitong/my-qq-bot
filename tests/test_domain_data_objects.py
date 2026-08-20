@@ -59,3 +59,38 @@ def test_shared_dtos_are_owned_by_domain_and_re_exported():
     assert core_vision.ImageDescription is ImageDescription
     assert IndexTurnTask(thread_id="t", user_id="u", user_name="", bot_id="", bot_name="", user_message="", bot_reply="").thread_id == "t"
     assert ImageDescription(image_src="x", description="y").description == "y"
+
+def test_bash_config_lives_in_tools_domain():
+    from bot.package.tools.domain import BashConfig as NewBash
+    assert NewBash(enabled=True).shell == "bash"
+    # 舊路徑應已遷移（墊片期：domain 仍可導入但發 DeprecationWarning；以文件內容為準，避免模塊緩存導致二次導入不 warning）
+    import pathlib
+    bash_shim = pathlib.Path("src/bot/package/domain/bash.py").read_text(encoding="utf-8")
+    assert "DeprecationWarning" in bash_shim
+    assert "bot.package.tools.domain" in bash_shim
+    # 舊路徑仍可用（墊片期），新舊類同名同結構
+    from bot.package.domain import BashConfig as Old
+    assert Old.__name__ == "BashConfig"
+    assert Old(enabled=True).shell == "bash"
+
+
+def test_prompts_split():
+    from bot.package.orchestration.prompts import SUMMARY_PROMPT, BASH_TOOL_HINT
+    from bot.package.knowledge.prompts import RETRIEVAL_TASK
+    assert "{old_summary}" in SUMMARY_PROMPT
+    assert "run_bash" in BASH_TOOL_HINT
+    assert RETRIEVAL_TASK.startswith("检索")
+
+
+def test_constants_split():
+    from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
+    from bot.package.platform.satori.constants import DIRECT_CHANNEL_TYPE
+    assert EXTERNAL_UPDATE_NODE == "describe_image"
+    assert DIRECT_CHANNEL_TYPE == 1
+
+
+def test_config_no_longer_imports_domain():
+    import ast, pathlib
+    tree = ast.parse(pathlib.Path("src/bot/package/config/settings.py").read_text(encoding="utf-8"))
+    imports = [n.module for n in ast.walk(tree) if isinstance(n, ast.ImportFrom) and n.module]
+    assert not any(m.startswith("bot.package.domain") for m in imports if m)

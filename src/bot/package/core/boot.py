@@ -19,8 +19,8 @@ from bot.package.conversation.identity import BotIdentity
 from bot.package.core.app import AppDependencies, BotApplication
 from bot.package.core.database import DatabaseManager
 from bot.package.core.llm import setup_llm
-from bot.package.domain.bash import BashConfig
-from bot.package.domain.prompts import DEFAULT_PERSONA_PROMPT
+from bot.package.tools.domain import BashConfig
+from bot.package.orchestration.prompts import DEFAULT_PERSONA_PROMPT
 from bot.package.knowledge.document_store import DocumentStore
 from bot.package.knowledge.index_worker import IndexWorker
 from bot.package.knowledge.service import RagService

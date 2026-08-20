@@ -8,11 +8,15 @@ from __future__ import annotations
 
 import logging
 
+from typing import TYPE_CHECKING
+
 from bot.package.conversation.identity import BotIdentity
-from bot.package.pipeline.pipeline import MessagePipeline
 from bot.package.platform.satori import EventBody, LoginList, SatoriApiClient
 from bot.package.platform.satori.ingress import SatoriMessageIngress
 from bot.package.platform.satori.websocket import SatoriClient
+
+if TYPE_CHECKING:
+    from bot.package.pipeline.pipeline import MessagePipeline
 
 logger = logging.getLogger(__name__)
 

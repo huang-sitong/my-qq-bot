@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 
 from bot.package.config import BotConfig
 from bot.package.conversation.state import BotState
-from bot.package.domain.prompts import (
+from bot.package.orchestration.prompts import (
     BASH_TOOL_HINT,
     FILE_SEND_TOOL_HINT,
     MCP_TOOL_HINT,
