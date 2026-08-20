@@ -10,7 +10,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from bot.package.conversation.identity import BotIdentity
-from bot.package.platform.satori import EventBody, LoginList, SatoriApiClient
+from bot.package.platform.satori.events import EventBody, LoginList
+from bot.package.platform.satori.http import SatoriApiClient
 from bot.package.platform.satori.ingress import SatoriMessageIngress
 from bot.package.platform.satori.websocket import SatoriClient
 

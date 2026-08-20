@@ -15,7 +15,7 @@ from bot.package.orchestration.compaction import ContextCompactor
 from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.orchestration.graph import create_graph
 from bot.package.skill import Skill, SkillRegistry
-from tests.fakes import ScriptedLLM, make_state
+from tests.fakes import ScriptedLLM, build_graph_tools, make_state
 
 
 def _ctx(services, thread_id="t1", config=None):
@@ -50,6 +50,7 @@ def test_clear_resets_context_and_skills_but_keeps_persona(tmp_path):
             BotConfig(_env_file=None),
             db_dir=str(tmp_path),
             skill_registry=skill_registry,
+            tools=build_graph_tools(skill_registry=skill_registry),
         )
         try:
             cfg = {"configurable": {"thread_id": "t1"}}
@@ -95,6 +96,7 @@ def test_context_reports_context_usage(tmp_path):
         )
         graph, checkpointer = await create_graph(
             llm, config, db_dir=str(tmp_path),
+            tools=build_graph_tools(),
         )
         try:
             cfg = {"configurable": {"thread_id": "t1"}}
@@ -143,6 +145,7 @@ def test_compact_force_summarizes_checkpoint(tmp_path):
         )
         graph, checkpointer = await create_graph(
             llm, config, db_dir=str(tmp_path),
+            tools=build_graph_tools(),
         )
         try:
             cfg = {"configurable": {"thread_id": "t1"}}
@@ -189,6 +192,7 @@ def test_clear_works_after_external_context_updates(tmp_path):
             ScriptedLLM([]),
             BotConfig(_env_file=None),
             db_dir=str(tmp_path),
+            tools=build_graph_tools(),
         )
         try:
             cfg = {"configurable": {"thread_id": "t1"}}
@@ -223,7 +227,7 @@ def test_compact_works_after_external_context_updates(tmp_path):
             summary_trigger_ratio=0.5,
             summary_keep_ratio=0.01,
         )
-        graph, checkpointer = await create_graph(llm, config, db_dir=str(tmp_path))
+        graph, checkpointer = await create_graph(llm, config, db_dir=str(tmp_path), tools=build_graph_tools())
         try:
             cfg = {"configurable": {"thread_id": "t1"}}
             for text in ("旧一", "旧二", "旧三"):

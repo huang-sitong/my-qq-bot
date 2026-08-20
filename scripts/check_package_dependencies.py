@@ -51,6 +51,8 @@ LEGACY_TOP = {"common", "context", "execution", "protocol"}
 # - platform 允許 pipeline（base/adapter 的 MessagePipeline 類型，實為 TYPE_CHECKING 但現為 runtime，寬容）
 # - orchestration 允許 vision（describe_image 節點）
 # - mcp 允許 utils（paths.PROJECT_ROOT）
+# orchestration 不得 import tools：工具列表由装配根（core.boot）注入，
+# graph.py 不再内部 build_tools（create_graph(tools=...) 为必填参数）。
 ALLOWED_RUNTIME_DEPENDENCIES: dict[str, set[str]] = {
     "domain": set(),
     "conversation": {"domain"},
@@ -61,7 +63,7 @@ ALLOWED_RUNTIME_DEPENDENCIES: dict[str, set[str]] = {
     "memory": set(),
     "knowledge": {"config", "utils", "domain"},
     "vision": {"config", "utils", "domain"},
-    "orchestration": {"config", "utils", "domain", "conversation", "vision", "tools"},
+    "orchestration": {"config", "utils", "domain", "conversation", "vision"},
     "platform": {"config", "utils", "domain", "conversation"},
     "tools": {"config", "utils", "domain", "conversation", "skill", "knowledge"},
     "pipeline": {"config", "utils", "domain", "conversation", "commands", "orchestration"},

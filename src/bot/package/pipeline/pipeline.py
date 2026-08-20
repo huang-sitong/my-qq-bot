@@ -11,18 +11,23 @@ from collections.abc import Callable
 
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
-from bot.package.domain.ports import MessageQueue
-from bot.package.pipeline.dispatcher import MessageDispatcher
+from bot.package.domain.ports import MessageQueue, MessageSink
 from bot.package.pipeline.worker import MessageWorkerPool
 
 
 class MessagePipeline:
-    """消息队列 + 路由 + 分发的进程内流水线。"""
+    """消息队列 + 路由 + 分发的进程内流水线。
+
+    ``worker_pool`` 是具体并发引擎；本类只做协议无关门面：把
+    ``dispatcher``（满足 ``MessageSink`` 协议）接入 worker 池，并负责
+    auto_reply 冷却记账户（worker 池）与 dispatcher 之间的回调接线。
+    """
 
     def __init__(
         self,
-        dispatcher: MessageDispatcher,
+        dispatcher: MessageSink,
         *,
+        router=None,
         bot_config=None,
         command_registry=None,
         identity: BotIdentity | None = None,
@@ -31,6 +36,8 @@ class MessagePipeline:
         batch_max: int = 4,
         queue_factory: Callable[[int], MessageQueue] | None = None,
         dedup_size: int = 0,
+        idle_ttl: float = 3600,
+        cleanup_interval: float = 300,
     ) -> None:
         self.dispatcher = dispatcher
         self.bot_config = bot_config
@@ -38,6 +45,7 @@ class MessagePipeline:
         self.identity = identity or BotIdentity()
         self._worker_pool = MessageWorkerPool(
             dispatcher,
+            router=router,
             bot_config=bot_config,
             command_registry=command_registry,
             identity=self.identity,
@@ -46,11 +54,13 @@ class MessagePipeline:
             batch_max=batch_max,
             queue_factory=queue_factory,
             dedup_size=dedup_size,
+            idle_ttl=idle_ttl,
+            cleanup_interval=cleanup_interval,
         )
-        if self.dispatcher._on_auto_reply_sent is None:
-            # 回复冷却由 worker pool 统一记账；旧 MessageHandler 门面删除后，
-            # MessagePipeline 必须自己把 dispatcher 的回调接到 worker pool。
-            self.dispatcher._on_auto_reply_sent = self.mark_reply_sent
+        if getattr(dispatcher, "on_auto_reply_sent", None) is None:
+            # 回复冷却由 worker pool 统一记账；dispatcher 经公开回调字段接线，
+            # 不再触碰私有属性。
+            dispatcher.on_auto_reply_sent = self.mark_reply_sent
 
     @property
     def worker_pool(self) -> MessageWorkerPool:

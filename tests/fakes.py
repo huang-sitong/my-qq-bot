@@ -127,3 +127,45 @@ class FakeVisionService:
         self.calls += 1
         self.last_srcs = srcs
         return list(self.descriptions)
+
+
+def build_graph_tools(
+    *,
+    rag_service=None,
+    document_store=None,
+    memory_store=None,
+    mcp_tools=None,
+    skill_registry=None,
+    bash_enabled=True,
+    bash_allowed_roots=(),
+    file_sender=None,
+):
+    """为图测试装配工具列表。
+
+    替代 ``create_graph`` 内部已移除的工具装配 fallback：编排层不得反向依赖
+    ``bot.package.tools``，因此测试与被测装配根（core.boot）一样显式调用
+    ``build_tools`` 注入。
+    """
+    from pathlib import Path
+
+    from bot.package.tools import build_tools
+    from bot.package.tools.domain import BashConfig
+    from bot.package.utils.paths import PROJECT_ROOT
+
+    roots = list(bash_allowed_roots or ())
+    bash_config = BashConfig(
+        enabled=bash_enabled,
+        allowed_roots=roots,
+        project_root=PROJECT_ROOT,
+    )
+    send_roots = [PROJECT_ROOT] + [Path(root).resolve() for root in roots]
+    return build_tools(
+        rag_service=rag_service,
+        document_store=document_store,
+        memory_store=memory_store,
+        mcp_tools=mcp_tools,
+        skill_registry=skill_registry,
+        bash_config=bash_config,
+        file_sender=file_sender,
+        send_roots=send_roots,
+    )

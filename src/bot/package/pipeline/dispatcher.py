@@ -2,6 +2,9 @@
 
 Dispatcher 不判断消息应走哪条流水线，只接收 ``RouteDecision`` 并调用对应
 执行器：命令、图外上下文、reply graph、系统/媒体忽略。
+
+实现 ``bot.package.domain.ports.MessageSink`` 协议（``dispatch`` /
+``dispatch_batch``），供 worker 池按端口消费。
 """
 
 import logging
@@ -20,8 +23,11 @@ from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
 from bot.package.conversation.turn import TurnInput
 from bot.package.domain import IndexTurnTask
-from bot.package.domain.ports import MessageSender, RagIndexer
-from bot.package.orchestration.compaction import ContextCompactor
+from bot.package.domain.ports import (
+    ContextCompactorPort,
+    MessageSender,
+    RagIndexer,
+)
 from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.utils import (
     IMAGE_PLACEHOLDER,
@@ -45,7 +51,7 @@ class MessageDispatcher:
         bot_config=None,
         command_registry: CommandRegistry | None = None,
         command_services: CommandServices | None = None,
-        compactor: ContextCompactor | None = None,
+        compactor: ContextCompactorPort | None = None,
         index_worker: RagIndexer | None = None,
         identity: BotIdentity | None = None,
         on_auto_reply_sent=None,
@@ -59,7 +65,9 @@ class MessageDispatcher:
         self._compactor = compactor
         self._index_worker = index_worker
         self._identity = identity or BotIdentity()
-        self._on_auto_reply_sent = on_auto_reply_sent
+        # 跨对象回调契约：worker 池经 MessagePipeline 在启动装配时注入
+        # mark_reply_sent（auto_reply 冷却记账）。公开属性，供装配根接线。
+        self.on_auto_reply_sent = on_auto_reply_sent
 
     async def dispatch(
         self,
@@ -295,8 +303,8 @@ class MessageDispatcher:
         reply_text = result.get("reply_text", "")
         if reply_text:
             await self._send_reply(last.channel_id, reply_text)
-        if reply_text and auto_reply_allowed and self._on_auto_reply_sent is not None:
-            self._on_auto_reply_sent(last.thread_id)
+        if reply_text and auto_reply_allowed and self.on_auto_reply_sent is not None:
+            self.on_auto_reply_sent(last.thread_id)
         for message in messages:
             await self._enqueue_index(message, reply_text)
 

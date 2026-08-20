@@ -1,7 +1,6 @@
 import logging
 import os
 from functools import partial
-from pathlib import Path
 
 import aiosqlite
 from langchain_core.tools import BaseTool
@@ -20,8 +19,6 @@ from bot.package.orchestration.nodes import (
     describe_image_node,
     skill_manager_node,
 )
-from bot.package.tools.domain import BashConfig
-from bot.package.utils.paths import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +69,9 @@ def _describe_image_with_turn(node, **inject):
 async def create_graph(
     llm: ChatOpenAI,
     config: BotConfig,
+    *,
+    tools: list[BaseTool],
     db_dir: str = "db",
-    tools: list[BaseTool] | None = None,
     rag_service=None,
     document_store=None,
     memory_store=None,
@@ -84,33 +82,17 @@ async def create_graph(
 ) -> tuple[CompiledStateGraph, AsyncSqliteSaver]:
     """Build and compile the conversation graph.
 
+    ``tools`` is required: the caller (``bot.package.core.boot`` or a test
+    harness) is responsible for assembling the tool list via
+    ``bot.package.tools.build_tools`` and injecting it. Orchestration must not
+    depend on the tools package.
+
     Returns ``(graph, checkpointer)`` so the caller can manage the
     checkpointer's lifecycle.
     """
-    bash_config = BashConfig(
-        enabled=config.bash_enabled,
-        shell=config.bash_shell,
-        timeout=config.bash_timeout,
-        max_output=config.bash_max_output,
-        allowed_roots=config.bash_allowed_roots,
-        project_root=PROJECT_ROOT,
-    )
-    send_roots = [PROJECT_ROOT] + [
-        Path(root).resolve() for root in config.bash_allowed_roots
-    ]
-    if tools is None:
-        # 兼容旧调用方；目标架构由 bot.package.core.boot 装配后注入 tools。
-        from bot.package.tools import build_tools
-
-        tools = build_tools(
-            rag_service=rag_service, document_store=document_store,
-            memory_store=memory_store, mcp_tools=mcp_tools,
-            skill_registry=skill_registry, bash_config=bash_config,
-            file_sender=file_sender, send_roots=send_roots,
-        )
     use_memory = memory_store is not None
     use_mcp = bool(mcp_tools)
-    use_bash = bash_config.enabled
+    use_bash = config.bash_enabled
 
     builder = StateGraph(BotState)
     builder.add_node(

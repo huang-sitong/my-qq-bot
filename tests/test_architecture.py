@@ -112,10 +112,56 @@ def test_package_runtime_dependencies_follow_allowlist():
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
+
+def test_orchestration_has_no_tools_runtime_import():
+    """P2 守护：编排层不得在运行时 import bot.package.tools（由 core.boot 注入 tools）。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    for path in (repo_root / "src" / "bot" / "package" / "orchestration").rglob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        assert "from bot.package.tools import" not in src, f"{path} imports tools at runtime"
+        assert "import bot.package.tools" not in src, f"{path} imports tools at runtime"
+
+
+def test_composition_root_is_typed():
+    """P4 守护：core/app 组合根不得用 Any 打满依赖类型。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    src = (repo_root / "src" / "bot" / "package" / "core" / "app.py").read_text(encoding="utf-8")
+    assert "Any" not in src, "core/app.py should not use Any; type the composition root"
+
+
+def test_no_private_auto_reply_callback_access():
+    """P5 守护：dispatcher 与 pipeline 之间不得跨类访问私有 _on_auto_reply_sent。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    for path in (repo_root / "src" / "bot" / "package" / "pipeline").rglob("*.py"):
+        src = path.read_text(encoding="utf-8")
+        assert "_on_auto_reply_sent" not in src, f"{path} still uses private auto-reply callback"
+
+
+def test_all_ports_are_consumed():
+    """P3 守护：domain/ports 的每个端口都必须在 src 中至少被一处消费（非定义处）。"""
+    from bot.package.domain import ports
+    repo_root = Path(__file__).resolve().parents[1]
+    exempt = {
+        repo_root / "src" / "bot" / "package" / "domain" / "ports.py",
+        repo_root / "src" / "bot" / "package" / "domain" / "__init__.py",
+    }
+    src_files = [p for p in (repo_root / "src").rglob("*.py") if p not in exempt]
+    for port_name in ports.__all__:
+        hits = [p for p in src_files if port_name in p.read_text(encoding="utf-8")]
+        assert hits, f"port {port_name} defined but never consumed in src"
+
 def test_no_reexport_shims():
     repo_root = Path(__file__).resolve().parents[1]
     assert not (repo_root / "src" / "bot" / "package" / "knowledge" / "domain.py").exists(), "knowledge/domain.py shim should be removed"
     assert not (repo_root / "src" / "bot" / "package" / "vision" / "domain.py").exists(), "vision/domain.py shim should be removed"
+
+
+def test_platform_satori_init_has_no_getattr_magic():
+    """platform/satori/__init__ 显式导出，与 domain 一致：无 __getattr__/_module_map 魔法。"""
+    repo_root = Path(__file__).resolve().parents[1]
+    src = (repo_root / "src" / "bot" / "package" / "platform" / "satori" / "__init__.py").read_text(encoding="utf-8")
+    assert "def __getattr__" not in src
+    assert "_module_map = {" not in src
 
 def test_single_import_path():
     repo_root = Path(__file__).resolve().parents[1]

@@ -8,35 +8,64 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any
 
+from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+from langgraph.graph.state import CompiledStateGraph
+
+from bot.package.commands.registry import CommandRegistry
+from bot.package.commands.services import CommandServices
+from bot.package.config import BotConfig
+from bot.package.core.database import DatabaseManager
+from bot.package.knowledge.document_store import DocumentStore
+from bot.package.knowledge.index_worker import IndexWorker
+from bot.package.knowledge.service import RagService
+from bot.package.memory import MemoryStore
 from bot.package.pipeline.pipeline import MessagePipeline
 from bot.package.platform.satori.adapter import SatoriAdapter
+from bot.package.vision import VisionService
 
 logger = logging.getLogger(__name__)
+
+# 可选依赖：未启用或初始化降级时以 None 表示（boot 沿用“失败只降级、不阻断”策略）。
+OptionalGraph = CompiledStateGraph | None
+OptionalCheckpointer = AsyncSqliteSaver | None
 
 
 @dataclass
 class AppDependencies:
     """create_app 装配出的依赖集合。"""
 
-    config: Any
+    config: BotConfig
     platform: SatoriAdapter
     pipeline: MessagePipeline
-    graph: Any
-    checkpointer: Any
-    command_registry: Any = None
-    command_services: Any = None
-    index_worker: Any = None
-    rag_service: Any = None
-    document_store: Any = None
-    memory_store: Any = None
-    vision_service: Any = None
-    db_manager: Any = None
+    graph: OptionalGraph
+    checkpointer: OptionalCheckpointer
+    command_registry: CommandRegistry | None = None
+    command_services: CommandServices | None = None
+    index_worker: IndexWorker | None = None
+    rag_service: RagService | None = None
+    document_store: DocumentStore | None = None
+    memory_store: MemoryStore | None = None
+    vision_service: VisionService | None = None
+    db_manager: DatabaseManager | None = None
 
 
 class BotApplication:
     """装配完成的 bot 运行时。"""
+
+    config: BotConfig
+    platform: SatoriAdapter
+    pipeline: MessagePipeline
+    graph: OptionalGraph
+    checkpointer: OptionalCheckpointer
+    command_registry: CommandRegistry | None
+    command_services: CommandServices | None
+    index_worker: IndexWorker | None
+    rag_service: RagService | None
+    document_store: DocumentStore | None
+    memory_store: MemoryStore | None
+    vision_service: VisionService | None
+    db_manager: DatabaseManager | None
 
     def __init__(self, deps: AppDependencies) -> None:
         self.config = deps.config

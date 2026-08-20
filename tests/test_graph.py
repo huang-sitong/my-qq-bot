@@ -5,7 +5,13 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from bot.package.config import BotConfig
 from bot.package.conversation.turn import TurnInput
 from bot.package.orchestration.graph import create_graph
-from tests.fakes import FakeVisionService, ScriptedLLM, StubMemoryStore, StubRagService
+from tests.fakes import (
+    FakeVisionService,
+    ScriptedLLM,
+    StubMemoryStore,
+    StubRagService,
+    build_graph_tools,
+)
 
 TOOL_CALLS = [
     {"name": "search_chat_history", "args": {"query": "之前聊了什么"}, "id": "call_1", "type": "tool_call"},
@@ -71,7 +77,7 @@ def test_graph_loops_tool_call_then_answers(tmp_path):
         AIMessage(content="我们上次决定用 qwen3-embedding 做嵌入"),
     ])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+        create_graph(llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path), rag_service=rag, tools=build_graph_tools(rag_service=rag))
     )
 
     result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
@@ -96,7 +102,7 @@ def test_graph_memory_tool_roundtrip(tmp_path):
         AIMessage(content="你之前说过你叫张三"),
     ])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(rag_enabled=False), db_dir=str(tmp_path), memory_store=store)
+        create_graph(llm, BotConfig(rag_enabled=False), db_dir=str(tmp_path), memory_store=store, tools=build_graph_tools(memory_store=store))
     )
 
     result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
@@ -115,7 +121,7 @@ def test_graph_does_not_index_turn(tmp_path):
     rag = StubRagService()
     llm = ScriptedLLM([AIMessage(content="收到")])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag)
+        create_graph(llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path), rag_service=rag, tools=build_graph_tools(rag_service=rag))
     )
     result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
     assert result["reply_text"] == "收到"
@@ -126,7 +132,8 @@ def test_graph_input_message_appends_to_checkpoint(tmp_path):
     async def run():
         llm = ScriptedLLM([AIMessage(content="a"), AIMessage(content="b")])
         graph, checkpointer = await create_graph(
-            llm, BotConfig(_env_file=None), db_dir=str(tmp_path)
+            llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
+            tools=build_graph_tools(),
         )
         try:
             cfg = _cfg()
@@ -149,6 +156,7 @@ def test_graph_does_not_reprocess_previous_image_on_later_turn(tmp_path):
         graph, checkpointer = await create_graph(
             llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
             vision_service=vision,
+            tools=build_graph_tools(),
         )
         try:
             cfg = _cfg()
@@ -193,6 +201,7 @@ def test_graph_image_reply_includes_vision_description(tmp_path):
         graph, checkpointer = await create_graph(
             llm, BotConfig(rag_enabled=True), db_dir=str(tmp_path),
             rag_service=rag, vision_service=vision,
+            tools=build_graph_tools(rag_service=rag),
         )
         try:
             state = {
@@ -227,6 +236,7 @@ def test_graph_image_reply_without_vision_keeps_placeholder(tmp_path):
         graph, checkpointer = await create_graph(
             llm, BotConfig(_env_file=None, rag_enabled=True), db_dir=str(tmp_path),
             rag_service=rag,
+            tools=build_graph_tools(rag_service=rag),
         )
         try:
             state = {
@@ -286,6 +296,7 @@ def test_graph_skill_persists_across_turns(tmp_path):
         graph, checkpointer = await create_graph(
             llm, BotConfig(skills_enabled=True), db_dir=str(tmp_path),
             skill_registry=_skill_registry(),
+            tools=build_graph_tools(skill_registry=_skill_registry()),
         )
         try:
             state1 = _initial_state()
@@ -314,6 +325,7 @@ def test_graph_skill_isolated_per_thread(tmp_path):
         graph, checkpointer = await create_graph(
             llm, BotConfig(skills_enabled=True), db_dir=str(tmp_path),
             skill_registry=_skill_registry(),
+            tools=build_graph_tools(skill_registry=_skill_registry()),
         )
         try:
             a = _initial_state()
@@ -357,7 +369,7 @@ def test_graph_runs_bash_tool(tmp_path, monkeypatch):
         AIMessage(content="已执行"),
     ])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path))
+        create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path), tools=build_graph_tools())
     )
     result = asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
 
@@ -370,7 +382,7 @@ def test_graph_runs_bash_tool(tmp_path, monkeypatch):
 def test_graph_injects_bash_hint(tmp_path):
     llm = ScriptedLLM([AIMessage(content="好的")])
     graph, _ = asyncio.run(
-        create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path))
+        create_graph(llm, BotConfig(_env_file=None), db_dir=str(tmp_path), tools=build_graph_tools())
     )
     asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
     sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
@@ -407,6 +419,9 @@ def test_graph_runs_send_file_tool(tmp_path):
             llm, BotConfig(_env_file=None, bash_allowed_roots=[str(tmp_path)]),
             db_dir=str(tmp_path),
             file_sender=sender,
+            tools=build_graph_tools(
+                bash_allowed_roots=[str(tmp_path)], file_sender=sender,
+            ),
         )
     )
     result = asyncio.run(graph.ainvoke(
@@ -426,6 +441,7 @@ def test_graph_injects_file_send_hint(tmp_path):
         create_graph(
             llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
             file_sender=_FakeFileSender(),
+            tools=build_graph_tools(file_sender=_FakeFileSender()),
         )
     )
     asyncio.run(graph.ainvoke(

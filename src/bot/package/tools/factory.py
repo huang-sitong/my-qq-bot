@@ -19,6 +19,7 @@ from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.prebuilt import InjectedState
 from pydantic import Field
 
+from bot.package.domain.ports import UserMemoryStore
 from bot.package.skill.tools import load_skill, unload_skill
 from bot.package.tools.domain import BashConfig
 
@@ -215,7 +216,7 @@ def _make_search_documents_tool(document_store) -> BaseTool:
     )
 
 
-def _make_memory_tools(memory_store) -> list[BaseTool]:
+def _make_memory_tools(memory_store: UserMemoryStore) -> list[BaseTool]:
     async def _remember(
         key: Annotated[str, Field(
             description='记忆的语义标签，如 "喜欢的食物"',
@@ -306,7 +307,7 @@ def _make_skill_tools(skill_registry) -> list[BaseTool]:
     ]
 
 
-def build_tools(rag_service=None, document_store=None, memory_store=None,
+def build_tools(rag_service=None, document_store=None, memory_store: UserMemoryStore | None = None,
                 mcp_tools=None, skill_registry=None, bash_config=None,
                 file_sender=None, send_roots=None) -> list[BaseTool]:
     """组装当前可用工具列表（BaseTool）。

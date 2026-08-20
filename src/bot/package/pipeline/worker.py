@@ -18,8 +18,7 @@ from collections.abc import Callable
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
-from bot.package.domain.ports import MessageQueue
-from bot.package.pipeline.dispatcher import MessageDispatcher
+from bot.package.domain.ports import MessageQueue, MessageRouter, MessageSink
 from bot.package.pipeline.router import route_incoming
 from bot.package.utils.logging import trace_context
 from bot.package.utils.queue import InMemoryMessageQueue
@@ -39,8 +38,9 @@ class MessageWorkerPool:
 
     def __init__(
         self,
-        dispatcher: MessageDispatcher,
+        dispatcher: MessageSink,
         *,
+        router: MessageRouter | None = None,
         bot_config=None,
         command_registry=None,
         identity: BotIdentity | None = None,
@@ -53,6 +53,7 @@ class MessageWorkerPool:
         cleanup_interval: float = 300,
     ) -> None:
         self._dispatcher = dispatcher
+        self._router = router or route_incoming
         self._bot_config = bot_config
         self._command_registry = command_registry
         self._identity = identity or BotIdentity()
@@ -186,7 +187,7 @@ class MessageWorkerPool:
     def _route(self, message: IncomingMessage) -> tuple[RouteDecision, bool]:
         """路由一条消息，返回 (decision, auto_reply_allowed)。"""
         auto_reply_allowed = self._auto_reply_allowed(message)
-        decision = route_incoming(
+        decision = self._router(
             message,
             command_registry=self._command_registry,
             command_enabled=bool(

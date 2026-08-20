@@ -96,7 +96,7 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **Node DI**：`graph.py` 用 `functools.partial` 注入（非闭包）；节点文件均为独立 `async def(state, ...) -> dict`。
 
-**create_graph 返回 `(graph, checkpointer)`**：checkpointer 生命周期归 main.py，不在 create_graph 内关闭。服务注入：`rag_service`/`memory_store`/`skill_registry`/`mcp_tools` 进 call_llm_node（工具绑定+技能注入层）与 tools（ToolNode 执行）；`vision_service` 进 describe_image；`file_sender` 进 tools；`skill_registry` 另由 ContextCompactor 的 summarize_node 与命令层复用（token 口径一致）。
+**create_graph 返回 `(graph, checkpointer)`**：checkpointer 生命周期归 main.py，不在 create_graph 内关闭。`tools` 为必填参数：由 `core.boot` 调 `build_tools` 装配后经 `create_graph(..., tools=tools)` 注入，编排层不反向依赖 `bot.package.tools`（依赖门禁拦截）。服务注入：`rag_service`/`memory_store`/`skill_registry`/`mcp_tools` 经 boot 的 tools 绑定进 ToolNode，`call_llm_node` 只用开关（use_memory/use_mcp/use_bash/use_file_send）控制 hint 注入；`vision_service` 进 describe_image；`file_sender` 进 tools；`skill_registry` 另由 ContextCompactor 的 summarize_node 与命令层复用（token 口径一致）。
 
 **SystemMessage 动态注入**：`call_llm_node` 每次调用由 `build_system_messages` 现构多层 system 并前置，只把 AIMessage 落 state。层级：①conversation_summary → ②技能索引 → ③激活技能正文 → ④记忆工具提示 → ⑤MCP 工具提示。不再注入当前时间等易变内容，保证提示稳定可命中 LLM 缓存。不变量：
 - system 为局部变量，**绝不持久化**；persona 恒在 messages[0]（`.format(bot_name=...)`），改动即时生效

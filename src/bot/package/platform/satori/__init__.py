@@ -1,4 +1,105 @@
-# 分组注释是刻意结构（与下方 _module_map 平行同步），按 RUF022 全量字母序会打散分组
+"""Satori 协议平台适配（显式导出，无 `__getattr__` 懒加载魔法）。
+
+与项目“显式导入、单一源”的治理约定一致：所有协议模型 / 传输客户端 / 事件
+归一化在此一次性显式导出，避免 ``_module_map`` + ``__getattr__`` 的动态重导出。
+``adapter`` 直接导入子模块（``events`` / ``http``），不依赖包级门面，因此无
+导入顺序约束。
+"""
+
+from .adapter import SatoriAdapter
+from .api import (
+    CHANNEL_CREATE,
+    CHANNEL_DELETE,
+    CHANNEL_GET,
+    CHANNEL_LIST,
+    CHANNEL_MUTE,
+    CHANNEL_UPDATE,
+    FRIEND_APPROVE,
+    FRIEND_DELETE,
+    FRIEND_LIST,
+    GUILD_APPROVE,
+    GUILD_GET,
+    GUILD_LIST,
+    GUILD_MEMBER_APPROVE,
+    GUILD_MEMBER_GET,
+    GUILD_MEMBER_KICK,
+    GUILD_MEMBER_LIST,
+    GUILD_MEMBER_MUTE,
+    GUILD_MEMBER_ROLE_SET,
+    GUILD_MEMBER_ROLE_UNSET,
+    GUILD_ROLE_CREATE,
+    GUILD_ROLE_DELETE,
+    GUILD_ROLE_LIST,
+    GUILD_ROLE_UPDATE,
+    LOGIN_GET,
+    MESSAGE_CREATE,
+    MESSAGE_DELETE,
+    MESSAGE_GET,
+    MESSAGE_LIST,
+    MESSAGE_UPDATE,
+    REACTION_CLEAR,
+    REACTION_CREATE,
+    REACTION_DELETE,
+    REACTION_LIST,
+    USER_CHANNEL_CREATE,
+    USER_GET,
+    ChannelCreateParams,
+    ChannelDeleteParams,
+    ChannelGetParams,
+    ChannelListParams,
+    ChannelMuteParams,
+    ChannelUpdateParams,
+    Endpoint,
+    FriendApproveParams,
+    FriendDeleteParams,
+    FriendListParams,
+    GuildApproveParams,
+    GuildGetParams,
+    GuildListParams,
+    GuildMemberApproveParams,
+    GuildMemberGetParams,
+    GuildMemberKickParams,
+    GuildMemberListParams,
+    GuildMemberMuteParams,
+    GuildMemberRoleSetParams,
+    GuildMemberRoleUnsetParams,
+    GuildRoleCreateParams,
+    GuildRoleDeleteParams,
+    GuildRoleListParams,
+    GuildRoleUpdateParams,
+    MessageCreateParams,
+    MessageDeleteParams,
+    MessageGetParams,
+    MessageListParams,
+    MessageUpdateParams,
+    ReactionClearParams,
+    ReactionCreateParams,
+    ReactionDeleteParams,
+    ReactionListParams,
+    UserChannelCreateParams,
+    UserGetParams,
+)
+from .enums import ChannelType, Direction, LoginStatus, Order
+from .events import EventBody, LoginList, Signal
+from .http import SatoriApiClient
+from .ingress import SatoriMessageIngress
+from .models import (
+    Argv,
+    BidiList,
+    Button,
+    Channel,
+    Emoji,
+    Friend,
+    Guild,
+    GuildMember,
+    GuildRole,
+    Login,
+    Message,
+    PageList,
+    User,
+)
+from .websocket import SatoriClient
+
 __all__ = [  # noqa: RUF022
     # enums
     "ChannelType", "Direction", "LoginStatus", "Order",
@@ -39,126 +140,6 @@ __all__ = [  # noqa: RUF022
     "ReactionDeleteParams", "ReactionListParams",
     "USER_CHANNEL_CREATE", "USER_GET",
     "UserChannelCreateParams", "UserGetParams",
+    # 传输客户端 + 事件归一化 + 平台适配器
+    "SatoriAdapter", "SatoriApiClient", "SatoriClient", "SatoriMessageIngress",
 ]
-
-_module_map = {
-    # enums
-    "ChannelType": "enums",
-    "Direction": "enums",
-    "LoginStatus": "enums",
-    "Order": "enums",
-    # models
-    "Argv": "models",
-    "BidiList": "models",
-    "Button": "models",
-    "Channel": "models",
-    "Emoji": "models",
-    "Friend": "models",
-    "Guild": "models",
-    "GuildMember": "models",
-    "GuildRole": "models",
-    "Login": "models",
-    "Message": "models",
-    "PageList": "models",
-    "User": "models",
-    # events
-    "EventBody": "events",
-    "LoginList": "events",
-    "Signal": "events",
-    # api
-    "CHANNEL_CREATE": "api",
-    "CHANNEL_DELETE": "api",
-    "CHANNEL_GET": "api",
-    "CHANNEL_LIST": "api",
-    "CHANNEL_MUTE": "api",
-    "CHANNEL_UPDATE": "api",
-    "ChannelCreateParams": "api",
-    "ChannelDeleteParams": "api",
-    "ChannelGetParams": "api",
-    "ChannelListParams": "api",
-    "ChannelMuteParams": "api",
-    "ChannelUpdateParams": "api",
-    "Endpoint": "api",
-    "FRIEND_APPROVE": "api",
-    "FRIEND_DELETE": "api",
-    "FRIEND_LIST": "api",
-    "FriendApproveParams": "api",
-    "FriendDeleteParams": "api",
-    "FriendListParams": "api",
-    "GUILD_APPROVE": "api",
-    "GUILD_GET": "api",
-    "GUILD_LIST": "api",
-    "GUILD_MEMBER_APPROVE": "api",
-    "GUILD_MEMBER_GET": "api",
-    "GUILD_MEMBER_KICK": "api",
-    "GUILD_MEMBER_LIST": "api",
-    "GUILD_MEMBER_MUTE": "api",
-    "GUILD_MEMBER_ROLE_SET": "api",
-    "GUILD_MEMBER_ROLE_UNSET": "api",
-    "GUILD_ROLE_CREATE": "api",
-    "GUILD_ROLE_DELETE": "api",
-    "GUILD_ROLE_LIST": "api",
-    "GUILD_ROLE_UPDATE": "api",
-    "GuildApproveParams": "api",
-    "GuildGetParams": "api",
-    "GuildListParams": "api",
-    "GuildMemberApproveParams": "api",
-    "GuildMemberGetParams": "api",
-    "GuildMemberKickParams": "api",
-    "GuildMemberListParams": "api",
-    "GuildMemberMuteParams": "api",
-    "GuildMemberRoleSetParams": "api",
-    "GuildMemberRoleUnsetParams": "api",
-    "GuildRoleCreateParams": "api",
-    "GuildRoleDeleteParams": "api",
-    "GuildRoleListParams": "api",
-    "GuildRoleUpdateParams": "api",
-    "LOGIN_GET": "api",
-    "MESSAGE_CREATE": "api",
-    "MESSAGE_DELETE": "api",
-    "MESSAGE_GET": "api",
-    "MESSAGE_LIST": "api",
-    "MESSAGE_UPDATE": "api",
-    "MessageCreateParams": "api",
-    "MessageDeleteParams": "api",
-    "MessageGetParams": "api",
-    "MessageListParams": "api",
-    "MessageUpdateParams": "api",
-    "REACTION_CLEAR": "api",
-    "REACTION_CREATE": "api",
-    "REACTION_DELETE": "api",
-    "REACTION_LIST": "api",
-    "ReactionClearParams": "api",
-    "ReactionCreateParams": "api",
-    "ReactionDeleteParams": "api",
-    "ReactionListParams": "api",
-    "USER_CHANNEL_CREATE": "api",
-    "USER_GET": "api",
-    "UserChannelCreateParams": "api",
-    "UserGetParams": "api",
-}
-
-
-_EXTRA_MODULE_MAP = {"SatoriAdapter": "adapter"}
-
-
-def __getattr__(name):
-    """按需加载子模块中的属性。"""
-    module_name = _module_map.get(name) or _EXTRA_MODULE_MAP.get(name)
-    if module_name is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
-    module = importlib.import_module(f".{module_name}", __package__)
-    return getattr(module, name)
-
-
-def __dir__():
-    return sorted(__all__)
-
-
-# --- 传输客户端与事件归一化（原 protocol/ 与 bot.core.ingress） ---
-from .http import SatoriApiClient
-from .ingress import SatoriMessageIngress
-from .websocket import SatoriClient
-
-__all__ += ["SatoriAdapter", "SatoriApiClient", "SatoriClient", "SatoriMessageIngress"]

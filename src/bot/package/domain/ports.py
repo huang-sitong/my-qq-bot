@@ -5,7 +5,8 @@ Satori HTTP、Milvus 等）通过适配器实现。当前先定义消息队列�
 等端口，后续可继续补充记忆、视觉等外部依赖端口。
 
 MessageRouter / MessageSink / ContextCompactorPort 原位于 pipeline.contracts，
-现收敛至此为唯一源，pipeline.contracts 保留为兼容垫片（DeprecationWarning）。
+该兼容垫片已删除：此处（``bot.package.domain.ports``）是这些端口的唯一源，
+流水线（worker/dispatcher）直接按这些协议消费。
 """
 
 from __future__ import annotations
@@ -104,7 +105,11 @@ class MessageRouter(Protocol):
 
 
 class MessageSink(Protocol):
-    """消费一条路由决策并执行对应动作。"""
+    """消费路由决策并执行对应动作。
+
+    单条调用走 :meth:`dispatch`；突发合并批走 :meth:`dispatch_batch`
+    （整批一次图调用、一条回复，RAG 索引逐条入队）。
+    """
 
     async def dispatch(
         self,
@@ -112,6 +117,14 @@ class MessageSink(Protocol):
         decision: RouteDecision,
         *,
         auto_reply_allowed: bool = False,
+    ) -> None: ...
+
+    async def dispatch_batch(
+        self,
+        messages: list[IncomingMessage],
+        decisions: list[RouteDecision],
+        *,
+        auto_reply_flags: list[bool] | None = None,
     ) -> None: ...
 
 
