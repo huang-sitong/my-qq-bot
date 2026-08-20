@@ -3,16 +3,26 @@
 核心流程依赖这些抽象接口，具体基础设施（asyncio.Queue、Kafka、Redis Stream、
 Satori HTTP、Milvus 等）通过适配器实现。当前先定义消息队列、消息发送、RAG 索引
 等端口，后续可继续补充记忆、视觉等外部依赖端口。
+
+MessageRouter / MessageSink / ContextCompactorPort 原位于 pipeline.contracts，
+现收敛至此为唯一源，pipeline.contracts 保留为兼容垫片（DeprecationWarning）。
 """
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from bot.package.domain.tasks import IndexTurnTask
 
+if TYPE_CHECKING:
+    from bot.package.conversation.message import IncomingMessage
+    from bot.package.conversation.router import RouteDecision
+
 __all__ = [
+    "ContextCompactorPort",
     "MessageQueue",
+    "MessageRouter",
+    "MessageSink",
     "MessageSender",
     "RagIndexer",
     "UserMemoryStore",
@@ -85,3 +95,27 @@ class UserMemoryStore(Protocol):
     async def format_memories(self, user_id: str) -> str: ...
 
     async def close(self) -> None: ...
+
+
+class MessageRouter(Protocol):
+    """把归一化消息路由为 ``RouteDecision``。"""
+
+    def __call__(self, message: "IncomingMessage", **opts: Any) -> "RouteDecision": ...
+
+
+class MessageSink(Protocol):
+    """消费一条路由决策并执行对应动作。"""
+
+    async def dispatch(
+        self,
+        message: "IncomingMessage",
+        decision: "RouteDecision",
+        *,
+        auto_reply_allowed: bool = False,
+    ) -> None: ...
+
+
+class ContextCompactorPort(Protocol):
+    """图外上下文压缩端口。"""
+
+    async def compact_if_needed(self, thread_id: str) -> int: ...
