@@ -147,6 +147,15 @@ class BotConfig(BaseSettings):
         default=False,
         validation_alias="BOT_LLM_MULTIMODAL",
     )
+    # 是否允许 LLM 单轮并行多工具调用（env BOT_LLM_PARALLEL_TOOL_CALLS，默认 0）：
+    # 1 → bind_tools 传 parallel_tool_calls=True（OpenAI 兼容参数），ToolNode 本就
+    #     用 asyncio.gather 并发执行同轮多个 tool_calls；
+    # 0 → 不传该参数，保持服务商默认行为。部分 OpenAI 兼容网关不支持此参数
+    #     （报错文本含参数名），call_llm 会自动降级重试一次普通绑定。
+    llm_parallel_tool_calls: Flag = Field(
+        default=False,
+        validation_alias="BOT_LLM_PARALLEL_TOOL_CALLS",
+    )
 
     # --- Context Window ---
     llm_context_window: int = Field(

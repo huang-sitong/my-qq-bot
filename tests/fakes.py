@@ -14,8 +14,10 @@ class ScriptedLLM:
         self._responses = list(responses)
         self._index = 0
         self.last_messages = None
+        self.last_bind_kwargs: dict | None = None
 
     def bind_tools(self, tools, **kwargs):
+        self.last_bind_kwargs = dict(kwargs)
         return self
 
     async def ainvoke(self, messages, **kwargs):

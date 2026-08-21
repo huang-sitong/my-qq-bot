@@ -187,3 +187,77 @@ def test_file_send_hint_not_injected_when_disabled():
         use_file_send=False, bot_config=CONFIG_ON,
     ))
     assert not any("send_file" in getattr(m, "content", "") for m in llm.last_messages)
+
+
+# --- parallel_tool_calls ---
+
+class _BindAwareLLM(ScriptedLLM):
+    """记录 bind_tools kwargs 并在 ainvoke 时可见；可模拟服务商拒绝参数。"""
+
+    def __init__(self, responses):
+        super().__init__(responses)
+        self._pending_bind_kwargs: dict = {}
+        self.ainvoke_kwargs_seen: list[dict] = []
+
+    def bind_tools(self, tools, **kwargs):
+        super().bind_tools(tools, **kwargs)
+        self._pending_bind_kwargs = dict(kwargs)
+        return self
+
+    async def ainvoke(self, messages, **kwargs):
+        merged = {**self._pending_bind_kwargs, **kwargs}
+        self.ainvoke_kwargs_seen.append(merged)
+        if merged.get("parallel_tool_calls"):
+            raise RuntimeError(
+                "400 parallel_tool_calls is not supported by this provider",
+            )
+        return await super().ainvoke(messages, **kwargs)
+
+
+def _parallel_config(parallel: bool) -> BotConfig:
+    return BotConfig(rag_enabled=True, llm_parallel_tool_calls=parallel)
+
+
+def test_parallel_tool_calls_passed_when_enabled():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_full_tools(), bot_config=_parallel_config(True),
+    ))
+    assert llm.last_bind_kwargs == {"parallel_tool_calls": True}
+
+
+def test_parallel_tool_calls_not_passed_by_default():
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state, llm=llm, tools=_full_tools(), bot_config=CONFIG_ON,
+    ))
+    assert "parallel_tool_calls" not in (llm.last_bind_kwargs or {})
+
+
+def test_parallel_tool_calls_degrades_when_provider_rejects():
+    """报错文本含参数名 → 自动降级重试一次普通绑定并成功。"""
+    llm = _BindAwareLLM([AIMessage(content="降级成功")])
+    state = BASE | {"tool_rounds": 0}
+    result = asyncio.run(call_llm_node(
+        state, llm=llm, tools=_full_tools(), bot_config=_parallel_config(True),
+    ))
+    assert result["reply_text"] == "降级成功"
+    assert llm.ainvoke_kwargs_seen[0].get("parallel_tool_calls") is True
+    assert "parallel_tool_calls" not in llm.ainvoke_kwargs_seen[1]
+
+
+def test_unrelated_llm_error_still_returns_apology_without_retry():
+    """与参数无关的异常不触发降级重试，走原有道歉回退。"""
+
+    class _BoomLLM(ScriptedLLM):
+        async def ainvoke(self, messages, **kwargs):
+            raise TimeoutError("gateway timeout")
+
+    llm = _BoomLLM([])
+    state = BASE | {"tool_rounds": 0}
+    result = asyncio.run(call_llm_node(
+        state, llm=llm, tools=_full_tools(), bot_config=_parallel_config(True),
+    ))
+    assert result["reply_text"] == "我暂时无法思考，请稍后再试"

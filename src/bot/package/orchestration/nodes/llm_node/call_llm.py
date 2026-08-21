@@ -65,8 +65,9 @@ async def call_llm_node(
     rounds = state.get("tool_rounds", 0)
 
     if tools and rounds < max_rounds:
+        parallel = bool(bot_config is not None and bot_config.llm_parallel_tool_calls)
         try:
-            response = await llm.bind_tools(tools).ainvoke(messages)
+            response = await _invoke_with_tools(llm, tools, messages, parallel)
         except Exception as exc:
             _log_llm_error(exc, state.get("thread_id", ""))
             return {
@@ -110,6 +111,32 @@ async def call_llm_node(
         format_message_for_log(AIMessage(content=reply)),
     )
     return {"messages": [AIMessage(content=reply)], "reply_text": reply}
+
+
+async def _invoke_with_tools(
+    llm: ChatOpenAI,
+    tools: list[BaseTool],
+    messages: list,
+    parallel: bool,
+):
+    """绑定工具调用 LLM。
+
+    ``parallel`` 开启时传 ``parallel_tool_calls=True``（OpenAI 兼容参数），
+    允许模型单轮返回多个 tool_calls（ToolNode 本就并发执行）；服务商不支持
+    该参数时（报错文本含参数名）自动降级重试一次普通绑定，其余异常原样上抛。
+    """
+    if not parallel:
+        return await llm.bind_tools(tools).ainvoke(messages)
+    try:
+        return await llm.bind_tools(tools, parallel_tool_calls=True).ainvoke(messages)
+    except Exception as exc:
+        if "parallel_tool_calls" not in str(exc):
+            raise
+        logger.warning(
+            "Provider rejected parallel_tool_calls (%s), retrying without it",
+            type(exc).__name__,
+        )
+    return await llm.bind_tools(tools).ainvoke(messages)
 
 
 async def _invoke_plain(messages: list, llm: ChatOpenAI, state: BotState) -> str:
