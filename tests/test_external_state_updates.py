@@ -6,6 +6,7 @@ from bot.package.config import BotConfig
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
+from bot.package.orchestration.conversation_repository import LangGraphConversationRepository
 from bot.package.orchestration.graph import create_graph
 from bot.package.pipeline.dispatcher import MessageDispatcher
 from tests.fakes import ScriptedLLM, build_graph_tools
@@ -52,6 +53,7 @@ def test_context_only_batches_append_messages_across_calls(tmp_path):
                 api_client=_NoopApi(),
                 bot_config=BotConfig(_env_file=None, rag_enabled=False),
                 identity=BotIdentity(id="bot", name="bot"),
+                conversation_repository=LangGraphConversationRepository(graph),
             )
             ctx = RouteDecision(action=RouteAction.CONTEXT_ONLY)
             await dispatcher.dispatch_batch(

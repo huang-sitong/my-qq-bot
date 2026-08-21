@@ -18,21 +18,17 @@ from bot.package.commands import (
     can_run,
     run_command,
 )
-from bot.package.conversation.content import IMAGE_PLACEHOLDER, MessageKind
 from bot.package.conversation.events import ConversationTurnCompleted
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.router import RouteAction, RouteDecision
 from bot.package.conversation.turn import TurnInput
-from bot.package.domain import IndexTurnTask
 from bot.package.domain.events import DomainEventBus
 from bot.package.domain.ports import (
     ContextCompactorPort,
     MessageSender,
-    RagIndexer,
 )
 from bot.package.domain.repositories import ConversationRepository
-from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.utils import content_to_text, format_message_for_log
 
 logger = logging.getLogger(__name__)
@@ -51,7 +47,6 @@ class MessageDispatcher:
         command_registry: CommandRegistry | None = None,
         command_services: CommandServices | None = None,
         compactor: ContextCompactorPort | None = None,
-        index_worker: RagIndexer | None = None,
         identity: BotIdentity | None = None,
         conversation_repository: ConversationRepository | None = None,
         event_bus: DomainEventBus | None = None,
@@ -64,7 +59,6 @@ class MessageDispatcher:
         self._command_registry = command_registry
         self._command_services = command_services
         self._compactor = compactor
-        self._index_worker = index_worker
         self._identity = identity or BotIdentity()
         self._conversation_repository = conversation_repository
         self._event_bus = event_bus
@@ -97,24 +91,22 @@ class MessageDispatcher:
         if self._compactor is not None:
             await self._compactor.compact_if_needed(message.thread_id)
 
-        human = self._build_human_message(message, auto_reply=auto_reply_allowed)
         if decision.action == RouteAction.CONTEXT_ONLY:
+            # context_only 追加一律走 ConversationRepository（经聚合根校验后投影）；
+            # 无仓库时不写 checkpoint，仅发布事件（与无总线丢事件同一降级哲学）。
             if self._conversation_repository is not None:
                 await self._conversation_repository.append_record(
                     message.to_record(),
                     auto_reply=auto_reply_allowed,
                 )
-            else:
-                thread_config = {"configurable": {"thread_id": message.thread_id}}
-                await self.graph.aupdate_state(
-                    thread_config,
-                    {"messages": [human]},
-                    as_node=EXTERNAL_UPDATE_NODE,
-                )
             await self._publish_turn_completed([message], "")
             return
 
-        await self._run_reply_graph(message, human, auto_reply_allowed)
+        await self._run_reply_graph(
+            message,
+            self._build_human_message(message, auto_reply=auto_reply_allowed),
+            auto_reply_allowed,
+        )
 
     async def dispatch_batch(
         self,
@@ -126,9 +118,8 @@ class MessageDispatcher:
         """合并投递一批同 thread 消息：整批只跑一次图、只回一条。
 
         突发（burst）消息合并为一次 ``graph.ainvoke``（LLM 一次看到全部
-        消息、生成一条回复），或一次 ``aupdate_state``（context_only）；
-        压缩检查也只做一次。RAG 索引仍按每条消息逐条入队，bot 回复挂在
-        每条消息上。命令消息不经过这里——worker 已在其原位置单独执行。
+        消息、生成一条回复），context_only 经会话仓库逐条追加；压缩检查只做一次。
+        命令消息不经过这里——worker 已在其原位置单独执行。
 
         HumanMessage 携带 user_id/user_name/image_srcs/auto_reply 元数据，
         记忆、视觉与冷却语义按各自消息归属，不再依赖“最后一条消息”的标量字段。
@@ -146,30 +137,23 @@ class MessageDispatcher:
         first = keep[0][0]
         if self._compactor is not None:
             await self._compactor.compact_if_needed(first.thread_id)
-        humans = [
-            self._build_human_message(m, auto_reply=flag)
-            for m, _, flag in keep
-        ]
         if any(d.action == RouteAction.REPLY for _, d, _ in keep):
             await self._run_reply_graph_batch(
                 [m for m, _, _ in keep],
-                humans,
+                [
+                    self._build_human_message(m, auto_reply=flag)
+                    for m, _, flag in keep
+                ],
                 auto_reply_flags=[flag for _, _, flag in keep],
             )
             return
+        # context_only 追加一律走 ConversationRepository；无仓库时不写 checkpoint。
         if self._conversation_repository is not None:
             for m, _, flag in keep:
                 await self._conversation_repository.append_record(
                     m.to_record(),
                     auto_reply=flag,
                 )
-        else:
-            thread_config = {"configurable": {"thread_id": first.thread_id}}
-            await self.graph.aupdate_state(
-                thread_config,
-                {"messages": humans},
-                as_node=EXTERNAL_UPDATE_NODE,
-            )
         await self._publish_turn_completed([m for m, _, _ in keep], "")
 
     async def _execute_command(
@@ -338,40 +322,6 @@ class MessageDispatcher:
             bot_reply=content_to_text(reply_text),
         )
         await self._event_bus.publish(event)
-
-    async def _enqueue_index(self, message: IncomingMessage, reply_text: str) -> None:
-        if self._index_worker is None:
-            return
-        task = self._build_index_task(message, reply_text)
-        if task is None:
-            return
-        await self._index_worker.enqueue(task)
-
-    def _build_index_task(
-        self,
-        message: IncomingMessage,
-        reply_text: str,
-    ) -> IndexTurnTask | None:
-        record = message.to_record()
-        user_message = record.index_text
-        reply_text = content_to_text(reply_text).strip()
-        if (
-            message.content_kind == MessageKind.IMAGE.value
-            and (user_message.strip() or reply_text)
-        ):
-            user_message = f"{user_message} {IMAGE_PLACEHOLDER}".strip()
-        if not user_message.strip() and not reply_text:
-            return None
-        return IndexTurnTask(
-            thread_id=record.thread_id,
-            user_id=record.user_id,
-            user_name=record.user_name,
-            bot_id=self._identity.id,
-            bot_name=self._identity.name,
-            user_message=user_message,
-            bot_reply=reply_text,
-            trace_id=message.trace_id,
-        )
 
     async def _send_reply(self, channel_id: str, content: str) -> None:
         """Send reply text to the source channel via Satori HTTP API."""

@@ -215,7 +215,12 @@ class _BindAwareLLM(ScriptedLLM):
 
 
 def _parallel_config(parallel: bool) -> BotConfig:
-    return BotConfig(rag_enabled=True, llm_parallel_tool_calls=parallel)
+    """显式 init 参数 + _env_file=None：隔离真实 .env / 环境变量，保证确定性。"""
+    return BotConfig(
+        rag_enabled=True,
+        llm_parallel_tool_calls=parallel,
+        _env_file=None,
+    )
 
 
 def test_parallel_tool_calls_passed_when_enabled():
@@ -227,11 +232,11 @@ def test_parallel_tool_calls_passed_when_enabled():
     assert llm.last_bind_kwargs == {"parallel_tool_calls": True}
 
 
-def test_parallel_tool_calls_not_passed_by_default():
+def test_parallel_tool_calls_not_passed_when_disabled():
     llm = ScriptedLLM([AIMessage(content="好")])
     state = BASE | {"tool_rounds": 0}
     asyncio.run(call_llm_node(
-        state, llm=llm, tools=_full_tools(), bot_config=CONFIG_ON,
+        state, llm=llm, tools=_full_tools(), bot_config=_parallel_config(False),
     ))
     assert "parallel_tool_calls" not in (llm.last_bind_kwargs or {})
 

@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from bot.package.conversation.message import IncomingMessage
 
 # Satori ChannelType.DIRECT 在会话策略里的语义值：私聊通道。
-# 平台层（platform/satori/constants.py）从本模块反引，保证单一来源且领域不依赖平台。
+# 领域不依赖平台；平台侧如需对齐直接从本模块导入。
 DIRECT_CHANNEL_TYPE = 1
 
 # 永不回复的媒体类型（file/audio/video，即使私聊/@ 也盖不过）
@@ -118,44 +118,12 @@ class ReplyDecision:
 class ReplyPolicy:
     """会话策略领域服务。
 
-    提供两种消费方式：
-    - 底层纯函数（兼容旧调用方）；
     - ``evaluate`` 以 :class:`IncomingMessage` 为输入一次产出
-      :class:`ReplyDecision`，供应用层流水线直接消费。
+      :class:`ReplyDecision`，供应用层流水线直接消费；
+    - ``should_allow_auto_reply`` 供 worker 池做 auto_reply 随机/冷却门；
+    - 底层判定逻辑在模块级纯函数（is_explicit_request / decide_reply /
+      keep_in_context），测试可直接针对纯函数写用例。
     """
-
-    DIRECT_CHANNEL_TYPE = DIRECT_CHANNEL_TYPE
-    NON_REPLY_KINDS = NON_REPLY_KINDS
-
-    @staticmethod
-    def is_explicit_request(
-        channel_type: int,
-        bot_id: str,
-        bot_name: str,
-        mentions: Mapping[str, str],
-    ) -> bool:
-        return is_explicit_request(channel_type, bot_id, bot_name, mentions)
-
-    @staticmethod
-    def decide_reply(
-        channel_type: int,
-        content_kind: str,
-        bot_id: str,
-        bot_name: str,
-        mentions: Mapping[str, str],
-        auto_reply: bool = False,
-    ) -> bool:
-        return decide_reply(
-            channel_type, content_kind, bot_id, bot_name, mentions, auto_reply,
-        )
-
-    @staticmethod
-    def keep_in_context(
-        should_respond: bool,
-        content_kind: str,
-        has_text: bool = False,
-    ) -> bool:
-        return keep_in_context(should_respond, content_kind, has_text)
 
     @staticmethod
     def should_allow_auto_reply(

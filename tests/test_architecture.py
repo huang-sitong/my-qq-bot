@@ -122,7 +122,6 @@ def test_conversation_aggregate_owns_context_state_mutations():
     """P8 守护：summary / active_skills / tool_rounds / clear 的修改必须经 Conversation 聚合根。"""
     repo_root = Path(__file__).resolve().parents[1]
     consumers = [
-        "src/bot/package/commands/builtin.py",
         "src/bot/package/orchestration/conversation_repository.py",
         "src/bot/package/orchestration/nodes/action_node/skill_manager.py",
         "src/bot/package/orchestration/nodes/action_node/summarize.py",

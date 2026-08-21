@@ -4,12 +4,16 @@ import asyncio
 
 from bot.package.commands import CommandServices
 from bot.package.config import BotConfig
+from bot.package.conversation.events import ConversationTurnCompleted
 from bot.package.conversation.identity import BotIdentity
 from bot.package.knowledge.index_worker import IndexWorker
+from bot.package.knowledge.turn_index_projection import TurnIndexProjection
+from bot.package.orchestration.conversation_repository import LangGraphConversationRepository
 from bot.package.pipeline.dispatcher import MessageDispatcher
 from bot.package.pipeline.pipeline import MessagePipeline
 from bot.package.platform.satori import Channel, ChannelType, EventBody, Message, User
 from bot.package.platform.satori.ingress import SatoriMessageIngress
+from bot.package.utils.event_bus import InMemoryDomainEventBus
 from tests.fakes import StubRagService
 
 
@@ -40,17 +44,25 @@ class _StubGraph:
 
 
 def _pipeline(graph, index_worker=None, batch_max=4):
+    """与生产 boot 同构装配：索引经事件总线 + TurnIndexProjection 投影。"""
     identity = BotIdentity()
     api_client = _StubApi()
     config = BotConfig(_env_file=None)
+    event_bus = InMemoryDomainEventBus()
+    if index_worker is not None:
+        event_bus.subscribe(
+            ConversationTurnCompleted,
+            TurnIndexProjection(index_worker).on_turn_completed,
+        )
     dispatcher = MessageDispatcher(
         graph=graph,
         persona="你是{bot_name}",
         api_client=api_client,
         bot_config=config,
         command_services=CommandServices(version="test", started_at=0.0, bot_name=""),
-        index_worker=index_worker,
         identity=identity,
+        conversation_repository=LangGraphConversationRepository(graph),
+        event_bus=event_bus,
     )
     return MessagePipeline(
         dispatcher,
@@ -166,7 +178,7 @@ def test_batch_reply_runs_graph_once_and_sends_one_reply():
     asyncio.run(run())
 
 
-def test_batch_context_only_single_checkpoint_update():
+def test_batch_context_only_writes_each_record():
     async def run():
         rag = StubRagService()
         worker = IndexWorker(rag)
@@ -178,10 +190,10 @@ def test_batch_context_only_single_checkpoint_update():
             await _enqueue(pipeline, _event(text, channel_type=ChannelType.TEXT))
         await pipeline.stop()
         await worker.stop()
-        # 两条 context_only 合并为一次 aupdate_state，两条消息一起落 checkpoint
-        assert len(graph.updates) == 1
+        # 两条 context_only 经会话仓库逐条落 checkpoint（每条一次 aupdate_state）
+        assert len(graph.updates) == 2
         assert graph.last_as_node == "describe_image"
-        assert [m.content for m in graph.updates[0]["messages"]] == [
+        assert [m.content for u in graph.updates for m in u["messages"]] == [
             "群聊发言一", "群聊发言二",
         ]
         assert rag.last_indexed is not None

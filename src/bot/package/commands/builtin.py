@@ -3,11 +3,7 @@
 import time
 from functools import partial
 
-from langchain_core.messages import RemoveMessage
-
 from bot.package.config.settings import _parse_flag
-from bot.package.conversation import Conversation
-from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.skill.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from bot.package.utils import content_to_text, estimate_context_tokens
 
@@ -104,38 +100,11 @@ async def _auto_reply(ctx: CommandContext) -> CommandResult:
 
 
 async def _clear(ctx: CommandContext) -> CommandResult:
+    """清空会话上下文，保留 persona；重置语义由会话仓库（聚合根）定义。"""
     repository = ctx.services.conversation_repository
-    if repository is not None:
-        await repository.clear(ctx.thread_id)
-        return CommandResult(text="已清空当前会话上下文。")
-
-    graph = ctx.services.graph
-    if graph is None:
+    if repository is None:
         return CommandResult(text="当前未启用对话图，无法清空。")
-    config = {"configurable": {"thread_id": ctx.thread_id}}
-    snapshot = await graph.aget_state(config)
-    state = snapshot.values if snapshot is not None else {}
-    messages = state.get("messages", [])
-    conversation = Conversation.restore(
-        thread_id=ctx.thread_id,
-        bot_id=state.get("bot_id", ""),
-        bot_name=state.get("bot_name", ""),
-        conversation_summary=state.get("conversation_summary", ""),
-        active_skills=tuple(state.get("active_skills", [])),
-        tool_rounds=int(state.get("tool_rounds", 0)),
-    )
-    cleared = conversation.clear_context()
-    updates = {
-        "messages": [
-            RemoveMessage(id=m.id) for m in messages if getattr(m, "id", None)
-        ],
-        "conversation_summary": cleared.conversation_summary,
-        "active_skills": list(cleared.active_skills),
-        "tool_rounds": cleared.tool_rounds,
-    }
-    await graph.aupdate_state(
-        config, updates, as_node=EXTERNAL_UPDATE_NODE,
-    )
+    await repository.clear(ctx.thread_id)
     return CommandResult(text="已清空当前会话上下文。")
 
 

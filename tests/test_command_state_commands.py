@@ -13,6 +13,7 @@ from bot.package.commands import (
 from bot.package.config import BotConfig
 from bot.package.orchestration.compaction import ContextCompactor
 from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
+from bot.package.orchestration.conversation_repository import LangGraphConversationRepository
 from bot.package.orchestration.graph import create_graph
 from bot.package.skill import Skill, SkillRegistry
 from tests.fakes import ScriptedLLM, build_graph_tools, make_state
@@ -69,6 +70,7 @@ def test_clear_resets_context_and_skills_but_keeps_persona(tmp_path):
             services = CommandServices(
                 version="test", started_at=0.0, bot_name="",
                 graph=graph, checkpointer=checkpointer,
+                conversation_repository=LangGraphConversationRepository(graph),
             )
             registry = build_command_registry(services)
             reply = await registry.resolve("clear").handler(_ctx(services))
@@ -205,6 +207,7 @@ def test_clear_works_after_external_context_updates(tmp_path):
             services = CommandServices(
                 version="test", started_at=0.0, bot_name="",
                 graph=graph, checkpointer=checkpointer,
+                conversation_repository=LangGraphConversationRepository(graph),
             )
             registry = build_command_registry(services)
             reply = await registry.resolve("clear").handler(_ctx(services))

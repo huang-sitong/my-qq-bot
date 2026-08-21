@@ -11,6 +11,7 @@ import asyncio
 from bot.package.commands import Command, CommandServices, build_command_registry
 from bot.package.config import BotConfig
 from bot.package.conversation.identity import BotIdentity
+from bot.package.orchestration.conversation_repository import LangGraphConversationRepository
 from bot.package.pipeline.dispatcher import MessageDispatcher
 from bot.package.pipeline.pipeline import MessagePipeline
 from bot.package.platform.satori import Channel, ChannelType, EventBody, Message, User
@@ -60,6 +61,7 @@ def _make_pipeline(graph, bot_config=None, command_registry=None, command_servic
         command_registry=command_registry,
         command_services=command_services,
         identity=identity,
+        conversation_repository=LangGraphConversationRepository(graph),
     )
     return MessagePipeline(
         dispatcher,

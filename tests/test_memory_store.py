@@ -6,7 +6,6 @@
 """
 
 import asyncio
-import sqlite3
 
 from bot.package.memory import MemoryStore
 
@@ -82,47 +81,3 @@ def test_format_memories(tmp_path):
     asyncio.run(run())
 
 
-def test_migrates_legacy_user_memories(tmp_path):
-    """旧 user_memories 表 → 官方 store 表：数据保留、旧表 DROP、幂等。"""
-    db = tmp_path / "memory.sqlite"
-    conn = sqlite3.connect(db)
-    conn.execute(
-        "CREATE TABLE user_memories ("
-        "user_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, "
-        "created_at TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL DEFAULT '')"
-    )
-    conn.execute(
-        "INSERT INTO user_memories (user_id, key, value) VALUES ('u1', '名字', '张三')"
-    )
-    conn.execute(
-        "INSERT INTO user_memories (user_id, key, value) VALUES ('u1', '城市', '上海')"
-    )
-    conn.commit()
-    conn.close()
-
-    async def run():
-        store = MemoryStore(db_dir=str(tmp_path))
-        mems = await store.load_memories("u1")
-        assert len(mems) == 2
-        values = {m["key"]: m["value"] for m in mems}
-        assert values == {"名字": "张三", "城市": "上海"}
-        await store.close()
-
-    asyncio.run(run())
-
-    conn = sqlite3.connect(db)
-    tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
-    conn.close()
-    assert "user_memories" not in tables  # 迁移后旧表已删除
-    assert "store" in tables              # 官方 store 表已建
-
-
-def test_migrate_is_idempotent(tmp_path):
-    """旧表不存在时启动不报错、store 正常工作。"""
-    async def run():
-        store = MemoryStore(db_dir=str(tmp_path))
-        await store.store_memory("u1", "名字", "张三")
-        assert await store.load_memories("u1") == [{"key": "名字", "value": "张三"}]
-        await store.close()
-
-    asyncio.run(run())

@@ -68,26 +68,17 @@ class DailyFileHandler(logging.FileHandler):
         super().emit(record)
 
 
-def _resolve_log_filename(log_filename: str | None) -> str | None:
-    """解析日志文件名：None 或 bot.log 视为使用按天命名。"""
-    if log_filename is None or log_filename == "bot.log":
-        return None  # 信号：使用 DailyFileHandler
-    return log_filename
-
-
 def setup_logging(
     log_dir: str | Path = "log",
     *,
     level: int = logging.INFO,
-    log_filename: str | None = None,
     console: bool = True,
 ) -> Path:
-    """初始化 bot 日志：同时输出到控制台和根目录 ``log/`` 下的文件。
+    """初始化 bot 日志：同时输出到控制台和根目录 ``log/`` 下的按天文件。
 
-    默认日志文件为 ``<项目根>/log/YYYY-MM-DD.log``，同一天的日志追加到同一文件，
-    跨天自动切换（通过 ``DailyFileHandler``）。兼容旧调用 ``log_filename="bot.log"``
-    会自动映射为按天文件。显式传入其他文件名（如测试用的 ``test.log``）则按给定
-    名称创建单一文件。重复调用会先清空已有 handler，避免在测试/重载场景下重复打印。
+    日志文件为 ``<项目根>/log/YYYY-MM-DD.log``，同一天的日志追加到同一文件，
+    跨天自动切换（通过 ``DailyFileHandler``）。重复调用会先清空已有 handler，
+    避免在测试/重载场景下重复打印。
     """
     root = logging.getLogger()
     root.setLevel(level)
@@ -115,11 +106,7 @@ def setup_logging(
         log_path = PROJECT_ROOT / log_path
     log_path.mkdir(parents=True, exist_ok=True)
 
-    resolved = _resolve_log_filename(log_filename)
-    if resolved is None:
-        file_handler: logging.Handler = DailyFileHandler(log_path, encoding="utf-8")
-    else:
-        file_handler = logging.FileHandler(log_path / resolved, encoding="utf-8")
+    file_handler: logging.Handler = DailyFileHandler(log_path, encoding="utf-8")
     file_handler.setFormatter(formatter)
     file_handler.addFilter(TraceIdFilter())
     root.addHandler(file_handler)

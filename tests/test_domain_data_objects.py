@@ -87,10 +87,10 @@ def test_prompts_split():
 
 
 def test_constants_split():
+    from bot.package.conversation.policy import DIRECT_CHANNEL_TYPE as policy_direct
     from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
-    from bot.package.platform.satori.constants import DIRECT_CHANNEL_TYPE
     assert EXTERNAL_UPDATE_NODE == "describe_image"
-    assert DIRECT_CHANNEL_TYPE == 1
+    assert policy_direct == 1
 
 
 def test_config_no_longer_imports_domain():

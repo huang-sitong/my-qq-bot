@@ -12,6 +12,7 @@ import logging
 from bot.package.conversation.content import IMAGE_PLACEHOLDER, MessageKind
 from bot.package.conversation.events import ConversationTurnCompleted
 from bot.package.domain import IndexTurnTask
+from bot.package.domain.ports import RagIndexer
 from bot.package.utils import content_to_text
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class TurnIndexProjection:
     """把已完成的会话轮次投影为 RAG 索引任务。"""
 
-    def __init__(self, index_worker) -> None:
+    def __init__(self, index_worker: RagIndexer) -> None:
         self._index_worker = index_worker
 
     async def on_turn_completed(self, event: ConversationTurnCompleted) -> None:

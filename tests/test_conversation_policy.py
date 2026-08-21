@@ -16,6 +16,11 @@ from bot.package.conversation import (
     ReplyPolicy,
 )
 from bot.package.conversation.message import IncomingMessage
+from bot.package.conversation.policy import (
+    decide_reply,
+    is_explicit_request,
+    keep_in_context,
+)
 from bot.package.platform.satori import ChannelType
 
 
@@ -55,28 +60,21 @@ def test_legacy_utils_policy_shims_are_removed():
         importlib.import_module("bot.package.utils.reply_policy")
 
 
-def test_platform_direct_channel_constant_re_exports_domain_value():
-    from bot.package.platform.satori.constants import DIRECT_CHANNEL_TYPE as satori_direct
-
-    assert satori_direct is DIRECT_CHANNEL_TYPE
+def test_satori_channel_type_direct_matches_domain_value():
     assert DIRECT_CHANNEL_TYPE == ChannelType.DIRECT
-
-
 def test_non_reply_kinds_match_content_kinds():
     assert NON_REPLY_KINDS == {"file", "audio", "video"}
 
 
-def test_reply_policy_methods_match_existing_decision_table():
-    assert ReplyPolicy.is_explicit_request(ChannelType.DIRECT, "bot1", "Bot", {}) is True
-    assert ReplyPolicy.decide_reply(
+def test_policy_pure_functions_match_existing_decision_table():
+    assert is_explicit_request(ChannelType.DIRECT, "bot1", "Bot", {}) is True
+    assert decide_reply(
         ChannelType.TEXT, "file", "bot1", "Bot", {}, auto_reply=True,
     ) is False
-    assert ReplyPolicy.decide_reply(
+    assert decide_reply(
         ChannelType.DIRECT, "text", "bot1", "Bot", {},
     ) is True
-    assert ReplyPolicy.keep_in_context(False, "image", has_text=True) is True
-
-
+    assert keep_in_context(False, "image", has_text=True) is True
 def test_evaluate_group_mention_reply_is_kept():
     decision = ReplyPolicy.evaluate(
         _message(mentions={"bot1": "Bot"}),

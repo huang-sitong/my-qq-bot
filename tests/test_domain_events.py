@@ -13,6 +13,7 @@ from bot.package.conversation import (
 )
 from bot.package.domain.events import DomainEvent
 from bot.package.knowledge.turn_index_projection import TurnIndexProjection
+from bot.package.orchestration.conversation_repository import LangGraphConversationRepository
 from bot.package.pipeline.dispatcher import MessageDispatcher
 from bot.package.utils.event_bus import InMemoryDomainEventBus
 
@@ -195,10 +196,12 @@ def test_dispatcher_publishes_turn_completed_instead_of_direct_index_enqueue():
             seen.append(event)
 
         bus.subscribe(ConversationTurnCompleted, record)
+        graph = _StubGraph()
         dispatcher = MessageDispatcher(
-            graph=_StubGraph(),
+            graph=graph,
             persona="你是{bot_name}",
             api_client=_StubApi(),
+            conversation_repository=LangGraphConversationRepository(graph),
             event_bus=bus,
         )
         message = _message()
@@ -227,6 +230,7 @@ def test_dispatcher_publishes_empty_reply_for_context_only():
             graph=graph,
             persona="你是{bot_name}",
             api_client=_StubApi(),
+            conversation_repository=LangGraphConversationRepository(graph),
             event_bus=bus,
         )
         await dispatcher.dispatch(
