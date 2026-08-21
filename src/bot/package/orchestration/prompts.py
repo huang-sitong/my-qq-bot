@@ -53,6 +53,3 @@ FILE_SEND_TOOL_HINT = """你可以用 send_file 把本地文件发送到当前�
   * `pwd` 输出盘符如 `C:\\` = Windows 环境，才可以使用 `C:\\...` 路径。
 - 禁止凭空编造路径；发送前可用 `run_bash` 执行 `ls -l <路径>` 确认文件确实存在。"""
 
-# 技能模块提示词（call_llm 经 build_system_messages 动态注入）
-SKILL_INDEX_HINT = "可用技能（按需用 load_skill 加载正文）："
-SKILL_ACTIVE_HINT = "当前已激活技能（遵循其规则）："

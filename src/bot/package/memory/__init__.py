@@ -41,7 +41,7 @@ class MemoryStore:
         return (_NAMESPACE, user_id)
 
     async def _ensure(self) -> AsyncSqliteStore:
-        """惰性建立连接 + AsyncSqliteStore + 迁移旧数据；并发首调用互斥。"""
+        """惰性建立连接 + AsyncSqliteStore；并发首调用互斥。"""
         async with self._init_lock:
             if self._store is None:
                 conn = await aiosqlite.connect(self.db_path, isolation_level=None)
@@ -49,33 +49,12 @@ class MemoryStore:
                 await store.setup()
                 self._conn = conn
                 self._store = store
-                await self._migrate_legacy()
                 logger.info(
                     "MemoryStore ready (db=%s, backend=langgraph AsyncSqliteStore)",
                     self.db_path,
                 )
         return self._store
 
-    async def _migrate_legacy(self) -> None:
-        """一次性迁移旧 ``user_memories`` 表 → 官方 ``store`` 表。
-
-        迁移成功后 DROP 旧表，幂等（表不存在即跳过）；中途失败下次启动重试，
-        重复 aput 为覆盖写不产生脏数据。迁移只为保留真实用户记忆，非功能路径。
-        """
-        cur = await self._conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='user_memories'"
-        )
-        exists = (await cur.fetchone()) is not None
-        await cur.close()
-        if not exists:
-            return
-        rows = await self._conn.execute_fetchall(
-            "SELECT user_id, key, value FROM user_memories"
-        )
-        for user_id, key, value in rows:
-            await self._store.aput(self._ns(user_id), key, {"value": value})
-        await self._conn.execute("DROP TABLE user_memories")
-        logger.info("Migrated %d legacy user memories to langgraph store", len(rows))
 
     async def load_memories(self, user_id: str) -> list[dict]:
         store = await self._ensure()
@@ -111,4 +90,8 @@ class MemoryStore:
                 self._conn = None
                 self._store = None
 
-__all__ = ["MemoryStore"]
+__all__ = ["MemoryStore", "create_memory_store"]
+
+from .factory import create_memory_store  # 显式导出，无懒加载
+
+

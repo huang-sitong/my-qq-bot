@@ -52,10 +52,7 @@ def _route_after_llm(state: BotState) -> str:
 def _describe_image_with_turn(node, **inject):
     """包装 describe_image 节点：从 run config 提取当轮 TurnInput 注入。
 
-    TurnInput（当轮输入）经 ``config["configurable"]["turn_input"]`` 传入，
-    不进入 BotState channel schema，因此不会被 checkpoint 持久化；未提供时
-    节点回退读 state 兼容旧 checkpoint。``node`` 形如 describe_image_node，接收
-    ``turn=`` 关键字。
+    TurnInput 经 ``config["configurable"]["turn_input"]`` 传入，不落库；未提供时节点按消息数推断。
     """
 
     async def wrapped(state, *, config=None):
@@ -129,13 +126,9 @@ async def create_graph(
 
     checkpoint_path = os.path.join(db_dir, "checkpoint.sqlite")
     conn = await aiosqlite.connect(checkpoint_path)
-    # 显式注册 checkpoint 中允许反序列化的自定义类型路径。
-    # 老 checkpoint 可能存的是 vision.domain.ImageDescription（历史 re-export 路径），
-    # 新 checkpoint 使用 domain.media.ImageDescription，两者都要放行以避免 serde 警告。
     serializer = JsonPlusSerializer(
         allowed_msgpack_modules=[
             ("domain.media", "ImageDescription"),
-            ("vision.domain", "ImageDescription"),
         ],
     )
     checkpointer = AsyncSqliteSaver(conn, serde=serializer)

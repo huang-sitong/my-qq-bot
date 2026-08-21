@@ -21,12 +21,11 @@ from bot.package.conversation.identity import BotIdentity
 from bot.package.core.app import AppDependencies, BotApplication
 from bot.package.core.database import DatabaseManager
 from bot.package.core.llm import setup_llm
-from bot.package.knowledge.document_store import DocumentStore
+from bot.package.knowledge import create_document_store, create_rag_service
 from bot.package.knowledge.index_worker import IndexWorker
-from bot.package.knowledge.service import RagService
 from bot.package.knowledge.turn_index_projection import TurnIndexProjection
-from bot.package.mcp import load_mcp_servers_from_file, load_mcp_tools
-from bot.package.memory import MemoryStore
+from bot.package.mcp import create_mcp_tools
+from bot.package.memory import create_memory_store
 from bot.package.orchestration.compaction import ContextCompactor
 from bot.package.orchestration.conversation_repository import LangGraphConversationRepository
 from bot.package.orchestration.graph import create_graph
@@ -35,13 +34,13 @@ from bot.package.pipeline.pipeline import MessagePipeline
 from bot.package.platform.satori.adapter import SatoriAdapter
 from bot.package.platform.satori.http import SatoriApiClient
 from bot.package.platform.satori.websocket import SatoriClient
-from bot.package.skill import SkillRegistry
+from bot.package.skill import create_skill_registry
 from bot.package.tools import build_tools
 from bot.package.tools.domain import BashConfig
 from bot.package.utils.event_bus import InMemoryDomainEventBus
 from bot.package.utils.logging import setup_logging
 from bot.package.utils.paths import PROJECT_ROOT
-from bot.package.vision import VisionService
+from bot.package.vision import create_vision_service
 
 logger = logging.getLogger("bot")
 
@@ -88,55 +87,17 @@ async def create_app(config: BotConfig | None = None) -> BotApplication:
 
     llm = setup_llm(config)
 
-    # RAG 与文档知识库共享 embedder，避免重复打开 embed_cache.sqlite。
-    rag_service = None
-    document_store = None
-    if config.rag_enabled:
-        try:
-            rag_service = RagService(config)
-        except Exception:
-            logger.exception("RAG init failed; falling back to rag disabled")
-            rag_service = None
-        try:
-            shared_embedder = rag_service.embedder if rag_service else None
-            document_store = DocumentStore(
-                config,
-                collection=config.document_collection,
-                embedder=shared_embedder,
-            )
-        except Exception:
-            logger.exception("DocumentStore init failed; document search disabled")
-            document_store = None
+    # 各上下文工厂统一创建，内部处理 enabled 开关与异常降级
+    rag_service = create_rag_service(config)
+    document_store = create_document_store(config, embedder=rag_service.embedder if rag_service else None)
 
-    memory_store = MemoryStore(db_dir=config.db_dir)
+    memory_store = create_memory_store(config)
 
-    vision_service = None
-    if config.vision_enabled:
-        if not config.vision_base_url:
-            logger.warning("vision_enabled but vision_base_url is empty; disabling vision")
-        else:
-            vision_service = VisionService(
-                base_url=config.vision_base_url,
-                model=config.vision_model,
-                api_key=config.vision_api_key,
-                timeout=config.vision_timeout,
-                max_images=config.vision_max_images,
-            )
+    vision_service = create_vision_service(config)
 
-    mcp_tools = []
-    if config.mcp_enabled:
-        mcp_tools = await load_mcp_tools(
-            load_mcp_servers_from_file(config.mcp_servers_file, env=env_vars),
-            tool_name_prefix=config.mcp_tool_name_prefix,
-        )
-        logger.info("Loaded %d MCP tools", len(mcp_tools))
+    mcp_tools = await create_mcp_tools(config, env_vars)
 
-    skill_registry = None
-    if config.skills_enabled:
-        skill_registry = SkillRegistry.from_directory(
-            config.skills_dir, index_max=config.skills_index_max,
-        )
-        logger.info("Loaded %d skills from %s", skill_registry.total, config.skills_dir)
+    skill_registry = create_skill_registry(config)
 
     bash_config = BashConfig(
         enabled=config.bash_enabled,

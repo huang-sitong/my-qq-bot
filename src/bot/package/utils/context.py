@@ -10,7 +10,6 @@ from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.messages.utils import count_tokens_approximately
 
 from bot.package.conversation.content import IMAGE_PLACEHOLDER
-from bot.package.orchestration.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 
 logger = logging.getLogger(__name__)
 
@@ -18,16 +17,16 @@ logger = logging.getLogger(__name__)
 _CHARS_PER_TOKEN = 1.5
 
 
-def _skill_index_message(skill_registry) -> SystemMessage | None:
-    """技能索引层：无注册表或空 → None。"""
-    if skill_registry is None or skill_registry.total == 0:
+def _skill_index_message(skill_registry, hint: str | None) -> SystemMessage | None:
+    """技能索引层：无注册表/空 hint → None。"""
+    if hint is None or skill_registry is None or skill_registry.total == 0:
         return None
-    return SystemMessage(content=f"{SKILL_INDEX_HINT}\n{skill_registry.index_text()}")
+    return SystemMessage(content=f"{hint}\n{skill_registry.index_text()}")
 
 
-def _active_skills_message(skill_registry, active_skills: list[str]) -> SystemMessage | None:
-    """已激活技能正文层：无激活或全部读取失败 → None。"""
-    if not active_skills or skill_registry is None:
+def _active_skills_message(skill_registry, active_skills: list[str], hint: str | None) -> SystemMessage | None:
+    """已激活技能正文层：无激活/hint 或全部读取失败 → None。"""
+    if hint is None or not active_skills or skill_registry is None:
         return None
     sections: list[str] = []
     for name in active_skills:
@@ -37,7 +36,7 @@ def _active_skills_message(skill_registry, active_skills: list[str]) -> SystemMe
         sections.append(f"===== 技能：{name} =====\n{body}")
     if not sections:
         return None
-    return SystemMessage(content=f"{SKILL_ACTIVE_HINT}\n\n" + "\n\n".join(sections))
+    return SystemMessage(content=f"{hint}\n\n" + "\n\n".join(sections))
 
 
 def build_system_messages(
@@ -45,24 +44,28 @@ def build_system_messages(
     summary: str = "",
     skill_registry=None,
     active_skills: list[str] | None = None,
+    skill_index_hint: str | None = None,
+    skill_active_hint: str | None = None,
 ) -> list[SystemMessage]:
     """构建 call_llm 的 SystemMessage 层；estimate_context_tokens 复用保证估算一致。
 
     层级（与 ``call_llm_node`` 注入的结构完全相同——token 估算与实际上下文永不偏离）：
     - persona（恒为 messages[0]）
     - 对话摘要（来自 summarize_node）
-    - 技能索引（SKILL_INDEX_HINT + SkillRegistry.index_text，空注册表跳过）
-    - 已激活技能正文（SKILL_ACTIVE_HINT + 各技能 body，缺失/无激活跳过）
+    - 技能索引（skill_index_hint + SkillRegistry.index_text，空/无 hint 跳过）
+    - 已激活技能正文（skill_active_hint + 各技能 body，缺失/无激活跳过）
+
+    skill_*_hint 为空时对应层静默跳过，调用方按需从 skill/prompts 传入，实现参数注入、避免 utils 依赖 skill/domain。
     """
     # 摘要可能残留旧 checkpoint 的多模态 content 列表 → 归一化为纯文本
     summary_text = content_to_text(summary)
     msgs = [SystemMessage(content=persona)] if persona.strip() else []
     if summary_text.strip():
         msgs.append(SystemMessage(content=f"之前的对话摘要：\n{summary_text}"))
-    index_msg = _skill_index_message(skill_registry)
+    index_msg = _skill_index_message(skill_registry, skill_index_hint)
     if index_msg is not None:
         msgs.append(index_msg)
-    active_msg = _active_skills_message(skill_registry, active_skills or [])
+    active_msg = _active_skills_message(skill_registry, active_skills or [], skill_active_hint)
     if active_msg is not None:
         msgs.append(active_msg)
     return msgs
@@ -74,6 +77,8 @@ def estimate_context_tokens(
     summary: str,
     skill_registry=None,
     active_skills: list[str] | None = None,
+    skill_index_hint: str | None = None,
+    skill_active_hint: str | None = None,
 ) -> int:
     """Estimate total tokens for the full context sent to the LLM.
 
@@ -83,7 +88,12 @@ def estimate_context_tokens(
     """
     # Layer 0..N: persona + summary + skill layers（构造与 call_llm 共用 build_system_messages）
     all_msgs = build_system_messages(
-        persona, summary, skill_registry=skill_registry, active_skills=active_skills,
+        persona,
+        summary,
+        skill_registry=skill_registry,
+        active_skills=active_skills,
+        skill_index_hint=skill_index_hint,
+        skill_active_hint=skill_active_hint,
     )
 
     # Trailing: recent messages

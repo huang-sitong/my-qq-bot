@@ -327,19 +327,17 @@ class MessageDispatcher:
         messages: list[IncomingMessage],
         reply_text: str,
     ) -> None:
-        """发布领域事件；无总线时回退到旧直连索引（兼容测试/最小装配）。"""
-        if self._event_bus is not None:
-            event = ConversationTurnCompleted(
-                thread_id=messages[0].thread_id,
-                messages=tuple(message.to_record() for message in messages),
-                bot_id=self._identity.id,
-                bot_name=self._identity.name,
-                bot_reply=content_to_text(reply_text),
-            )
-            await self._event_bus.publish(event)
+        """发布领域事件。"""
+        if self._event_bus is None:
             return
-        for message in messages:
-            await self._enqueue_index(message, reply_text)
+        event = ConversationTurnCompleted(
+            thread_id=messages[0].thread_id,
+            messages=tuple(message.to_record() for message in messages),
+            bot_id=self._identity.id,
+            bot_name=self._identity.name,
+            bot_reply=content_to_text(reply_text),
+        )
+        await self._event_bus.publish(event)
 
     async def _enqueue_index(self, message: IncomingMessage, reply_text: str) -> None:
         if self._index_worker is None:

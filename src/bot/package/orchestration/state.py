@@ -8,8 +8,7 @@ checkpoint 的 channel schema。领域层（``bot.package.conversation``）不�
 仅保留需持久化的 10 字段；当轮输入（channel_type/content_kind/vision_* 等）
 已迁移至 ``conversation.turn.TurnInput``，不再落库。
 
-兼容：旧 checkpoint 仍含当轮字段，TypedDict total=False 允许额外键存在，
-节点通过 ``state.get("vision_target_count")`` 回退读取，逐步迁移。
+当轮输入已外置到 TurnInput，不落库。
 """
 
 from typing import Annotated

@@ -83,8 +83,6 @@ class VisionServicePort(Protocol):
     async def close(self) -> None: ...
 
 
-# 历史名称兼容别名；新代码请使用 ``MemoryRepository``。
-UserMemoryStore = MemoryRepository
 
 
 class MessageRouter(Protocol):

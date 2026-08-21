@@ -6,6 +6,7 @@
 
 from langchain_core.messages import SystemMessage
 
+from bot.package.skill.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from bot.package.utils import build_system_messages
 
 
@@ -89,6 +90,7 @@ def test_skill_index_and_active_layers_injected():
     msgs = build_system_messages(
         "你是助手", "摘要",
         skill_registry=registry, active_skills=["translate"],
+        skill_index_hint=SKILL_INDEX_HINT, skill_active_hint=SKILL_ACTIVE_HINT,
     )
     assert [m.content for m in msgs] == [
         "你是助手", "之前的对话摘要：\n摘要",
@@ -107,7 +109,7 @@ def test_skill_index_truncated_when_exceeds_max():
         {f"s{i}": Skill(name=f"s{i}", description=f"d{i}", body="b") for i in range(5)},
         index_max=3,
     )
-    msgs = build_system_messages("你是助手", "", skill_registry=registry)
+    msgs = build_system_messages("你是助手", "", skill_registry=registry, skill_index_hint=SKILL_INDEX_HINT, skill_active_hint=SKILL_ACTIVE_HINT)
     index_msg = [m for m in msgs if "可用技能" in m.content]
     assert index_msg and "…共 5 个技能，仅显示前 3 个" in index_msg[0].content
 
@@ -117,6 +119,7 @@ def test_active_skill_missing_body_skipped_keeps_others():
     msgs = build_system_messages(
         "你是助手", "",
         skill_registry=registry, active_skills=["a", "ghost"],
+        skill_index_hint=SKILL_INDEX_HINT, skill_active_hint=SKILL_ACTIVE_HINT,
     )
     active_msg = [m for m in msgs if "已激活技能" in m.content]
     assert len(active_msg) == 1
@@ -126,7 +129,7 @@ def test_active_skill_missing_body_skipped_keeps_others():
 
 def test_no_active_layer_when_empty_active_skills():
     registry = SkillRegistry({"a": Skill(name="a", description="d", body="正文A")})
-    msgs = build_system_messages("你是助手", "", skill_registry=registry, active_skills=[])
+    msgs = build_system_messages("你是助手", "", skill_registry=registry, active_skills=[], skill_index_hint=SKILL_INDEX_HINT, skill_active_hint=SKILL_ACTIVE_HINT)
     assert not any("已激活技能" in m.content for m in msgs)
 
 
@@ -140,7 +143,9 @@ def test_estimate_includes_skill_layers():
     msgs = [HumanMessage(content="你好")]
     expected = build_system_messages(
         "你是助手", "摘要", skill_registry=registry, active_skills=["translate"],
+        skill_index_hint=SKILL_INDEX_HINT, skill_active_hint=SKILL_ACTIVE_HINT,
     ) + msgs
     assert estimate_context_tokens(
         msgs, "你是助手", "摘要", skill_registry=registry, active_skills=["translate"],
+        skill_index_hint=SKILL_INDEX_HINT, skill_active_hint=SKILL_ACTIVE_HINT,
     ) == count_tokens_approximately(expected, chars_per_token=1.5)

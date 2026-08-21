@@ -10,7 +10,6 @@ from .ports import (
     MessageSender,
     MessageSink,
     RagIndexer,
-    UserMemoryStore,
     VisionServicePort,
 )
 from .repositories import ConversationRepository, DocumentRepository
@@ -30,6 +29,5 @@ __all__ = [
     "MessageSender",
     "MessageSink",
     "RagIndexer",
-    "UserMemoryStore",
     "VisionServicePort",
 ]

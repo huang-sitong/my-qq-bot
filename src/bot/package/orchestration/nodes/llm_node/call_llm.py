@@ -13,6 +13,7 @@ from bot.package.orchestration.prompts import (
     MEMORY_TOOL_HINT,
 )
 from bot.package.orchestration.state import BotState
+from bot.package.skill.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from bot.package.utils import build_system_messages, content_to_text, format_message_for_log
 
 logger = logging.getLogger(__name__)
@@ -39,9 +40,12 @@ async def call_llm_node(
     persona = state["persona"].format(bot_name=state.get("bot_name", ""))
     summary = state.get("conversation_summary", "").strip()
     system_msgs = build_system_messages(
-        persona, summary,
+        persona,
+        summary,
         skill_registry=skill_registry,
         active_skills=state.get("active_skills", []),
+        skill_index_hint=SKILL_INDEX_HINT,
+        skill_active_hint=SKILL_ACTIVE_HINT,
     )
     if use_memory:
         system_msgs.append(SystemMessage(content=MEMORY_TOOL_HINT))

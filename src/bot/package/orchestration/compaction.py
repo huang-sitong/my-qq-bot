@@ -2,6 +2,7 @@ import logging
 
 from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
 from bot.package.orchestration.nodes import summarize_node
+from bot.package.skill.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from bot.package.utils import estimate_context_tokens
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,8 @@ class ContextCompactor:
             state.get("conversation_summary", ""),
             skill_registry=self._skill_registry,
             active_skills=state.get("active_skills", []),
+            skill_index_hint=SKILL_INDEX_HINT,
+            skill_active_hint=SKILL_ACTIVE_HINT,
         )
         trigger = int(self._config.summary_trigger_ratio * self._config.llm_context_window)
         if total <= trigger:

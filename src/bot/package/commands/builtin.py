@@ -8,6 +8,7 @@ from langchain_core.messages import RemoveMessage
 from bot.package.config.settings import _parse_flag
 from bot.package.conversation import Conversation
 from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
+from bot.package.skill.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from bot.package.utils import content_to_text, estimate_context_tokens
 
 from .domain import Command, CommandContext, CommandResult
@@ -177,6 +178,8 @@ async def _context(ctx: CommandContext) -> CommandResult:
         summary,
         skill_registry=ctx.services.skill_registry,
         active_skills=active_skills,
+        skill_index_hint=SKILL_INDEX_HINT,
+        skill_active_hint=SKILL_ACTIVE_HINT,
     )
     window = ctx.config.llm_context_window
     trigger = int(window * ctx.config.summary_trigger_ratio)

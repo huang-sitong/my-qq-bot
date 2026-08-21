@@ -2,26 +2,18 @@
 
 当前仅有 ``satori`` 实现；新平台可在此增加子包并注册到
 :data:`PLATFORM_ADAPTERS`。
+显式导出，无懒加载魔法。
 """
 
 from .base import EventSource, PlatformAdapter
+from .satori.adapter import SatoriAdapter
+from .satori.http import SatoriApiClient
+from .satori.ingress import SatoriMessageIngress
+from .satori.websocket import SatoriClient
 
 PLATFORM_ADAPTERS: dict[str, str] = {
     "satori": "bot.package.platform.satori.adapter:SatoriAdapter",
 }
-
-_SATORI_EXPORTS = {"SatoriAdapter", "SatoriApiClient", "SatoriClient", "SatoriMessageIngress"}
-
-
-def __getattr__(name: str):
-    if name in _SATORI_EXPORTS:
-        import importlib
-
-        module_name = ".satori.adapter" if name == "SatoriAdapter" else ".satori"
-        module = importlib.import_module(module_name, __package__)
-        return getattr(module, name)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
 
 __all__ = [
     "PLATFORM_ADAPTERS",

@@ -51,6 +51,21 @@ def _patch_download(monkeypatch, urls_by_src):
     )
 
 
+def _turn(vision_target_count=1, auto_reply=False, **kw):
+    return TurnInput(
+        channel_type=0,
+        bot_id="bot",
+        auto_reply=auto_reply,
+        content_kind=kw.get("content_kind", "image"),
+        has_text=kw.get("has_text", True),
+        llm_text=kw.get("llm_text", "[图片]"),
+        clean_text=kw.get("clean_text", "[图片]"),
+        vision_target_count=vision_target_count,
+        vision_desc=[],
+        mentions={},
+    )
+
+
 # --- 纯文本模式（视觉服务） ---
 
 def test_noop_when_vision_disabled():
@@ -102,7 +117,7 @@ def test_auto_reply_non_multimodal_keeps_placeholder_and_skips_vision():
     fake = FakeVisionService(["猫"])
     msg = _msg("看 [图片]", ["u1"])
     result = asyncio.run(
-        describe_image_node(_state(msg, auto_reply=True), fake)
+        describe_image_node(_state(msg), fake, turn=_turn(vision_target_count=1, auto_reply=True))
     )
     assert result == {"vision_desc": []}
     assert fake.calls == 0
@@ -145,7 +160,7 @@ def test_ignores_previous_turn_images_when_target_count_is_set():
         content_kind="image",
         vision_target_count=1,
     )
-    assert asyncio.run(describe_image_node(state, fake)) == {}
+    assert asyncio.run(describe_image_node(state, fake, turn=_turn(vision_target_count=1))) == {}
     assert fake.calls == 0
 
 
@@ -206,7 +221,7 @@ def test_auto_reply_multimodal_skips_vision_desc(monkeypatch):
     _patch_download(monkeypatch, {"u1": "data:image/jpeg;base64,AAA"})
     result = asyncio.run(
         describe_image_node(
-            _state(msg, auto_reply=True), fake, llm_multimodal=True
+            _state(msg), fake, llm_multimodal=True, turn=_turn(vision_target_count=1, auto_reply=True)
         )
     )
     assert result["vision_desc"] == []

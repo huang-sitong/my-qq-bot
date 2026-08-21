@@ -116,9 +116,7 @@ async def describe_image_node(
     """批量图片处理：只处理本轮图输入中的 HumanMessage，返回逐图描述。
 
     失败时降级为 [图片] 占位符（多模态全下载失败 → 文本只留占位符）。
-    ``turn``（当轮输入 TurnInput）优先提供 ``vision_target_count`` /
-    ``auto_reply``，限定不扫描历史 checkpoint 图片；未注入 turn 时回退读
-    ``state`` 以兼容旧 checkpoint 与直接调图的场景。
+    ``turn`` 为当轮输入，提供 ``vision_target_count`` / ``auto_reply``，限定只处理本轮追加的图片。
     ``vision_desc`` 为 ``list[ImageDescription]``，每个元素携带 ``image_src``，
     明确该描述对应哪一张图片。
     """
@@ -126,8 +124,9 @@ async def describe_image_node(
         target_count = int(turn.vision_target_count)
         auto_reply_default = turn.auto_reply
     else:
-        target_count = int(state.get("vision_target_count") or 0)
-        auto_reply_default = bool(state.get("auto_reply", False))
+        # 旧 checkpoint 兼容已移除：无 turn 时按本轮消息数推断，不读旧 state 字段
+        target_count = len(state.get("messages") or [])
+        auto_reply_default = False
     messages = state.get("messages") or []
     candidates = messages[-target_count:] if target_count > 0 else messages
     targets = [

@@ -1,10 +1,20 @@
 """指令模块：图外斜杠指令注册与分发。
 
-采用懒加载导出，避免在导入 ``bot.package.commands`` 时立即加载 ``builtin``
-等依赖 ``bot.package.utils``/``bot.package.orchestration`` 的模块。
+显式导出，无懒加载魔法。
 """
 
-from __future__ import annotations
+from .builtin import build_command_registry
+from .domain import (
+    Command,
+    CommandActor,
+    CommandContext,
+    CommandHandler,
+    CommandResult,
+    ParsedCommand,
+)
+from .parser import parse_command
+from .registry import CommandRegistry, can_run, run_command
+from .services import CommandServices
 
 __all__ = [
     "Command",
@@ -20,32 +30,3 @@ __all__ = [
     "parse_command",
     "run_command",
 ]
-
-_module_map = {
-    "Command": "domain",
-    "CommandActor": "domain",
-    "CommandContext": "domain",
-    "CommandHandler": "domain",
-    "CommandResult": "domain",
-    "ParsedCommand": "domain",
-    "CommandServices": "services",
-    "CommandRegistry": "registry",
-    "can_run": "registry",
-    "run_command": "registry",
-    "parse_command": "parser",
-    "build_command_registry": "builtin",
-}
-
-
-def __getattr__(name: str):
-    module_name = _module_map.get(name)
-    if module_name is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    import importlib
-
-    module = importlib.import_module(f".{module_name}", __package__)
-    return getattr(module, name)
-
-
-def __dir__() -> list[str]:
-    return sorted(__all__)
