@@ -1,11 +1,11 @@
-"""summarize_node：多模态 content 列表摘要归一化为纯文本。"""
+"""summarize_context：多模态 content 列表摘要归一化为纯文本。"""
 
 import asyncio
 
 from langchain_core.messages import AIMessage, HumanMessage
 
 from bot.package.config import BotConfig
-from bot.package.orchestration.nodes.action_node.summarize import summarize_node
+from bot.package.orchestration.summarize import summarize_context
 from tests.fakes import ScriptedLLM, make_state
 
 
@@ -24,7 +24,7 @@ def test_summary_from_multimodal_list_content_normalized_to_text():
         HumanMessage(content="然后我们还聊过狗，你喜欢金毛犬，打算明年养一只。"),
         AIMessage(content="明白了，你明年想养一只金毛犬。"),
     ])
-    result = asyncio.run(summarize_node(state, llm=llm, bot_config=config))
+    result = asyncio.run(summarize_context(state, llm=llm, bot_config=config))
     assert result["conversation_summary"] == "聊过猫和狗"
     assert isinstance(result["conversation_summary"], str)
 
@@ -44,7 +44,7 @@ def test_force_summarizes_below_trigger():
         HumanMessage(content="这是第二条较长的背景信息，也需要保留"),
         AIMessage(content="明白，这条背景信息也会保留。"),
     ])
-    result = asyncio.run(summarize_node(
+    result = asyncio.run(summarize_context(
         state, llm=llm, bot_config=config, force=True,
     ))
     assert result["conversation_summary"] == "压缩后的摘要"

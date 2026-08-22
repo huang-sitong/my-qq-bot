@@ -1,8 +1,10 @@
 """summarize — compress older conversation messages into a progressive summary.
 
-Runs after ``call_llm_node`` on every invocation. Checks whether the total
-context exceeds the configured trigger threshold; if so, trims old messages
-and generates a merged summary via LLM.
+这是上下文压缩/摘要的辅助函数，不是 LangGraph 图节点。
+由 ``ContextCompactor`` 在进图前调用，或由 ``/compact`` 命令手动触发。
+
+检查上下文是否超过配置的触发阈值；超过时裁剪旧消息，并通过 LLM
+生成/合并新的 ``conversation_summary``。
 """
 
 import logging
@@ -38,7 +40,7 @@ def _approx_token_counter(messages) -> int:
     return count_tokens_approximately(messages, chars_per_token=1.5)
 
 
-async def summarize_node(
+async def summarize_context(
     state: BotState,
     llm: ChatOpenAI,
     bot_config: BotConfig,

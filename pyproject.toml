@@ -28,6 +28,7 @@ dependencies = [
     "websockets>=16.1",
     "python-dotenv>=1.0.0",
     "pydantic-settings>=2.14.2",
+    "deepagents>=0.7.8",
 ]
 
 [build-system]

@@ -51,7 +51,7 @@ def build_system_messages(
 
     层级（与 ``call_llm_node`` 注入的结构完全相同——token 估算与实际上下文永不偏离）：
     - persona（恒为 messages[0]）
-    - 对话摘要（来自 summarize_node）
+    - 对话摘要（来自 summarize_context）
     - 技能索引（skill_index_hint + SkillRegistry.index_text，空/无 hint 跳过）
     - 已激活技能正文（skill_active_hint + 各技能 body，缺失/无激活跳过）
 

@@ -66,7 +66,7 @@ def test_summary_trim_accepts_callable_counter():
     from langchain_core.messages import HumanMessage
     from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 
-    from bot.package.orchestration.nodes.action_node.summarize import _approx_token_counter
+    from bot.package.orchestration.summarize import _approx_token_counter
 
     msgs = [HumanMessage(content="hello world hello world")]
     # 计数器与 estimate_context_tokens 的 1.5 字符/token 语义一致

@@ -1,7 +1,7 @@
 import logging
 
 from bot.package.orchestration.constants import EXTERNAL_UPDATE_NODE
-from bot.package.orchestration.nodes import summarize_node
+from bot.package.orchestration.summarize import summarize_context
 from bot.package.skill.prompts import SKILL_ACTIVE_HINT, SKILL_INDEX_HINT
 from bot.package.utils import estimate_context_tokens
 
@@ -46,7 +46,7 @@ class ContextCompactor:
 
     async def _compact_state(self, state: dict, thread_config: dict) -> int:
         try:
-            result = await summarize_node(
+            result = await summarize_context(
                 state,
                 llm=self._llm,
                 bot_config=self._config,

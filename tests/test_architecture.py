@@ -124,7 +124,7 @@ def test_conversation_aggregate_owns_context_state_mutations():
     consumers = [
         "src/bot/package/orchestration/conversation_repository.py",
         "src/bot/package/orchestration/nodes/action_node/skill_manager.py",
-        "src/bot/package/orchestration/nodes/action_node/summarize.py",
+        "src/bot/package/orchestration/summarize.py",
         "src/bot/package/orchestration/nodes/llm_node/call_llm.py",
     ]
     for rel in consumers:
