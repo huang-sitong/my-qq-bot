@@ -13,8 +13,11 @@ import logging
 import random
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass
 
+from bot.package.config import BotConfig
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
 from bot.package.conversation.policy import ReplyPolicy
@@ -25,6 +28,76 @@ from bot.package.utils.logging import trace_context
 from bot.package.utils.queue import InMemoryMessageQueue
 
 logger = logging.getLogger(__name__)
+
+
+class _StageClock:
+    """分阶段计时器：累计单个阶段的耗时与次数，供 metrics 取平均。"""
+
+    def __init__(self) -> None:
+        self._seconds = 0.0
+        self._count = 0
+
+    @contextmanager
+    def measure(self) -> Iterator[None]:
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._seconds += time.perf_counter() - start
+            self._count += 1
+
+    @property
+    def average_seconds(self) -> float:
+        return self._seconds / self._count if self._count else 0.0
+
+
+class _EventDeduplicator:
+    """有界 ``event_id`` 幂等窗口；``window=0`` 表示关闭。"""
+
+    def __init__(self, window: int) -> None:
+        self._enabled = window > 0
+        self._seen: set[str] = set()
+        self._order: deque[str] = deque(maxlen=window if self._enabled else 0)
+        self.dropped = 0
+
+    def duplicate(self, event_id: str) -> bool:
+        """登记并判断 ``event_id`` 是否为窗口内的重复事件。"""
+        if not self._enabled:
+            return False
+        if event_id in self._seen:
+            self.dropped += 1
+            return True
+        if len(self._order) >= self._order.maxlen:
+            self._seen.discard(self._order.popleft())
+        self._order.append(event_id)
+        self._seen.add(event_id)
+        return False
+
+
+@dataclass
+class _RoutedMessage:
+    """一条已完成路由的消息及其 auto_reply 判定。"""
+
+    message: IncomingMessage
+    decision: RouteDecision
+    auto_reply_allowed: bool
+
+
+@dataclass
+class _Segment:
+    """批内不可再分的投递单元。
+
+    命令自成一段、长度恒为 1（须在原位单独执行，保证 ``/clear`` 之类的
+    状态变更——含路由在内的读取——先于其后消息生效）；非命令消息连续归并
+    为 burst 段，整段走一次 ``dispatch_batch``（IGNORE/MEDIA 等由
+    Dispatcher 内部过滤）。
+    """
+
+    items: list[_RoutedMessage]
+
+    @property
+    def is_command(self) -> bool:
+        return self.items[0].decision.action == RouteAction.COMMAND
 
 
 class MessageWorkerPool:
@@ -41,7 +114,7 @@ class MessageWorkerPool:
         dispatcher: MessageSink,
         *,
         router: MessageRouter | None = None,
-        bot_config=None,
+        bot_config: BotConfig | None = None,
         command_registry=None,
         identity: BotIdentity | None = None,
         worker_count: int = 1,
@@ -66,20 +139,15 @@ class MessageWorkerPool:
         self._worker_tasks: list[asyncio.Task[None]] = []
         self._last_auto_reply_at: dict[str, float] = {}
         self._random = random.Random()
-        self._dedup_enabled = dedup_size > 0
-        self._seen_event_ids: set[str] = set()
-        self._seen_event_order: deque[str] = deque(
-            maxlen=dedup_size if self._dedup_enabled else 0
-        )
+        self._dedup = _EventDeduplicator(dedup_size)
         self._idle_ttl = idle_ttl
         self._cleanup_interval = cleanup_interval
         self._lock_last_used: dict[str, float] = {}
         self._last_cleanup_at = 0.0
         self._processed_count = 0
-        self._dropped_count = 0
         self._processing_seconds = 0.0
-        self._stage_seconds: dict[str, float] = {"route": 0.0, "dispatch": 0.0}
-        self._stage_counts: dict[str, int] = {"route": 0, "dispatch": 0}
+        self._route_clock = _StageClock()
+        self._dispatch_clock = _StageClock()
 
     @property
     def worker_tasks(self) -> list[asyncio.Task[None]]:
@@ -107,23 +175,15 @@ class MessageWorkerPool:
         return {
             "queue_size": self._queue.qsize(),
             "processed": self._processed_count,
-            "dropped_duplicates": self._dropped_count,
+            "dropped_duplicates": self._dedup.dropped,
             "active_threads": len(self._locks),
             "avg_processing_seconds": (
                 self._processing_seconds / self._processed_count
                 if self._processed_count
                 else 0.0
             ),
-            "avg_route_seconds": (
-                self._stage_seconds["route"] / self._stage_counts["route"]
-                if self._stage_counts["route"]
-                else 0.0
-            ),
-            "avg_dispatch_seconds": (
-                self._stage_seconds["dispatch"] / self._stage_counts["dispatch"]
-                if self._stage_counts["dispatch"]
-                else 0.0
-            ),
+            "avg_route_seconds": self._route_clock.average_seconds,
+            "avg_dispatch_seconds": self._dispatch_clock.average_seconds,
         }
 
     async def start(self) -> None:
@@ -151,21 +211,17 @@ class MessageWorkerPool:
         window. Returns ``True`` when the message is accepted, ``False`` when it
         is recognized as a duplicate and ignored.
         """
-        if self._dedup_enabled:
-            if message.event_id in self._seen_event_ids:
-                self._dropped_count += 1
-                logger.debug("Duplicate event ignored: %s", message.event_id)
-                return False
-            if len(self._seen_event_order) >= self._seen_event_order.maxlen:
-                old = self._seen_event_order.popleft()
-                self._seen_event_ids.discard(old)
-            self._seen_event_order.append(message.event_id)
-            self._seen_event_ids.add(message.event_id)
+        if self._dedup.duplicate(message.event_id):
+            logger.debug("Duplicate event ignored: %s", message.event_id)
+            return False
         await self._queue.put(message)
         return True
 
     def mark_reply_sent(self, thread_id: str) -> None:
         self._last_auto_reply_at[thread_id] = time.monotonic()
+
+    def _thread_lock(self, thread_id: str) -> asyncio.Lock:
+        return self._locks.setdefault(thread_id, asyncio.Lock())
 
     def _auto_reply_allowed(self, message: IncomingMessage) -> bool:
         cfg = self._bot_config
@@ -187,99 +243,116 @@ class MessageWorkerPool:
     def _route(self, message: IncomingMessage) -> tuple[RouteDecision, bool]:
         """路由一条消息，返回 (decision, auto_reply_allowed)。"""
         auto_reply_allowed = self._auto_reply_allowed(message)
+        cfg = self._bot_config
         decision = self._router(
             message,
             command_registry=self._command_registry,
-            command_enabled=bool(
-                self._bot_config is not None and self._bot_config.command_enabled
-            ),
-            command_prefix=(
-                self._bot_config.command_prefix if self._bot_config else "/"
-            ),
+            command_enabled=bool(cfg is not None and cfg.command_enabled),
+            command_prefix=cfg.command_prefix if cfg else "/",
             bot_id=self._identity.id,
             bot_name=self._identity.name,
             auto_reply_allowed=auto_reply_allowed,
-            admin_ids=tuple(self._bot_config.admin_ids) if self._bot_config else (),
+            admin_ids=tuple(cfg.admin_ids) if cfg else (),
         )
         return decision, auto_reply_allowed
+
+    def _route_message(self, message: IncomingMessage) -> _RoutedMessage | None:
+        """路由一条消息；路由异常记日志并返回 ``None``（该消息被跳过）。"""
+        try:
+            with self._route_clock.measure():
+                decision, auto_reply_allowed = self._route(message)
+        except Exception:
+            logger.exception("Message routing failed for thread %s", message.thread_id)
+            return None
+        return _RoutedMessage(message, decision, auto_reply_allowed)
 
     async def _process(self, message: IncomingMessage) -> None:
         """Route and dispatch a single normalized incoming message."""
         self._processed_count += 1
-        route_start = time.perf_counter()
-        decision, auto_reply_allowed = self._route(message)
-        self._stage_seconds["route"] += time.perf_counter() - route_start
-        self._stage_counts["route"] += 1
-
-        dispatch_start = time.perf_counter()
-        await self._dispatcher.dispatch(
-            message,
-            decision,
-            auto_reply_allowed=auto_reply_allowed,
-        )
-        self._stage_seconds["dispatch"] += time.perf_counter() - dispatch_start
-        self._stage_counts["dispatch"] += 1
+        routed = self._route_message(message)
+        if routed is None:
+            return
+        try:
+            with self._dispatch_clock.measure():
+                await self._dispatcher.dispatch(
+                    routed.message,
+                    routed.decision,
+                    auto_reply_allowed=routed.auto_reply_allowed,
+                )
+        except Exception:
+            logger.exception(
+                "Single-message dispatch failed for thread %s", message.thread_id
+            )
 
     async def _process_batch(self, messages: list[IncomingMessage]) -> None:
         """按原位置增量处理一批同 thread 消息。
 
-        遇到命令时先把此前积累的非命令消息投递，再执行命令；命令对配置/状态
-        的改动因此会作用于其后的消息。每个 segment 单独容错，单条失败不会
-        丢弃批内其余消息。
+        逐条路由、增量成段：非命令消息连续归并为 burst 段一次投递；遇到
+        命令先把此前积累的段投递，再在原位单独执行命令——命令对配置/状态
+        的改动（含其后消息的路由读取）因此严格作用于其后消息。路由失败的
+        消息单独跳过；各段独立容错，单段失败不丢批内其余消息。
         """
         self._processed_count += len(messages)
-        segment: list[tuple[IncomingMessage, RouteDecision, bool]] = []
-
-        async def flush() -> None:
-            nonlocal segment
-            if not segment:
-                return
-            dispatch_start = time.perf_counter()
-            try:
-                await self._dispatcher.dispatch_batch(
-                    [m for m, _, _ in segment],
-                    [d for _, d, _ in segment],
-                    auto_reply_flags=[allowed for _, _, allowed in segment],
-                )
-            except Exception:
-                logger.exception(
-                    "Batch dispatch failed for thread %s",
-                    segment[0][0].thread_id,
-                )
-            finally:
-                self._stage_seconds["dispatch"] += time.perf_counter() - dispatch_start
-                self._stage_counts["dispatch"] += 1
-                segment = []
-
+        burst: list[_RoutedMessage] = []
         for message in messages:
-            route_start = time.perf_counter()
-            try:
-                decision, allowed = self._route(message)
-            except Exception:
-                logger.exception(
-                    "Message routing failed for thread %s", message.thread_id
-                )
+            routed = self._route_message(message)
+            if routed is None:
                 continue
-            finally:
-                self._stage_seconds["route"] += time.perf_counter() - route_start
-                self._stage_counts["route"] += 1
-            if decision.action == RouteAction.COMMAND:
-                await flush()
-                dispatch_start = time.perf_counter()
-                try:
+            if routed.decision.action != RouteAction.COMMAND:
+                burst.append(routed)
+                continue
+            if burst:
+                await self._run_segment(_Segment(burst))
+                burst = []
+            await self._run_segment(_Segment([routed]))
+        if burst:
+            await self._run_segment(_Segment(burst))
+
+    async def _run_segment(self, segment: _Segment) -> None:
+        """投递一个执行段；命令单发，burst 段整批合并投递。"""
+        first = segment.items[0]
+        try:
+            with self._dispatch_clock.measure():
+                if segment.is_command:
                     await self._dispatcher.dispatch(
-                        message, decision, auto_reply_allowed=allowed,
+                        first.message,
+                        first.decision,
+                        auto_reply_allowed=first.auto_reply_allowed,
                     )
-                except Exception:
-                    logger.exception(
-                        "Command dispatch failed for thread %s", message.thread_id
+                else:
+                    await self._dispatcher.dispatch_batch(
+                        [item.message for item in segment.items],
+                        [item.decision for item in segment.items],
+                        auto_reply_flags=[
+                            item.auto_reply_allowed for item in segment.items
+                        ],
                     )
-                finally:
-                    self._stage_seconds["dispatch"] += time.perf_counter() - dispatch_start
-                    self._stage_counts["dispatch"] += 1
-            else:
-                segment.append((message, decision, allowed))
-        await flush()
+        except Exception:
+            kind = "Command" if segment.is_command else "Batch"
+            logger.exception(
+                "%s dispatch failed for thread %s", kind, first.message.thread_id
+            )
+
+    def _collect_batch(
+        self, first: IncomingMessage
+    ) -> tuple[list[IncomingMessage], list[IncomingMessage | None]]:
+        """从队列抽取与 ``first`` 同 thread 的后继消息组成一批（上限 ``_batch_max``）。
+
+        返回 ``(batch, deferred)``：异 thread 消息或停止哨兵不进批，按遇到
+        顺序原样返回，由调用方在本批之后立即处理，全局 FIFO 不被破坏。
+        """
+        batch = [first]
+        deferred: list[IncomingMessage | None] = []
+        while len(batch) < self._batch_max:
+            try:
+                nxt = self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            if nxt is None or nxt.thread_id != first.thread_id:
+                deferred.append(nxt)
+                break
+            batch.append(nxt)
+        return batch, deferred
 
     def _maybe_cleanup(self) -> None:
         """Periodically drop idle thread locks and auto-reply timestamps.
@@ -305,54 +378,39 @@ class MessageWorkerPool:
         Per-thread_id locks serialize same-conversation messages to
         prevent LangGraph checkpoint conflicts. Within a lock, consecutive
         same-thread messages are drained into one batch; a foreign-thread
-        message or the stop sentinel is held and processed right after the
-        batch, preserving global FIFO order.
+        message or the stop sentinel is deferred and handled right after
+        the batch, preserving global FIFO order.
         """
+        deferred: deque[IncomingMessage | None] = deque()
         while True:
             try:
-                item = await self._queue.get()
+                item = deferred.popleft() if deferred else await self._queue.get()
                 if item is None:
                     self._queue.task_done()
                     return
-                pending: list[IncomingMessage | None] = [item]
-                while pending:
-                    current = pending.pop(0)
-                    if current is None:
-                        self._queue.task_done()
-                        return
-                    lock = self._locks.setdefault(
-                        current.thread_id, asyncio.Lock()
-                    )
-                    async with lock:
-                        self._lock_last_used[current.thread_id] = time.monotonic()
-                        batch = [current]
-                        while len(batch) < self._batch_max:
-                            try:
-                                nxt = self._queue.get_nowait()
-                            except asyncio.QueueEmpty:
-                                break
-                            if nxt is None or nxt.thread_id != current.thread_id:
-                                pending.append(nxt)
-                                break
-                            batch.append(nxt)
-                        start = time.perf_counter()
-                        try:
+                async with self._thread_lock(item.thread_id):
+                    self._lock_last_used[item.thread_id] = time.monotonic()
+                    batch, blocked = self._collect_batch(item)
+                    deferred.extend(blocked)
+                    started = time.perf_counter()
+                    try:
+                        with trace_context(batch[0].trace_id):
                             if len(batch) > 1:
-                                with trace_context(batch[0].trace_id):
-                                    await self._process_batch(batch)
+                                await self._process_batch(batch)
                             else:
-                                with trace_context(current.trace_id):
-                                    await self._process(current)
-                        except Exception:
-                            logger.exception(
-                                "Message processing failed for thread %s",
-                                current.thread_id,
-                            )
-                        finally:
-                            self._processing_seconds += time.perf_counter() - start
-                            for _ in batch:
-                                self._queue.task_done()
-                    self._maybe_cleanup()
+                                await self._process(batch[0])
+                    except Exception:
+                        logger.exception(
+                            "Message processing failed for thread %s",
+                            item.thread_id,
+                        )
+                    finally:
+                        self._processing_seconds += (
+                            time.perf_counter() - started
+                        )
+                        for _ in batch:
+                            self._queue.task_done()
+                self._maybe_cleanup()
             except asyncio.CancelledError:
                 raise
             except Exception:

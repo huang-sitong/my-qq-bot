@@ -8,6 +8,7 @@ Dispatcher 不判断消息应走哪条流水线，只接收 ``RouteDecision`` �
 """
 
 import logging
+from collections.abc import Callable
 
 from langchain_core.messages import HumanMessage
 
@@ -18,6 +19,7 @@ from bot.package.commands import (
     can_run,
     run_command,
 )
+from bot.package.config import BotConfig
 from bot.package.conversation.events import ConversationTurnCompleted
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
@@ -43,14 +45,14 @@ class MessageDispatcher:
         graph,
         persona: str,
         api_client: MessageSender,
-        bot_config=None,
+        bot_config: BotConfig | None = None,
         command_registry: CommandRegistry | None = None,
         command_services: CommandServices | None = None,
         compactor: ContextCompactorPort | None = None,
         identity: BotIdentity | None = None,
         conversation_repository: ConversationRepository | None = None,
         event_bus: DomainEventBus | None = None,
-        on_auto_reply_sent=None,
+        on_auto_reply_sent: Callable[[str], None] | None = None,
     ) -> None:
         self.graph = graph
         self._persona = persona
@@ -73,39 +75,18 @@ class MessageDispatcher:
         *,
         auto_reply_allowed: bool = False,
     ) -> None:
+        """单条投递：命令与忽略类就地处理，对话类委托批量路径。"""
         if decision.action == RouteAction.COMMAND:
             await self._execute_command(message, decision)
             return
-        if decision.action in {
-            RouteAction.IGNORE,
-            RouteAction.SYSTEM,
-            RouteAction.MEDIA,
-        }:
+        if decision.action not in {RouteAction.REPLY, RouteAction.CONTEXT_ONLY}:
             logger.debug(
                 "%s event ignored: trace=%s thread=%s",
                 decision.action.value, message.trace_id, message.thread_id,
             )
             return
-        if self.graph is None:
-            return
-        if self._compactor is not None:
-            await self._compactor.compact_if_needed(message.thread_id)
-
-        if decision.action == RouteAction.CONTEXT_ONLY:
-            # context_only 追加一律走 ConversationRepository（经聚合根校验后投影）；
-            # 无仓库时不写 checkpoint，仅发布事件（与无总线丢事件同一降级哲学）。
-            if self._conversation_repository is not None:
-                await self._conversation_repository.append_record(
-                    message.to_record(),
-                    auto_reply=auto_reply_allowed,
-                )
-            await self._publish_turn_completed([message], "")
-            return
-
-        await self._run_reply_graph(
-            message,
-            self._build_human_message(message, auto_reply=auto_reply_allowed),
-            auto_reply_allowed,
+        await self.dispatch_batch(
+            [message], [decision], auto_reply_flags=[auto_reply_allowed],
         )
 
     async def dispatch_batch(
@@ -123,6 +104,9 @@ class MessageDispatcher:
 
         HumanMessage 携带 user_id/user_name/image_srcs/auto_reply 元数据，
         记忆、视觉与冷却语义按各自消息归属，不再依赖“最后一条消息”的标量字段。
+
+        单条 ``dispatch`` 的对话类消息也走这里（批长度为 1），压缩检查、
+        context_only 落库与领域事件发布只有这一份实现。
         """
         flags = auto_reply_flags or [False] * len(messages)
         keep = [
@@ -196,16 +180,15 @@ class MessageDispatcher:
         *,
         auto_reply: bool = False,
     ) -> HumanMessage:
-        kwargs = {
-            "user_id": message.user_id,
-            "user_name": message.user_name,
-            "image_srcs": message.image_srcs,
-        }
-        kwargs["auto_reply"] = auto_reply
         human = HumanMessage(
             content=message.llm_text,
             name=message.user_name or None,
-            additional_kwargs=kwargs,
+            additional_kwargs={
+                "user_id": message.user_id,
+                "user_name": message.user_name,
+                "image_srcs": message.image_srcs,
+                "auto_reply": auto_reply,
+            },
         )
         logger.info(
             "Context message thread=%s: %s",
@@ -254,16 +237,6 @@ class MessageDispatcher:
             vision_target_count=len(humans),
             vision_desc=[],
             mentions=message.mentions,
-        )
-
-    async def _run_reply_graph(
-        self,
-        message: IncomingMessage,
-        human: HumanMessage,
-        auto_reply_allowed: bool,
-    ) -> None:
-        await self._run_reply_graph_batch(
-            [message], [human], [auto_reply_allowed],
         )
 
     async def _run_reply_graph_batch(

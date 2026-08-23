@@ -9,9 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from bot.package.config import BotConfig
 from bot.package.conversation.identity import BotIdentity
 from bot.package.conversation.message import IncomingMessage
-from bot.package.domain.ports import MessageQueue, MessageSink
+from bot.package.domain.ports import MessageQueue, MessageRouter, MessageSink
 from bot.package.pipeline.worker import MessageWorkerPool
 
 
@@ -27,8 +28,8 @@ class MessagePipeline:
         self,
         dispatcher: MessageSink,
         *,
-        router=None,
-        bot_config=None,
+        router: MessageRouter | None = None,
+        bot_config: BotConfig | None = None,
         command_registry=None,
         identity: BotIdentity | None = None,
         worker_count: int = 1,

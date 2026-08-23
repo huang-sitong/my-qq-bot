@@ -30,7 +30,7 @@ def route_incoming(
     if (
         command_enabled
         and command_registry is not None
-        and message.content_kind == "text"
+        and message.content_kind == MessageKind.TEXT.value
     ):
         parsed_command = parse_command(message.clean_text, command_prefix)
         if parsed_command is not None:
