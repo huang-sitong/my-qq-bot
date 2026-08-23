@@ -141,6 +141,7 @@ def build_graph_tools(
     bash_enabled=True,
     bash_allowed_roots=(),
     file_sender=None,
+    selection=None,
 ):
     """为图测试装配工具列表。
 
@@ -170,4 +171,5 @@ def build_graph_tools(
         bash_config=bash_config,
         file_sender=file_sender,
         send_roots=send_roots,
+        selection=selection,
     )

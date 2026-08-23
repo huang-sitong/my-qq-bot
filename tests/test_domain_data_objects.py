@@ -120,6 +120,14 @@ def test_bot_state_projection_is_slim():
         assert field not in hints, f"BotState should not contain turn field {field}"
 
 
+def test_selection_objects_live_in_own_contexts():
+    from bot.package.skill import SkillSelection
+    from bot.package.tools import ToolSelection
+
+    assert SkillSelection.__module__ == "bot.package.skill.domain"
+    assert ToolSelection.__module__ == "bot.package.tools.domain"
+
+
 def test_turn_input_exists():
     from bot.package.conversation.turn import TurnInput
     t = TurnInput(channel_type=0, bot_id="1", auto_reply=False, content_kind="text",

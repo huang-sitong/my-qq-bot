@@ -87,9 +87,13 @@ async def create_graph(
     Returns ``(graph, checkpointer)`` so the caller can manage the
     checkpointer's lifecycle.
     """
-    use_memory = memory_store is not None
+    tool_names = {tool.name for tool in tools}
+    use_memory = bool(
+        tool_names & {"remember_user_memory", "recall_user_memory"}
+    )
     use_mcp = bool(mcp_tools)
-    use_bash = config.bash_enabled
+    use_bash = "run_bash" in tool_names
+    use_file_send = "send_file" in tool_names
 
     builder = StateGraph(BotState)
     builder.add_node(
@@ -100,7 +104,7 @@ async def create_graph(
             use_memory=use_memory,
             use_mcp=use_mcp,
             use_bash=use_bash,
-            use_file_send=file_sender is not None,
+            use_file_send=use_file_send,
             bot_config=config,
             skill_registry=skill_registry,
         )

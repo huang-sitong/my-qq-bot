@@ -39,6 +39,8 @@ uv run python main.py         # 启动 bot
 | `BOT_MCP_ENABLED` / `BOT_MCP_SERVERS_FILE` | MCP 外部工具（可选；server 定义在 `config/mcp_servers.json`） |
 | `BOT_COMMAND_ENABLED` / `BOT_COMMAND_PREFIX` / `BOT_ADMIN_IDS` | 图外斜杠命令、前缀与管理员 ID |
 | `BOT_SKILLS_ENABLED` / `BOT_SKILLS_DIR` | Markdown 技能模块（扫描 `skills/<name>/SKILL.md`） |
+| `BOT_SKILLS_ALLOWLIST` / `BOT_SKILLS_DENYLIST` | 技能选择列表；逗号分隔，allowlist 空 = 全部，denylist 最后排除 |
+| `BOT_TOOLS_ALLOWLIST` / `BOT_TOOLS_DENYLIST` | LLM 工具选择列表；`load_skill`/`unload_skill` 也按普通工具选择，改配置后重启生效 |
 | `BOT_BASH_ENABLED` / `BOT_BASH_SHELL` | 技能脚本执行工具与 shell 路径（Windows Git Bash / WSL/Linux bash，默认 `bash`） |
 
 ## 运行时数据
@@ -103,7 +105,7 @@ Satori 事件 -> SatoriAdapter -> Ingress -> MessagePipeline/WorkerPool
 - `platform/satori/` — Satori 协议模型、content 解析、WS/HTTP 客户端与事件归一化
 - `utils/` — 纯技术横切设施：token 估算、日志/队列/重试与进程内领域事件总线
 - `config/` — `BotConfig` 配置类
-- `tools/` — 内部工具纯函数与 `build_tools` 装配
+- `tools/` — 内部工具纯函数、`ToolSelection` 与 `build_tools` 装配
 - `mcp/` — MCP server 配置加载与工具加载
 - `commands/` — 图外斜杠命令上下文
 - `conversation/` — 纯会话领域：`Conversation` 聚合根、领域事件与回复策略（`MessageRecord` / `IncomingMessage` / `ReplyPolicy` / `RouteDecision`）
@@ -111,7 +113,7 @@ Satori 事件 -> SatoriAdapter -> Ingress -> MessagePipeline/WorkerPool
 - `knowledge/` — 群聊历史 hybrid search 与后台索引（RAG）；`DocumentStore` 实现 `DocumentRepository`，`TurnIndexProjection` 订阅会话领域事件
 - `memory/` — 用户长期记忆上下文；`MemoryStore` 实现 `MemoryRepository`
 - `orchestration/` — 会话编排：`BotState` 状态投影、`LangGraphConversationRepository` 适配器 + LangGraph 工作流组装与图节点
-- `skill/` — 技能管理上下文
+- `skill/` — 技能管理上下文与 `SkillSelection`
 - `vision/` — 图片理解上下文
 
 旧顶层路径、`src/bot/core/` 目录与 `src/bot/handler.py` 已删除，

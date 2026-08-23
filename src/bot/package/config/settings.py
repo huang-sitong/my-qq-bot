@@ -338,6 +338,15 @@ class BotConfig(BaseSettings):
         ge=0,
         validation_alias="BOT_SKILLS_INDEX_MAX",
     )
+    # 技能选择列表：allowlist 为空 = 全部可用；denylist 总是最后排除。
+    skills_allowlist: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        validation_alias="BOT_SKILLS_ALLOWLIST",
+    )
+    skills_denylist: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        validation_alias="BOT_SKILLS_DENYLIST",
+    )
 
     # --- Commands（图外斜杠指令模块） ---
     command_enabled: Flag = Field(
@@ -373,6 +382,16 @@ class BotConfig(BaseSettings):
         validation_alias="BOT_AUTO_REPLY_COOLDOWN",
     )
 
+    # --- Tools（LLM 工具选择列表；allowlist 为空 = 全部可用） ---
+    tools_allowlist: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        validation_alias="BOT_TOOLS_ALLOWLIST",
+    )
+    tools_denylist: Annotated[list[str], NoDecode] = Field(
+        default_factory=list,
+        validation_alias="BOT_TOOLS_DENYLIST",
+    )
+
     # --- Bash 工具（skill 脚本执行；Windows Git Bash / WSL/Linux bash） ---
     bash_enabled: Flag = Field(
         default=True,
@@ -405,6 +424,17 @@ class BotConfig(BaseSettings):
     @field_validator("bash_allowed_roots", mode="before")
     @classmethod
     def _parse_bash_allowed_roots(cls, value: object) -> list[str]:
+        return _parse_comma_list(value)
+
+    @field_validator(
+        "skills_allowlist",
+        "skills_denylist",
+        "tools_allowlist",
+        "tools_denylist",
+        mode="before",
+    )
+    @classmethod
+    def _parse_name_selection_lists(cls, value: object) -> list[str]:
         return _parse_comma_list(value)
 
     @model_validator(mode="after")

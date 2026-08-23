@@ -39,4 +39,5 @@ class CommandServices:
     compactor: ContextCompactor | None = None
     mcp_tool_names: tuple[str, ...] = ()
     mcp_tool_count: int = 0
+    tool_names: tuple[str, ...] = ()
     metrics_provider: Callable[[], dict] | None = None

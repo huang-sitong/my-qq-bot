@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from bot.package.config import BotConfig
 from bot.package.conversation.turn import TurnInput
 from bot.package.orchestration.graph import create_graph
+from bot.package.tools import ToolSelection
 from tests.fakes import (
     FakeVisionService,
     ScriptedLLM,
@@ -433,6 +434,41 @@ def test_graph_runs_send_file_tool(tmp_path):
     assert tool_msgs
     assert "文件已发送" in tool_msgs[0].content
     assert sender.calls[0][0] == "private:u1"
+
+
+def test_graph_hides_bash_hint_when_run_bash_denied(tmp_path):
+    llm = ScriptedLLM([AIMessage(content="好的")])
+    graph, _ = asyncio.run(
+        create_graph(
+            llm, BotConfig(_env_file=None), db_dir=str(tmp_path),
+            tools=build_graph_tools(
+                selection=ToolSelection.from_lists(denylist=["run_bash"]),
+            ),
+        )
+    )
+    asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
+    sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
+    assert not any("run_bash" in m.content for m in sys_msgs)
+
+
+def test_graph_hides_memory_hint_when_memory_tools_denied(tmp_path):
+    store = StubMemoryStore()
+    llm = ScriptedLLM([AIMessage(content="好的")])
+    graph, _ = asyncio.run(
+        create_graph(
+            llm, BotConfig(rag_enabled=False), db_dir=str(tmp_path),
+            memory_store=store,
+            tools=build_graph_tools(
+                memory_store=store,
+                selection=ToolSelection.from_lists(
+                    denylist=["remember_user_memory", "recall_user_memory"],
+                ),
+            ),
+        )
+    )
+    asyncio.run(graph.ainvoke(_initial_state(), _cfg()))
+    sys_msgs = [m for m in llm.last_messages if isinstance(m, SystemMessage)]
+    assert not any("recall_user_memory" in m.content for m in sys_msgs)
 
 
 def test_graph_injects_file_send_hint(tmp_path):

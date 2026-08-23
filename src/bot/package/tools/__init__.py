@@ -4,9 +4,12 @@ from .builtin.search_chat_history import search_chat_history
 from .builtin.search_documents import search_documents
 from .builtin.send_file import send_file
 from .builtin.user_memory import recall_user_memory, remember_user_memory
-from .factory import build_tools
+from .domain import ToolSelection
+from .factory import apply_tool_selection, build_tools
 
 __all__ = [
+    "ToolSelection",
+    "apply_tool_selection",
     "build_tools",
     "recall_user_memory",
     "remember_user_memory",

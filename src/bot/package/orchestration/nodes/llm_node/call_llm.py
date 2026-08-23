@@ -39,10 +39,14 @@ async def call_llm_node(
     """
     persona = state["persona"].format(bot_name=state.get("bot_name", ""))
     summary = state.get("conversation_summary", "").strip()
+    tool_names = {tool.name for tool in tools or []}
+    # 技能被统一视为工具：load_skill 被选择列表排除时，技能索引/正文必须整体隐藏，
+    # 避免提示词声称有技能但模型实际没有加载工具。
+    visible_skill_registry = skill_registry if "load_skill" in tool_names else None
     system_msgs = build_system_messages(
         persona,
         summary,
-        skill_registry=skill_registry,
+        skill_registry=visible_skill_registry,
         active_skills=state.get("active_skills", []),
         skill_index_hint=SKILL_INDEX_HINT,
         skill_active_hint=SKILL_ACTIVE_HINT,

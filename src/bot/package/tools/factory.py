@@ -21,7 +21,7 @@ from pydantic import Field
 
 from bot.package.domain.repositories import DocumentRepository, MemoryRepository
 from bot.package.skill.tools import load_skill, unload_skill
-from bot.package.tools.domain import BashConfig
+from bot.package.tools.domain import BashConfig, ToolSelection
 
 from .builtin.run_bash import run_bash
 from .builtin.search_chat_history import search_chat_history
@@ -307,9 +307,29 @@ def _make_skill_tools(skill_registry) -> list[BaseTool]:
     ]
 
 
+def apply_tool_selection(
+    tools: list[BaseTool],
+    selection: ToolSelection | None,
+) -> list[BaseTool]:
+    """按全局工具选择列表过滤已组装工具；未知名只告警不抛错。"""
+    if selection is None:
+        return list(tools)
+    available_names = {tool.name for tool in tools}
+    configured_names = set(selection.allowlist) | set(selection.denylist)
+    unknown = sorted(configured_names - available_names)
+    if unknown:
+        logger.warning("Tool selection contains unknown names ignored: %s", ", ".join(unknown))
+    selected = [tool for tool in tools if selection.is_selected(tool.name)]
+    logger.info(
+        "Tool selection: %d enabled, %d disabled",
+        len(selected), len(tools) - len(selected),
+    )
+    return selected
+
+
 def build_tools(rag_service=None, document_store: DocumentRepository | None = None, memory_store: MemoryRepository | None = None,
                 mcp_tools=None, skill_registry=None, bash_config=None,
-                file_sender=None, send_roots=None) -> list[BaseTool]:
+                file_sender=None, send_roots=None, selection: ToolSelection | None = None) -> list[BaseTool]:
     """组装当前可用工具列表（BaseTool）。
 
     - rag_service 存在且启用 → search_chat_history
@@ -319,6 +339,7 @@ def build_tools(rag_service=None, document_store: DocumentRepository | None = No
     - bash_config 存在且 enabled → run_bash
     - file_sender 存在且 send_roots 非空 → send_file
     - mcp_tools（BaseTool 列表）→ 直接并入
+    - selection（ToolSelection）→ 最后统一过滤；None = 全选
     """
     tools: list[BaseTool] = []
     if rag_service is not None and rag_service.enabled:
@@ -334,4 +355,4 @@ def build_tools(rag_service=None, document_store: DocumentRepository | None = No
     if file_sender is not None and send_roots:
         tools.append(_make_send_file_tool(file_sender, send_roots))
     tools += list(mcp_tools or [])
-    return tools
+    return apply_tool_selection(tools, selection)

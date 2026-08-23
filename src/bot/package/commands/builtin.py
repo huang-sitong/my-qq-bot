@@ -73,6 +73,7 @@ async def _status(ctx: CommandContext) -> CommandResult:
         f"RAG：{'开启' if services.rag_service is not None else '关闭'}",
         f"视觉：{'开启' if services.vision_service is not None else '关闭'}",
         f"MCP：{mcp_count} 个工具",
+        f"工具：{len(services.tool_names)} 个",
         f"技能：{services.skill_registry.total if services.skill_registry else 0} 个",
         f"记忆：{'开启' if services.memory_store is not None else '关闭'}",
         f"自动回复：{'开启' if cfg.auto_reply else '关闭'}",
@@ -127,6 +128,21 @@ async def _mcp(ctx: CommandContext) -> CommandResult:
         return CommandResult(text=f"已加载 {count} 个 MCP 工具。")
     lines = [f"已加载 {len(names)} 个 MCP 工具："]
     lines.extend(f"- {name}" for name in names)
+    return CommandResult(text="\n".join(lines))
+
+
+async def _tools(ctx: CommandContext) -> CommandResult:
+    """列出最终启用的 LLM 工具（已应用 tools_allowlist / tools_denylist）。"""
+    names = ctx.services.tool_names
+    if not names:
+        return CommandResult(text="当前没有可用工具。")
+    lines = [f"已启用 {len(names)} 个工具："]
+    lines.extend(f"- {name}" for name in names)
+    if ctx.config.tools_allowlist:
+        lines.append("白名单：" + ", ".join(ctx.config.tools_allowlist))
+    if ctx.config.tools_denylist:
+        lines.append("黑名单：" + ", ".join(ctx.config.tools_denylist))
+    lines.append("修改工具选择列表后需重启生效。")
     return CommandResult(text="\n".join(lines))
 
 
@@ -238,6 +254,13 @@ def build_command_registry(services: CommandServices, prefix: str = "/") -> Comm
         usage=f"{prefix}mcp",
         permission="admin",
         handler=_mcp,
+    ))
+    registry.register(Command(
+        name="tools",
+        description="查看当前启用的 LLM 工具",
+        usage=f"{prefix}tools",
+        permission="admin",
+        handler=_tools,
     ))
     registry.register(Command(
         name="context",

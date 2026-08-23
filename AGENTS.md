@@ -35,8 +35,8 @@ src/bot/package/                # 应用包主体（所有上下文统一在此�
     base.py                     #   EventSource / PlatformAdapter 端口（TYPE_CHECKING 避免循环）
     satori/                     #   enums/models/events/api + content_parser + ingress/http/websocket + adapter + constants.py
   config/
-    settings.py                 #   BotConfig pydantic-settings（env 校验、严格布尔 Flag；DEFAULT_PERSONA 内联）
-  tools/                        # 工具装配：factory.py + builtin/* 纯函数 + domain.py:BashConfig
+    settings.py                 #   BotConfig pydantic-settings（env 校验、严格布尔 Flag；DEFAULT_PERSONA 内联；skill/tool 选择列表）
+  tools/                        # 工具装配：factory.py + builtin/* 纯函数 + domain.py:BashConfig/ToolSelection
   mcp/                          # MCP：config.py 配置加载 + client.py 工具加载（合并为单包）
   commands/                     # 图外斜杠指令上下文：parser / registry / builtin / services
   conversation/                 # 纯会话领域：Conversation 聚合根 / events / MessageRecord / IncomingMessage / ReplyPolicy / ReplyDecision / RouteDecision / TurnInput / identity（不依赖 LangChain/LangGraph）
@@ -44,7 +44,7 @@ src/bot/package/                # 应用包主体（所有上下文统一在此�
   knowledge/                    # 知识/RAG 上下文：embedder / cache / milvus / service / index_worker / turn_index_projection + prompts.py；DocumentStore 实现 DocumentRepository
   memory/                       # 用户长期记忆上下文：MemoryStore 实现 MemoryRepository
   orchestration/                # 会话编排：state.py(BotState 投影) + conversation_repository.py(LangGraph 适配器) + 工作流 + 图节点 + ContextCompactor + prompts.py/constants.py
-  skill/                        # 技能管理上下文：SkillRegistry + load/unload 工具
+  skill/                        # 技能管理上下文：SkillRegistry + SkillSelection + load/unload 工具
   vision/                       # 视觉理解上下文：VisionService + 图片下载 + prompts.py
 db/                             # checkpoint.sqlite / memory.sqlite / embed_cache.sqlite / milvus.db
 ```
@@ -134,9 +134,9 @@ thread_id = `platform:guild:channel`，每频道隔离会话历史（session_id 
 
 **记忆工具**：注入 MemoryStore 后 call_llm 绑定 `remember/recall_user_memory` 工具 + MEMORY_TOOL_HINT，LLM 自行决定读写；工具暴露 `user_id`/`user_name` 参数，批内可指定目标发言者，缺失时回退最近一条 HumanMessage 元数据，底层官方 AsyncSqliteStore 全 async。旧"图前全量注入 + 图外抽取"方案已移除。
 
-**技能模块**：`Skill` 纯数据对象在 `src/bot/package/skill/domain.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：dispatcher/pipeline 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
+**技能模块**：`Skill` / `SkillSelection` 纯数据对象在 `src/bot/package/skill/domain.py`；`SkillRegistry.from_directory` 扫描 `skills/<name>/SKILL.md`（frontmatter name/description+正文；目录缺失→空注册表不崩），`create_skill_registry` 应用 `BOT_SKILLS_ALLOWLIST`/`BOT_SKILLS_DENYLIST` 过滤（allowlist 空=全部）。build_tools 包装 `load_skill`/`unload_skill`（纯函数只返回正文/确认；两者统一按普通工具受 `BOT_TOOLS_ALLOWLIST`/`BOT_TOOLS_DENYLIST` 选择，`load_skill` 被排除时技能索引/正文对 LLM 整体隐藏）；load 成功后 `skill_manager` 节点把 skill_name 追加进 `active_skills`（tools→skill_manager→call_llm **逐轮**回环接线，只增不改、不设 reducer）。注入层：技能索引 + 激活正文。**关键约束：dispatcher/pipeline 绝不注入 active_skills**（输入 state 覆盖 checkpoint 会清零持久化激活），节点一律 `state.get("active_skills", [])`。
 
-**指令模块（图外斜杠指令）**：命令数据模型统一在 `src/bot/package/commands/domain.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`），应用服务容器 `CommandServices` 在 `src/bot/package/commands/services.py`；`bot.package.commands` 包含 parser/registry/builtin/services。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /context`（status/auto_reply/clear/compact/mcp/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_context(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获的 `mcp_tool_names`；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
+**指令模块（图外斜杠指令）**：命令数据模型统一在 `src/bot/package/commands/domain.py`（`Command`/`ParsedCommand`/`CommandActor`/`CommandContext`/`CommandResult`），应用服务容器 `CommandServices` 在 `src/bot/package/commands/services.py`；`bot.package.commands` 包含 parser/registry/builtin/services。env `BOT_COMMAND_ENABLED`(默认1) / `BOT_COMMAND_PREFIX`(默认`/`，min_length=1 空串 fail-fast) / `BOT_ADMIN_IDS`(逗号分隔)；工具/技能选择：`BOT_TOOLS_ALLOWLIST`/`BOT_TOOLS_DENYLIST`/`BOT_SKILLS_ALLOWLIST`/`BOT_SKILLS_DENYLIST`（逗号分隔，allowlist 空=全部，denylist 最后排除，改配置重启生效）。Router 在文本进图前解析 `prefix+name+args`；命中注册命令→权限检查（admin 命令仅 admin actor，CLI actor 隐式 admin）→handler→回复，**不进图、不产生 RAG 索引**；未注册回落对话流。命令名须字母开头 `[a-z][a-z0-9_-]*`（`/123`、`/--` 回落）；参数 shlex **POSIX** 分词（`\` 转义，Windows 路径 `C:\tmp\x`→`C:tmpx` 会吞反斜杠，V1 无路径命令）。V1：`/help /ping /version /skills /skill /status /auto_reply /clear /compact /mcp /tools /context`（status/auto_reply/clear/compact/mcp/tools/context 为 admin，auto_reply 运行时改写 BOT_AUTO_REPLY）。`/skill` 正文 everyone 可见（截断 2000 字，视为非机密；含敏感内容需评估暴露面）。`/clear` 用 `graph.aupdate_state` 保留 persona，只清空 messages/conversation_summary/active_skills/tool_rounds，不删 RAG 历史与用户记忆；`/compact` 调 `ContextCompactor.force_compact`（读 checkpoint → `summarize_context(force=True)` → `aupdate_state` 写回）；`/mcp` 列出 main.py 启动时捕获且经工具选择过滤后的 `mcp_tool_names`；`/tools` 列出最终启用的全部 LLM 工具与选择列表；`/context` 用 `estimate_context_tokens` 报告占用/剩余/摘要/技能/自动压缩阈值。命令层与 Satori 解耦，CLI 可直接构造 admin actor 复用。
 
 **Node 分类约定**：`llm_node/`（调 LLM）· `action_node/`（确定性无 LLM，含 describe_image/skill_manager；压缩 helper `summarize_context` 放在 `orchestration/summarize.py`，供 ContextCompactor 复用）· `tools`（prebuilt ToolNode 统一执行全部工具）· `mcp/`（外部工具加载，单 server 失败降级）。
 

@@ -11,7 +11,7 @@ import logging
 import re
 from pathlib import Path
 
-from .domain import Skill
+from .domain import Skill, SkillSelection
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,15 @@ class SkillRegistry:
 
     def has(self, name: str) -> bool:
         return name in self._skills
+
+    def restrict(self, selection: SkillSelection) -> "SkillRegistry":
+        """按全局选择列表过滤，返回新注册表（保持原顺序与 index_max）。"""
+        selected = {
+            name: skill
+            for name, skill in self._skills.items()
+            if selection.is_selected(name)
+        }
+        return SkillRegistry(selected, self.index_max)
 
     def get_skill(self, name: str) -> Skill | None:
         """返回指定技能对象；不存在返回 None。"""

@@ -35,7 +35,7 @@ from bot.package.platform.satori.adapter import SatoriAdapter
 from bot.package.platform.satori.http import SatoriApiClient
 from bot.package.platform.satori.websocket import SatoriClient
 from bot.package.skill import create_skill_registry
-from bot.package.tools import build_tools
+from bot.package.tools import ToolSelection, build_tools
 from bot.package.tools.domain import BashConfig
 from bot.package.utils.event_bus import InMemoryDomainEventBus
 from bot.package.utils.logging import setup_logging
@@ -95,7 +95,7 @@ async def create_app(config: BotConfig | None = None) -> BotApplication:
 
     vision_service = create_vision_service(config)
 
-    mcp_tools = await create_mcp_tools(config, env_vars)
+    raw_mcp_tools = await create_mcp_tools(config, env_vars)
 
     skill_registry = create_skill_registry(config)
 
@@ -110,16 +110,27 @@ async def create_app(config: BotConfig | None = None) -> BotApplication:
     send_roots = [PROJECT_ROOT] + [
         Path(root).resolve() for root in config.bash_allowed_roots
     ]
+    tool_selection = ToolSelection.from_lists(
+        config.tools_allowlist,
+        config.tools_denylist,
+    )
     tools = build_tools(
         rag_service=rag_service,
         document_store=document_store,
         memory_store=memory_store,
-        mcp_tools=mcp_tools,
+        mcp_tools=raw_mcp_tools,
         skill_registry=skill_registry,
         bash_config=bash_config,
         file_sender=api_client,
         send_roots=send_roots,
+        selection=tool_selection,
     )
+    # build_tools 返回的是同一批 MCP 工具对象；按对象身份反查最终选中的 MCP，
+    # 避免与内置工具同名时按名字判断产生歧义。
+    selected_tool_ids = {id(tool) for tool in tools}
+    mcp_tools = [
+        tool for tool in raw_mcp_tools if id(tool) in selected_tool_ids
+    ]
     graph, checkpointer = await create_graph(
         llm,
         config,
@@ -164,6 +175,7 @@ async def create_app(config: BotConfig | None = None) -> BotApplication:
         compactor=compactor,
         mcp_tool_names=tuple(tool.name for tool in mcp_tools),
         mcp_tool_count=len(mcp_tools),
+        tool_names=tuple(tool.name for tool in tools),
     )
     command_registry = (
         build_command_registry(command_services, config.command_prefix)

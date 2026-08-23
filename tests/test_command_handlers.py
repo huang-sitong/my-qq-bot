@@ -13,13 +13,14 @@ from bot.package.config import BotConfig
 from bot.package.skill import Skill, SkillRegistry
 
 
-def _services(skills=None):
+def _services(skills=None, *, tool_names=()):
     return CommandServices(
         version="1.2.3",
         started_at=time.time() - 65,
         bot_name="test-bot",
         skill_registry=skills,
         mcp_tool_count=2,
+        tool_names=tuple(tool_names),
     )
 
 
@@ -126,6 +127,22 @@ def test_skill_missing():
     registry = build_command_registry(services)
     result = _execute(registry, services, "skill", ("missing",))
     assert result.text == "技能不存在。"
+
+
+def test_tools_lists_enabled_tools():
+    services = _services(tool_names=("search_chat_history", "run_bash"))
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "tools")
+    assert "已启用 2 个工具" in result.text
+    assert "- search_chat_history" in result.text
+    assert "- run_bash" in result.text
+
+
+def test_tools_empty():
+    services = _services()
+    registry = build_command_registry(services)
+    result = _execute(registry, services, "tools")
+    assert result.text == "当前没有可用工具。"
 
 
 def test_skill_requires_arg():

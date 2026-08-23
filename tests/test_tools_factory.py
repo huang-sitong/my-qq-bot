@@ -4,7 +4,7 @@ import asyncio
 from pathlib import Path
 
 from bot.package.skill import Skill, SkillRegistry
-from bot.package.tools import build_tools
+from bot.package.tools import ToolSelection, apply_tool_selection, build_tools
 from bot.package.tools.builtin.run_bash import BashConfig
 from tests.fakes import StubMemoryStore, StubRagService
 
@@ -167,6 +167,58 @@ def test_no_send_file_tool_without_sender_or_roots():
     assert "send_file" not in _names(build_tools(
         file_sender=_FakeFileSender(), send_roots=None,
     ))
+
+
+def test_tool_selection_allowlist_keeps_only_named_tools():
+    tools = build_tools(
+        rag_service=StubRagService(),
+        memory_store=StubMemoryStore(),
+        selection=ToolSelection.from_lists(["search_chat_history"]),
+    )
+    assert _names(tools) == {"search_chat_history"}
+
+
+def test_tool_selection_denylist_excludes_tools():
+    tools = build_tools(
+        rag_service=StubRagService(),
+        memory_store=StubMemoryStore(),
+        selection=ToolSelection.from_lists(denylist=["remember_user_memory", "recall_user_memory"]),
+    )
+    assert "search_chat_history" in _names(tools)
+    assert {"remember_user_memory", "recall_user_memory"}.isdisjoint(_names(tools))
+
+
+def test_tool_selection_deny_wins_over_allowlist():
+    tools = build_tools(
+        rag_service=StubRagService(),
+        memory_store=StubMemoryStore(),
+        selection=ToolSelection.from_lists(
+            ["search_chat_history", "remember_user_memory"],
+            ["remember_user_memory"],
+        ),
+    )
+    assert _names(tools) == {"search_chat_history"}
+
+
+def test_tool_selection_mcp_tools_use_final_names():
+    class FakeMcpTool:
+        name = "tavily_web_search"
+
+    tools = build_tools(
+        mcp_tools=[FakeMcpTool()],
+        selection=ToolSelection.from_lists(["tavily_web_search"]),
+    )
+    assert _names(tools) == {"tavily_web_search"}
+
+
+def test_apply_tool_selection_none_returns_copy():
+    class FakeTool:
+        name = "x"
+
+    original = [FakeTool()]
+    result = apply_tool_selection(original, None)
+    assert result == original
+    assert result is not original
 
 
 def test_send_file_schema_only_has_path_and_name():

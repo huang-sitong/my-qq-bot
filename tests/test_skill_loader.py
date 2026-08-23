@@ -1,7 +1,8 @@
 # tests/test_skill_loader.py
 """SkillRegistry 加载器测试：frontmatter 解析、非法跳过、索引截断。"""
 
-from bot.package.skill import Skill, SkillRegistry
+from bot.package.config import BotConfig
+from bot.package.skill import Skill, SkillRegistry, SkillSelection, create_skill_registry
 
 
 def _write_skill(tmp_path, name, md_text):
@@ -103,6 +104,54 @@ def test_parses_frontmatter_without_trailing_newline(tmp_path):
     reg = SkillRegistry.from_directory(str(tmp_path))
     assert reg.names() == ["ok"]
     assert reg.get_body("ok") == ""
+
+
+def test_restrict_empty_selection_keeps_all(tmp_path):
+    _write_skill(tmp_path, "a", "---\nname: a\ndescription: d\n---\nb")
+    _write_skill(tmp_path, "b", "---\nname: b\ndescription: d\n---\nb")
+    reg = SkillRegistry.from_directory(str(tmp_path), index_max=3).restrict(
+        SkillSelection()
+    )
+    assert reg.names() == ["a", "b"]
+    assert reg.index_max == 3
+
+
+def test_restrict_allowlist_keeps_only_selected(tmp_path):
+    _write_skill(tmp_path, "soup", "---\nname: soup\ndescription: game\n---\nb")
+    _write_skill(tmp_path, "jmcomic", "---\nname: jmcomic\ndescription: manga\n---\nb")
+    reg = SkillRegistry.from_directory(str(tmp_path)).restrict(
+        SkillSelection.from_lists(["soup"])
+    )
+    assert reg.names() == ["soup"]
+
+
+def test_restrict_denylist_excludes_after_allowlist(tmp_path):
+    _write_skill(tmp_path, "a", "---\nname: a\ndescription: d\n---\nb")
+    _write_skill(tmp_path, "b", "---\nname: b\ndescription: d\n---\nb")
+    reg = SkillRegistry.from_directory(str(tmp_path)).restrict(
+        SkillSelection.from_lists(["a", "b"], ["b"])
+    )
+    assert reg.names() == ["a"]
+
+
+def test_skill_selection_matches_case_insensitively():
+    selection = SkillSelection.from_lists(["Soup"])
+    assert selection.is_selected("soup")
+    assert not selection.is_selected("jmcomic")
+
+
+def test_factory_applies_skill_selection(tmp_path):
+    _write_skill(tmp_path, "soup", "---\nname: soup\ndescription: game\n---\nb")
+    _write_skill(tmp_path, "jmcomic", "---\nname: jmcomic\ndescription: manga\n---\nb")
+    config = BotConfig(
+        _env_file=None,
+        skills_enabled=True,
+        skills_dir=str(tmp_path),
+        skills_allowlist=["soup"],
+    )
+    reg = create_skill_registry(config)
+    assert reg is not None
+    assert reg.names() == ["soup"]
 
 
 def test_get_skill_returns_skill_or_none():

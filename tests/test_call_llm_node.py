@@ -5,6 +5,7 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from bot.package.config import BotConfig
 from bot.package.orchestration.nodes import call_llm_node
+from bot.package.skill import Skill, SkillRegistry
 from bot.package.tools import build_tools
 from bot.package.tools.builtin.run_bash import BashConfig
 from tests.fakes import ScriptedLLM, StubMemoryStore, StubRagService, make_state
@@ -103,6 +104,44 @@ def test_memory_hint_injected_when_use_memory():
     ))
     assert any(
         "recall_user_memory" in getattr(m, "content", "")
+        for m in llm.last_messages
+    )
+
+
+def test_skill_index_hidden_when_load_skill_tool_missing():
+    registry = SkillRegistry({
+        "translate": Skill(name="translate", description="中英互译", body="翻译规则"),
+    })
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state,
+        llm=llm,
+        tools=build_tools(rag_service=StubRagService()),
+        skill_registry=registry,
+        bot_config=CONFIG_ON,
+    ))
+    assert not any(
+        "translate" in getattr(m, "content", "")
+        for m in llm.last_messages
+    )
+
+
+def test_skill_index_visible_when_load_skill_tool_present():
+    registry = SkillRegistry({
+        "translate": Skill(name="translate", description="中英互译", body="翻译规则"),
+    })
+    llm = ScriptedLLM([AIMessage(content="好")])
+    state = BASE | {"tool_rounds": 0}
+    asyncio.run(call_llm_node(
+        state,
+        llm=llm,
+        tools=build_tools(skill_registry=registry),
+        skill_registry=registry,
+        bot_config=CONFIG_ON,
+    ))
+    assert any(
+        "translate" in getattr(m, "content", "")
         for m in llm.last_messages
     )
 

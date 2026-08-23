@@ -64,6 +64,10 @@ EXPECTED_DEFAULTS = {
     "skills_enabled": True,
     "skills_dir": "skills",
     "skills_index_max": 50,
+    "skills_allowlist": [],
+    "skills_denylist": [],
+    "tools_allowlist": [],
+    "tools_denylist": [],
     "command_enabled": True,
     "command_prefix": "/",
     "admin_ids": [],
@@ -136,6 +140,10 @@ ENV_SAMPLES = {
     "skills_enabled": ("0", False),
     "skills_dir": ("skills-env", "skills-env"),
     "skills_index_max": ("10", 10),
+    "skills_allowlist": ("soup, jmcomic, soup", ["soup", "jmcomic"]),
+    "skills_denylist": ("a,b", ["a", "b"]),
+    "tools_allowlist": ("search_chat_history, run_bash", ["search_chat_history", "run_bash"]),
+    "tools_denylist": ("run_bash,send_file", ["run_bash", "send_file"]),
     "command_enabled": ("0", False),
     "command_prefix": ("!", "!"),
     "admin_ids": ("u1, u2", ["u1", "u2"]),
@@ -261,6 +269,15 @@ def test_admin_ids_deduplicated_and_stripped(monkeypatch):
     monkeypatch.setenv("BOT_ADMIN_IDS", "u1, u1 ,  u2")
     config = BotConfig(_env_file=None)
     assert config.admin_ids == ["u1", "u2"]
+
+
+def test_selection_lists_stripped_and_deduped(monkeypatch):
+    _clear_config_env(monkeypatch)
+    monkeypatch.setenv("BOT_SKILLS_ALLOWLIST", "soup, soup , jmcomic")
+    monkeypatch.setenv("BOT_TOOLS_DENYLIST", "run_bash, run_bash , send_file")
+    config = BotConfig(_env_file=None)
+    assert config.skills_allowlist == ["soup", "jmcomic"]
+    assert config.tools_denylist == ["run_bash", "send_file"]
 
 
 def test_bash_allowed_roots_stripped_and_deduped(monkeypatch):
