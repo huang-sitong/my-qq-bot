@@ -36,6 +36,7 @@ src/bot/package/                # 应用包主体（所有上下文统一在此�
     satori/                     #   enums/models/events/api + content_parser + ingress/http/websocket + adapter + constants.py
   config/
     settings.py                 #   BotConfig pydantic-settings（env 校验、严格布尔 Flag；DEFAULT_PERSONA 内联；skill/tool 选择列表）
+    api/                          # 控制台后端（FastAPI）：设置 GET/PUT + SettingsStore 写回 .env；入口 console_api.py
   tools/                        # 工具装配：factory.py + builtin/* 纯函数 + domain.py:BashConfig/ToolSelection
   mcp/                          # MCP：config.py 配置加载 + client.py 工具加载（合并为单包）
   commands/                     # 图外斜杠指令上下文：parser / registry / builtin / services

@@ -10,8 +10,9 @@ with a non-zero status when a violation is found.
 
 Subpackage granularity: ``bot.package.<subpackage>`` where subpackage is
 one of config/core/pipeline/utils/platform/commands/knowledge/memory/
-orchestration/skill/vision/domain/conversation/tools/mcp. ``mcp`` is
-grouped (config+client) and ``platform`` covers satori.*.
+orchestration/skill/vision/domain/conversation/tools/mcp/api. ``mcp`` is
+grouped (config+client), ``platform`` covers satori.* and ``api`` is the
+FastAPI console backend (config-only dependency).
 """
 
 from __future__ import annotations
@@ -40,6 +41,7 @@ SUBPACKAGES = {
     "conversation",
     "tools",
     "mcp",
+    "api",
     "bot",
 }
 
@@ -59,6 +61,7 @@ ALLOWED_RUNTIME_DEPENDENCIES: dict[str, set[str]] = {
     "config": set(),
     "utils": {"domain", "conversation", "platform"},
     "mcp": {"config", "utils"},
+    "api": {"config"},
     "skill": {"config"},
     "memory": {"config"},
     "knowledge": {"config", "utils", "domain", "conversation"},
