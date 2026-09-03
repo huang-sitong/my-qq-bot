@@ -10,6 +10,29 @@ cp .env-template .env         # 填写 BASE_URL / API_KEY 等配置
 uv run python main.py         # 启动 bot
 ```
 
+## 控制台后端（Web API）
+
+`src/bot/package/api/` 提供 FastAPI 控制台后端，前端在 `web/`（Vue 3 + Vite + Element Plus）。启动：
+
+```bash
+uv run python console_api.py            # 默认 127.0.0.1:8000
+uv run python console_api.py --port 9000
+```
+
+接口（已开 CORS 放行 Vite 默认的 `localhost:5173`）：
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| `GET` | `/api/health` | 健康检查 |
+| `GET` | `/api/settings` | 返回全部设置项（字段名、env 变量名、值、类型、分组、是否敏感） |
+| `PUT` | `/api/settings` | 部分更新设置，`{"字段名": 新值}`；`null` 清除该项恢复默认 |
+
+说明：
+
+- 设置读写直接复用 `BotConfig` + `.env`，**不引入 YAML**，保持单一配置源；改动写回 `.env` 后按项目约定**重启生效**。
+- 敏感字段（`token`/`llm_api_key`/`embed_api_key`/`vision_api_key`/`document_mineru_api_key`）在 GET 中以 `***` 掩码返回；PUT 原样回传 `***` 视为不修改。
+- 未知字段返回 `400`，类型/校验失败返回 `422`，都不会写盘。
+
 ## 配置
 
 所有运行参数统一由 `src/bot/package/config/settings.py` 的 `BotConfig`（pydantic-settings）从 `.env` 读取，完整环境变量清单见 `.env-template`。核心项：
