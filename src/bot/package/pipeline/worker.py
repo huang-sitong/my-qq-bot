@@ -264,11 +264,22 @@ class MessageWorkerPool:
         except Exception:
             logger.exception("Message routing failed for thread %s", message.thread_id)
             return None
+        logger.debug(
+            "Route decision: thread=%s action=%s trace=%s",
+            message.thread_id,
+            decision.action.value,
+            message.trace_id,
+        )
         return _RoutedMessage(message, decision, auto_reply_allowed)
 
     async def _process(self, message: IncomingMessage) -> None:
         """Route and dispatch a single normalized incoming message."""
         self._processed_count += 1
+        logger.debug(
+            "Processing message: thread=%s trace=%s",
+            message.thread_id,
+            message.trace_id,
+        )
         routed = self._route_message(message)
         if routed is None:
             return
@@ -311,6 +322,12 @@ class MessageWorkerPool:
     async def _run_segment(self, segment: _Segment) -> None:
         """投递一个执行段；命令单发，burst 段整批合并投递。"""
         first = segment.items[0]
+        logger.debug(
+            "Dispatch segment: thread=%s count=%d command=%s",
+            first.message.thread_id,
+            len(segment.items),
+            segment.is_command,
+        )
         try:
             with self._dispatch_clock.measure():
                 if segment.is_command:

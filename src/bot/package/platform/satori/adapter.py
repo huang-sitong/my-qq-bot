@@ -51,9 +51,22 @@ class SatoriAdapter:
         if self.pipeline is None:
             logger.warning("Satori message dropped: pipeline not bound")
             return
+        logger.debug(
+            "Satori event received: type=%s event_id=%s user=%s",
+            event.type,
+            getattr(event, "id", "-"),
+            getattr(event, "user", None),
+        )
         message = self.ingress.normalize(event)
         if message is None:
+            logger.debug("Satori event normalized to None: type=%s", event.type)
             return
+        logger.debug(
+            "Message normalized: thread=%s kind=%s trace=%s",
+            message.thread_id,
+            message.content_kind,
+            message.trace_id,
+        )
         await self.pipeline.enqueue(message)
 
     async def handle_login(self, login_list: LoginList) -> None:

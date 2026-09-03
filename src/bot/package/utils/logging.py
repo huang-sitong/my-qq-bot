@@ -1,11 +1,16 @@
 """轻量结构化日志工具。
 
 通过 ``ContextVar`` 在消息处理链路中携带 trace_id，让同一事件的日志可以关联
-检索。默认不强制 JSON，仅在日志记录中增加 ``trace_id`` 字段。
+检索。日志分三路输出：
+
+- 终端（可选）：默认只打印 INFO/WARNING/ERROR；
+- 按天文件 ``log/YYYY-MM-DD.log``：人类可读的 INFO 起详细日志；
+- ``log/web.jsonl``：INFO 起的结构化 JSON 行，供 Web 控制台实时展示。
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -68,17 +73,63 @@ class DailyFileHandler(logging.FileHandler):
         super().emit(record)
 
 
+class WebConsoleHandler(logging.FileHandler):
+    """把每条日志写成一行 JSON，供 Web 控制台实时展示。
+
+    每次 bot 启动时以 ``w`` 模式重建 ``log/web.jsonl``，因此文件只保留
+    **本次运行**的日志；控制台后端从文件开头开始 tail，页面打开即可看到
+    本次运行已产生的全部日志。字段：
+
+    ``ts`` 时间戳、``level`` 级别、``logger`` 来源、``message`` 消息（含异常
+    堆栈）、``trace_id`` 关联 ID。
+    """
+
+    def __init__(self, log_path: Path, encoding: str = "utf-8") -> None:
+        self.log_path = Path(log_path)
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        super().__init__(self.log_path, mode="w", encoding=encoding)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = record.getMessage()
+            if record.exc_info:
+                if self.formatter is not None:
+                    message = (
+                        f"{message}\n{self.formatter.formatException(record.exc_info)}"
+                    )
+                else:
+                    message = f"{message}\n{logging.Formatter().formatException(record.exc_info)}"
+            entry = {
+                "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "level": record.levelname,
+                "logger": record.name,
+                "message": message,
+                "trace_id": getattr(record, "trace_id", "-"),
+            }
+            self.stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            self.flush()
+        except Exception:
+            self.handleError(record)
+
+
 def setup_logging(
     log_dir: str | Path = "log",
     *,
     level: int = logging.INFO,
+    console_level: int = logging.INFO,
+    file_level: int = logging.INFO,
+    web_level: int = logging.INFO,
     console: bool = True,
 ) -> Path:
-    """初始化 bot 日志：同时输出到控制台和根目录 ``log/`` 下的按天文件。
+    """初始化 bot 日志：三路输出，级别各自独立。
 
-    日志文件为 ``<项目根>/log/YYYY-MM-DD.log``，同一天的日志追加到同一文件，
-    跨天自动切换（通过 ``DailyFileHandler``）。重复调用会先清空已有 handler，
-    避免在测试/重载场景下重复打印。
+    - root 默认 ``INFO``：DEBUG 不进入任何日志输出；
+    - 终端只输出 ``console_level``（默认 INFO，即 INFO/WARNING/ERROR）；
+    - 按天文件 ``log/YYYY-MM-DD.log`` 输出 ``file_level``（默认 INFO）；
+    - ``log/web.jsonl`` 输出 ``web_level``（默认 INFO，即 INFO/WARNING/ERROR），
+      供 Web 控制台经后端 tail 后实时展示。
+
+    重复调用会先清空已有 handler，避免在测试/重载场景下重复打印。
     """
     root = logging.getLogger()
     root.setLevel(level)
@@ -97,6 +148,7 @@ def setup_logging(
 
     if console:
         console_handler = logging.StreamHandler()
+        console_handler.setLevel(console_level)
         console_handler.setFormatter(formatter)
         console_handler.addFilter(TraceIdFilter())
         root.addHandler(console_handler)
@@ -107,11 +159,25 @@ def setup_logging(
     log_path.mkdir(parents=True, exist_ok=True)
 
     file_handler: logging.Handler = DailyFileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(file_level)
     file_handler.setFormatter(formatter)
     file_handler.addFilter(TraceIdFilter())
     root.addHandler(file_handler)
 
+    web_handler: logging.Handler = WebConsoleHandler(
+        log_path / "web.jsonl", encoding="utf-8"
+    )
+    web_handler.setLevel(web_level)
+    web_handler.addFilter(TraceIdFilter())
+    root.addHandler(web_handler)
+
     return log_path
 
 
-__all__ = ["DailyFileHandler", "TraceIdFilter", "setup_logging", "trace_context"]
+__all__ = [
+    "DailyFileHandler",
+    "TraceIdFilter",
+    "WebConsoleHandler",
+    "setup_logging",
+    "trace_context",
+]

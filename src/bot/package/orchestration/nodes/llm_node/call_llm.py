@@ -68,6 +68,13 @@ async def call_llm_node(
     max_rounds = bot_config.rag_max_agent_rounds if bot_config is not None else 3
     rounds = state.get("tool_rounds", 0)
 
+    logger.debug(
+        "LLM invoke thread=%s rounds=%d tools=%d messages=%d",
+        thread_id,
+        rounds,
+        len(tools),
+        len(messages),
+    )
     if tools and rounds < max_rounds:
         parallel = bool(bot_config is not None and bot_config.llm_parallel_tool_calls)
         try:

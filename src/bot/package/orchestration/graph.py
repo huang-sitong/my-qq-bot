@@ -46,7 +46,15 @@ def _route_after_llm(state: BotState) -> str:
     if not messages:
         return END
     last = messages[-1]
-    return "tools" if getattr(last, "tool_calls", None) else END
+    tool_calls = getattr(last, "tool_calls", None)
+    if tool_calls:
+        names = ", ".join(
+            call.get("name", "?") if isinstance(call, dict) else str(call)
+            for call in tool_calls
+        )
+        logger.debug("Routing to tools: thread=%s calls=[%s]", state.get("thread_id", ""), names)
+        return "tools"
+    return END
 
 
 def _describe_image_with_turn(node, **inject):
