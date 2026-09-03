@@ -120,7 +120,7 @@ function onResetAll(): void {
 
 <style scoped>
 .page {
-  min-height: 100vh;
+  min-height: calc(100vh - 48px);
   background: var(--el-bg-color-page);
 }
 
