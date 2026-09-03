@@ -33,6 +33,25 @@ uv run python console_api.py --port 9000
 - 敏感字段（`token`/`llm_api_key`/`embed_api_key`/`vision_api_key`/`document_mineru_api_key`）在 GET 中以 `***` 掩码返回；PUT 原样回传 `***` 视为不修改。
 - 未知字段返回 `400`，类型/校验失败返回 `422`，都不会写盘。
 
+## 服务启动脚本
+
+项目根目录提供 3 个启动脚本（后台运行，日志在 `log/`，pid 在 `log/*.pid`）：
+
+| 脚本 | 说明 |
+|---|---|
+| `./start_bot.sh` | 启动 QQ Bot（`main.py`） |
+| `./start_console.sh` | 启动控制台：FastAPI 后端（`console_api.py`，端口 8000）+ Web 前端（Vite dev，端口 5173） |
+| `./start_all.sh` | 启动全部：Bot + 控制台后端 + Web 前端 |
+
+每个脚本均支持：
+
+```bash
+./start_bot.sh                  # 后台启动（start_console / start_all 同理）
+./start_bot.sh --status         # 查看运行状态
+./start_bot.sh --stop           # 停止（start_all --stop 停止全部）
+./start_bot.sh --foreground        # 仅 start_bot 支持前台运行（Ctrl+C 停止）
+```
+
 ## 配置
 
 所有运行参数统一由 `src/bot/package/config/settings.py` 的 `BotConfig`（pydantic-settings）从 `.env` 读取，完整环境变量清单见 `.env-template`。核心项：
