@@ -26,12 +26,14 @@ uv run python console_api.py --port 9000
 | `GET` | `/api/health` | 健康检查 |
 | `GET` | `/api/settings` | 返回全部设置项（字段名、env 变量名、值、类型、分组、是否敏感） |
 | `PUT` | `/api/settings` | 部分更新设置，`{"字段名": 新值}`；`null` 清除该项恢复默认 |
+| `WS` | `/api/logs/ws` | 日志实时流：推送 bot 本次运行的完整日志（含打开前的历史，INFO 起，JSON 行） |
 
 说明：
 
 - 设置读写直接复用 `BotConfig` + `.env`，**不引入 YAML**，保持单一配置源；改动写回 `.env` 后按项目约定**重启生效**。
 - 敏感字段（`token`/`llm_api_key`/`embed_api_key`/`vision_api_key`/`document_mineru_api_key`）在 GET 中以 `***` 掩码返回；PUT 原样回传 `***` 视为不修改。
 - 未知字段返回 `400`，类型/校验失败返回 `422`，都不会写盘。
+- 日志页在 `http://localhost:5173/logs`（Web 前端）。开发时 Vite 把 `/api`（含 WebSocket）代理到控制台后端，无需额外跨域配置。
 
 ## 服务启动脚本
 
@@ -117,7 +119,11 @@ uv run python scripts/import_documents.py --dry-run docs/*.pdf
 
 ## 日志
 
-启动时会自动创建根目录下的 `log/` 文件夹，并将 bot 日志写入 `log/bot.log`（同时保留控制台输出）。日志中包含对话上下文中的 Human/AI/Tool Message，以及命令、RAG、MCP、工具执行等运行信息，便于回溯问题。
+启动时会自动创建根目录下的 `log/` 文件夹，bot 日志分三路输出：
+
+- **终端**：保留，只打印 `INFO / WARNING / ERROR`（过滤 DEBUG）。
+- **按天文件** `log/YYYY-MM-DD.log`：人类可读的详细日志（INFO 起），包含对话上下文中的 Human/AI/Tool Message，以及命令、RAG、MCP、工具执行等运行信息，便于回溯。
+- **Web 控制台**：bot 每次启动会重建 `log/web.jsonl`（只保留本次运行日志），控制台后端从文件开头 tail 并经 `WS /api/logs/ws` 推送给前端；页面在 `http://localhost:5173/logs` 打开时即可看到本次运行已产生的全部日志，之后继续实时追加。
 
 注意 `log/` 已加入 `.gitignore`，不会被提交到版本库。
 

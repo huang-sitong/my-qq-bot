@@ -34,5 +34,6 @@ case "${1:-}" in
     echo "控制台已启动:"
     echo "  后端 API:  http://127.0.0.1:8000/api/health"
     echo "  Web 页面:  http://localhost:5173/settings"
+    echo "  日志页:     http://localhost:5173/logs"
     ;;
 esac

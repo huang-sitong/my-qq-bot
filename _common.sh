@@ -23,21 +23,41 @@ _is_running() {
   [[ -f "$pf" ]] && kill -0 "$(cat "$pf")" 2>/dev/null
 }
 
+# 返回服务对应的命令行特征（用于识别 pid 文件丢失/手动启动的残留进程）
+_service_pattern() {
+  case "$1" in
+    bot)     printf '%s\n' '[m]ain.py' ;;
+    console) printf '%s\n' '[c]onsole_api.py' ;;
+    web)     printf '%s\n' 'my-qq-bot/web.*[v]ite' ;;
+    *)       printf '%s\n' '' ;;
+  esac
+}
+
+# 是否存在匹配该服务命令行的进程（不依赖 pid 文件）
+_service_has_process() {
+  local pattern
+  pattern="$(_service_pattern "$1")"
+  [[ -n "$pattern" ]] && pgrep -f "$pattern" >/dev/null 2>&1
+}
+
 # 查询服务状态
 status_service() {
   local name="$1"
   if _is_running "$name"; then
     printf '%s: running (pid %s)\n' "$name" "$(cat "$(pid_file "$name")")"
+  elif _service_has_process "$name"; then
+    printf '%s: running (untracked, no pid file)\n' "$name"
   else
     rm -f "$(pid_file "$name")"
     printf '%s: stopped\n' "$name"
   fi
 }
 
-# 停止服务：先按进程组整体 kill，失败再回退到单 PID
+# 停止服务：先按进程组整体 kill，失败再回退到单 PID；
+# 再按命令行特征清理未登记 pid 的残留进程（手动启动 / pid 文件丢失）
 stop_service() {
   local name="$1"
-  local pf pid
+  local pf pid pattern
   pf="$(pid_file "$name")"
   if _is_running "$name"; then
     pid="$(cat "$pf")"
@@ -55,6 +75,14 @@ stop_service() {
     rm -f "$pf"
     printf '%s: not running\n' "$name"
   fi
+
+  # 清理未登记 pid 的残留进程（例如手动启动、pid 文件丢失）
+  pattern="$(_service_pattern "$name")"
+  if [[ -n "$pattern" ]] && pgrep -f "$pattern" >/dev/null 2>&1; then
+    pkill -TERM -f "$pattern" 2>/dev/null || true
+    sleep 0.3
+    pkill -KILL -f "$pattern" 2>/dev/null || true
+  fi
 }
 
 # 后台启动一个服务（setsid 新会话/新进程组）
@@ -67,6 +95,10 @@ start_service() {
   lf="$(log_file "$name")"
   if _is_running "$name"; then
     printf '%s: already running (pid %s)\n' "$name" "$(cat "$pf")"
+    return 1
+  fi
+  if _service_has_process "$name"; then
+    printf '%s: already running (untracked, no pid file); run --stop first\n' "$name" >&2
     return 1
   fi
   (

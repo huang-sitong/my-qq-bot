@@ -33,5 +33,6 @@ case "${1:-}" in
     echo "  Bot:        日志 log/bot.log"
     echo "  控制台后端: http://127.0.0.1:8000/api/health"
     echo "  Web 页面:   http://localhost:5173/settings"
+    echo "  日志页:     http://localhost:5173/logs"
     ;;
 esac
